@@ -1,0 +1,68 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# IDE - Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# IDE - VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+quickfix-logs/
+quickfix-store/
+
+# Build artifacts
+*.jar
+*.war
+*.ear
+*.class
+
+# Persistence data
+data/
+persistence/
+
+# Node modules (for fix-admin-ui)
+node_modules/
+dist/
+.npm
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test output
+test-output/
+surefire-reports/
+
+# Claude settings
+.claude/
+
+# Misc temp files
+nul
+.cp

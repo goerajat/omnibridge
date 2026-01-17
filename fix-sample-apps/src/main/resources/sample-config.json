@@ -1,0 +1,42 @@
+{
+  "persistencePath": "./data/fix-logs",
+  "maxLogFileSize": 1073741824,
+  "cpuAffinity": -1,
+  "sessions": [
+    {
+      "sessionName": "ACCEPTOR-SESSION",
+      "role": "ACCEPTOR",
+      "senderCompId": "EXCHANGE",
+      "targetCompId": "CLIENT",
+      "beginString": "FIX.4.4",
+      "port": 9876,
+      "heartbeatInterval": 30,
+      "resetOnLogon": true,
+      "resetOnLogout": false,
+      "resetOnDisconnect": false,
+      "logMessages": true,
+      "startTime": "08:00:00",
+      "endTime": "17:00:00",
+      "timeZone": "America/New_York"
+    },
+    {
+      "sessionName": "INITIATOR-SESSION",
+      "role": "INITIATOR",
+      "senderCompId": "CLIENT",
+      "targetCompId": "EXCHANGE",
+      "beginString": "FIX.4.4",
+      "host": "localhost",
+      "port": 9876,
+      "heartbeatInterval": 30,
+      "resetOnLogon": true,
+      "resetOnLogout": false,
+      "resetOnDisconnect": false,
+      "reconnectInterval": 5,
+      "maxReconnectAttempts": 3,
+      "logMessages": true,
+      "startTime": "08:00:00",
+      "endTime": "17:00:00",
+      "timeZone": "America/New_York"
+    }
+  ]
+}

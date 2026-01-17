@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: fix-admin-api
+
+# FIX Engine Configuration
+fix:
+  engine:
+    enabled: true
+    persistence-path: ./fix-logs
+
+# OpenAPI / Swagger UI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+# Logging
+logging:
+  level:
+    com.fixengine: INFO
+    com.fixengine.admin: DEBUG
+    org.springframework.web.socket: DEBUG
