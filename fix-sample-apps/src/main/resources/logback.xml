@@ -18,13 +18,13 @@
     </appender>
 
     <!-- FIX Engine logging -->
-    <logger name="com.fixengine" level="DEBUG"/>
+    <logger name="com.fixengine" level="INFO"/>
 
     <!-- Network I/O logging (can be very verbose) -->
     <logger name="com.fixengine.network" level="INFO"/>
 
     <!-- Session logging -->
-    <logger name="com.fixengine.engine.session" level="DEBUG"/>
+    <logger name="com.fixengine.engine.session" level="INFO"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

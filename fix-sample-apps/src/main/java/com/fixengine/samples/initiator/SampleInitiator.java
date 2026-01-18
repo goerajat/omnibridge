@@ -7,8 +7,9 @@ import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.MessageListener;
 import com.fixengine.engine.session.SessionState;
 import com.fixengine.engine.session.SessionStateListener;
-import com.fixengine.message.FixMessage;
 import com.fixengine.message.FixTags;
+import com.fixengine.message.IncomingFixMessage;
+import com.fixengine.message.OutgoingFixMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -30,6 +31,59 @@ import java.util.concurrent.atomic.AtomicLong;
  * Sample FIX initiator (trading client).
  * Connects to a FIX acceptor and allows sending orders interactively.
  * Supports latency tracking mode for performance testing.
+ *
+ * <h2>Latency Mode</h2>
+ * Use {@code --latency} flag to enable latency tracking mode, which runs:
+ * <ol>
+ *   <li>Warmup phase - JIT compilation warmup with configurable order count</li>
+ *   <li>Latency test - Measures round-trip latency with percentile statistics</li>
+ * </ol>
+ *
+ * <h2>Flow Control</h2>
+ * In latency mode, flow control prevents overwhelming the acceptor:
+ * <ul>
+ *   <li>{@code --max-pending} (default: 100) - Maximum pending orders before backpressure</li>
+ *   <li>{@code --backpressure-timeout} (default: 5s) - Seconds to wait in backpressure before aborting</li>
+ * </ul>
+ *
+ * Flow control behavior:
+ * <ul>
+ *   <li>Tracks pending orders (sent but not yet acknowledged with ExecType=NEW)</li>
+ *   <li>Pauses sending when pending orders reach threshold</li>
+ *   <li>Resumes when pending count drops below threshold</li>
+ *   <li>Aborts test if backpressure persists longer than timeout</li>
+ * </ul>
+ *
+ * <h2>Rate Statistics</h2>
+ * Results include throughput metrics:
+ * <ul>
+ *   <li>Overall rate - orders/sec including backpressure time</li>
+ *   <li>Backpressure time - total time spent waiting (ms and percentage)</li>
+ *   <li>Effective rate - orders/sec excluding backpressure time</li>
+ * </ul>
+ *
+ * Example output:
+ * <pre>
+ *   Warmup: 10000 orders in 5234 ms
+ *   Overall rate: 1911 orders/sec
+ *   Backpressure time: 1200 ms (22.9%)
+ *   Effective rate (excluding backpressure): 2480 orders/sec
+ *
+ *   Latency Statistics (microseconds):
+ *   ┌─────────────┬──────────────┐
+ *   │ Metric      │ Value        │
+ *   ├─────────────┼──────────────┤
+ *   │ Count       │        1,000 │
+ *   │ Min         │        45.23 │
+ *   │ Max         │     1,234.56 │
+ *   │ Avg         │       123.45 │
+ *   │ p50         │        98.76 │
+ *   │ p90         │       234.56 │
+ *   │ p95         │       345.67 │
+ *   │ p99         │       567.89 │
+ *   │ p99.9       │       890.12 │
+ *   └─────────────┴──────────────┘
+ * </pre>
  */
 @Command(name = "sample-initiator", description = "Sample FIX initiator (trading client)")
 public class SampleInitiator implements Callable<Integer> {
@@ -73,6 +127,12 @@ public class SampleInitiator implements Callable<Integer> {
     @Option(names = {"--rate"}, description = "Orders per second (0 for unlimited)", defaultValue = "100")
     private int ordersPerSecond;
 
+    @Option(names = {"--max-pending"}, description = "Maximum pending orders before backpressure", defaultValue = "100")
+    private int maxPendingOrders;
+
+    @Option(names = {"--backpressure-timeout"}, description = "Seconds to wait in backpressure before aborting", defaultValue = "5")
+    private int backpressureTimeoutSeconds;
+
     private FixEngine engine;
     private FixSession session;
     private final AtomicLong clOrdIdCounter = new AtomicLong(1);
@@ -86,6 +146,9 @@ public class SampleInitiator implements Callable<Integer> {
     private volatile boolean trackingLatency = false;
     private CountDownLatch ackLatch;
 
+    // Flow control for pending orders
+    private final AtomicInteger pendingOrders = new AtomicInteger(0);
+
     @Override
     public Integer call() throws Exception {
         // Configure log level for latency mode
@@ -95,6 +158,9 @@ public class SampleInitiator implements Callable<Integer> {
             System.out.println("Warmup orders: " + warmupOrders);
             System.out.println("Test orders: " + testOrders);
             System.out.println("Rate: " + (ordersPerSecond > 0 ? ordersPerSecond + " orders/sec" : "unlimited"));
+            System.out.println("Max pending orders: " + maxPendingOrders);
+            System.out.println("Backpressure timeout: " + backpressureTimeoutSeconds + " seconds");
+            System.out.println("Message pooling: ENABLED (zero-allocation mode)");
         }
 
         log.info("Starting Sample FIX Initiator");
@@ -103,7 +169,7 @@ public class SampleInitiator implements Callable<Integer> {
 
         try {
             // Build configuration
-            SessionConfig sessionConfig = SessionConfig.builder()
+            SessionConfig.Builder configBuilder = SessionConfig.builder()
                     .sessionName("INITIATOR")
                     .senderCompId(senderCompId)
                     .targetCompId(targetCompId)
@@ -114,17 +180,26 @@ public class SampleInitiator implements Callable<Integer> {
                     .resetOnLogon(true)
                     .logMessages(!latencyMode) // Disable message logging in latency mode
                     .reconnectInterval(5)
-                    .maxReconnectAttempts(3)
-                    .build();
+                    .maxReconnectAttempts(3);
 
-            EngineConfig.Builder configBuilder = EngineConfig.builder()
+            // Enable message pooling in latency mode for zero-allocation sending
+            if (latencyMode) {
+                configBuilder.usePooledMessages(true)
+                        .messagePoolSize(maxPendingOrders * 2) // 2x max pending for headroom
+                        .maxMessageLength(512)  // Orders are small
+                        .maxTagNumber(200);     // Standard order tags
+            }
+
+            SessionConfig sessionConfig = configBuilder.build();
+
+            EngineConfig.Builder engineConfigBuilder = EngineConfig.builder()
                     .addSession(sessionConfig);
 
             if (persistencePath != null) {
-                configBuilder.persistencePath(persistencePath);
+                engineConfigBuilder.persistencePath(persistencePath);
             }
 
-            EngineConfig config = configBuilder.build();
+            EngineConfig config = engineConfigBuilder.build();
 
             // Create engine
             engine = new FixEngine(config);
@@ -203,32 +278,84 @@ public class SampleInitiator implements Callable<Integer> {
 
         // Phase 1: Warmup (JIT compilation)
         System.out.println("Phase 1: Warmup (" + warmupOrders + " orders for JIT compilation)...");
-        runWarmup();
+        boolean warmupSuccess = runWarmup();
+
+        if (!warmupSuccess) {
+            System.out.println("\n========== TEST ABORTED (Warmup Failed) ==========\n");
+            return;
+        }
+
         System.out.println("Warmup complete.\n");
 
         // Small pause between phases
-        Thread.sleep(1000);
+        Thread.sleep(10000);
 
         // Phase 2: Latency test
         System.out.println("Phase 2: Latency test (" + testOrders + " orders at " +
                           (ordersPerSecond > 0 ? ordersPerSecond + " orders/sec" : "max rate") + ")...");
-        runLatencyTest(testOrders, ordersPerSecond);
+        boolean testSuccess = runLatencyTest(testOrders, ordersPerSecond);
 
-        System.out.println("\n========== TEST COMPLETE ==========\n");
+        if (testSuccess) {
+            System.out.println("\n========== TEST COMPLETE ==========\n");
+        } else {
+            System.out.println("\n========== TEST ABORTED (Error During Test) ==========");
+            System.out.println("Partial results shown above.\n");
+        }
     }
 
     /**
      * Run warmup phase to trigger JIT compilation.
+     * @return true if warmup completed successfully, false if an error occurred
      */
-    private void runWarmup() throws InterruptedException {
+    private boolean runWarmup() throws InterruptedException {
         trackingLatency = false;
+        pendingOrders.set(0);
         ackLatch = new CountDownLatch(warmupOrders);
 
         long startTime = System.currentTimeMillis();
+        int ordersSent = 0;
+        long backpressureStartTime = 0;
+        long totalBackpressureTime = 0;
 
-        // Send warmup orders as fast as possible
+        // Send warmup orders as fast as possible with flow control
         for (int i = 0; i < warmupOrders && running; i++) {
-            sendLatencyOrder("WARMUP" + i);
+            // Flow control: wait if too many pending orders
+            while (pendingOrders.get() >= maxPendingOrders && running) {
+                if (backpressureStartTime == 0) {
+                    backpressureStartTime = System.currentTimeMillis();
+                }
+
+                long backpressureDuration = System.currentTimeMillis() - backpressureStartTime;
+                if (backpressureDuration > backpressureTimeoutSeconds * 1000L) {
+                    System.err.println("\nERROR: Backpressure timeout exceeded (" + backpressureTimeoutSeconds +
+                                     "s) - pending orders: " + pendingOrders.get());
+                    System.err.println("Warmup phase aborted after " + ordersSent + " orders.");
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
+                    return false;
+                }
+                Thread.sleep(1);
+            }
+
+            // Track backpressure time
+            if (backpressureStartTime > 0) {
+                totalBackpressureTime += System.currentTimeMillis() - backpressureStartTime;
+                backpressureStartTime = 0;
+            }
+
+            try {
+                pendingOrders.incrementAndGet();
+                sendLatencyOrder("WARMUP" + i);
+                ordersSent++;
+            } catch (Exception e) {
+                pendingOrders.decrementAndGet();
+                log.error("Error sending warmup order {} - stopping warmup", i, e);
+                System.err.println("\nERROR: Failed to send warmup order " + i + ": " + e.getMessage());
+                System.err.println("Warmup phase aborted after " + ordersSent + " orders.");
+                long elapsed = System.currentTimeMillis() - startTime;
+                printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
+                return false;
+            }
 
             // Brief yield every 1000 orders to prevent overwhelming
             if (i % 1000 == 0 && i > 0) {
@@ -244,30 +371,79 @@ public class SampleInitiator implements Callable<Integer> {
             System.out.println("WARNING: Not all warmup acks received within timeout");
         }
 
-        System.out.printf("  Warmup: %d orders in %d ms (%.0f orders/sec)%n",
-                         warmupOrders, elapsed, warmupOrders * 1000.0 / elapsed);
+        printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
+        return true;
+    }
+
+    /**
+     * Print warmup phase results.
+     */
+    private void printWarmupResults(int ordersSent, long elapsedMs, long backpressureMs) {
+        double effectiveTime = elapsedMs - backpressureMs;
+        double overallRate = ordersSent * 1000.0 / elapsedMs;
+        double effectiveRate = effectiveTime > 0 ? ordersSent * 1000.0 / effectiveTime : 0;
+
+        System.out.printf("  Warmup: %d orders in %d ms%n", ordersSent, elapsedMs);
+        System.out.printf("  Overall rate: %.0f orders/sec%n", overallRate);
+        if (backpressureMs > 0) {
+            System.out.printf("  Backpressure time: %d ms (%.1f%%)%n", backpressureMs, backpressureMs * 100.0 / elapsedMs);
+            System.out.printf("  Effective rate (excluding backpressure): %.0f orders/sec%n", effectiveRate);
+        }
     }
 
     /**
      * Run latency test with specified parameters.
+     * @return true if test completed successfully, false if an error occurred
      */
-    private void runLatencyTest(int numOrders, int rate) throws InterruptedException {
+    private boolean runLatencyTest(int numOrders, int rate) throws InterruptedException {
         // Initialize latency tracking
         latencies = new long[numOrders];
         latencyIndex.set(0);
         sendTimestamps.clear();
         trackingLatency = true;
+        pendingOrders.set(0);
         ackLatch = new CountDownLatch(numOrders);
 
         long intervalNanos = rate > 0 ? 1_000_000_000L / rate : 0;
         long startTime = System.nanoTime();
         long nextSendTime = startTime;
+        int ordersSent = 0;
+        boolean errorOccurred = false;
+        long backpressureStartTime = 0;
+        long totalBackpressureTimeNanos = 0;
 
-        // Send orders at specified rate
+        // Send orders at specified rate with flow control
         for (int i = 0; i < numOrders && running; i++) {
             String clOrdId = "TEST" + i;
 
-            // Rate limiting
+            // Flow control: wait if too many pending orders
+            while (pendingOrders.get() >= maxPendingOrders && running) {
+                if (backpressureStartTime == 0) {
+                    backpressureStartTime = System.nanoTime();
+                }
+
+                long backpressureDurationMs = (System.nanoTime() - backpressureStartTime) / 1_000_000;
+                if (backpressureDurationMs > backpressureTimeoutSeconds * 1000L) {
+                    System.err.println("\nERROR: Backpressure timeout exceeded (" + backpressureTimeoutSeconds +
+                                     "s) - pending orders: " + pendingOrders.get());
+                    System.err.println("Latency test aborted after " + ordersSent + " orders.");
+                    errorOccurred = true;
+                    break;
+                }
+                Thread.sleep(1);
+            }
+
+            if (errorOccurred) {
+                break;
+            }
+
+            // Track backpressure time
+            if (backpressureStartTime > 0) {
+                totalBackpressureTimeNanos += System.nanoTime() - backpressureStartTime;
+                backpressureStartTime = 0;
+            }
+
+            // Rate limiting (adjusted for backpressure)
             if (intervalNanos > 0) {
                 long now = System.nanoTime();
                 long sleepNanos = nextSendTime - now;
@@ -281,27 +457,71 @@ public class SampleInitiator implements Callable<Integer> {
 
             // Record send time and send order
             sendTimestamps.put(clOrdId, System.nanoTime());
-            sendLatencyOrder(clOrdId);
+            try {
+                pendingOrders.incrementAndGet();
+                sendLatencyOrder(clOrdId);
+                ordersSent++;
+            } catch (Exception e) {
+                pendingOrders.decrementAndGet();
+                log.error("Error sending latency test order {} - stopping test", i, e);
+                System.err.println("\nERROR: Failed to send test order " + i + ": " + e.getMessage());
+                System.err.println("Latency test aborted after " + ordersSent + " orders.");
+                errorOccurred = true;
+                break;
+            }
         }
 
-        // Wait for all acks
-        boolean completed = ackLatch.await(60, TimeUnit.SECONDS);
         long totalTimeNanos = System.nanoTime() - startTime;
+
+        // Wait for acks (with shorter timeout if error occurred)
+        int waitTimeSeconds = errorOccurred ? 10 : 60;
+
+        // Wait for responses with timeout
+        boolean completed = false;
+        if (ordersSent > 0) {
+            long waitStart = System.currentTimeMillis();
+            while (latencyIndex.get() < ordersSent &&
+                   (System.currentTimeMillis() - waitStart) < waitTimeSeconds * 1000) {
+                Thread.sleep(100);
+            }
+            completed = latencyIndex.get() >= ordersSent;
+        }
 
         trackingLatency = false;
 
-        if (!completed) {
+        if (!completed && !errorOccurred) {
             System.out.println("WARNING: Not all acks received within timeout");
         }
 
-        // Calculate and print results
+        // Calculate and print results (even for partial results)
         int receivedCount = latencyIndex.get();
-        System.out.printf("  Sent: %d orders, Received: %d acks in %.2f ms%n",
-                         numOrders, receivedCount, totalTimeNanos / 1_000_000.0);
-        System.out.printf("  Throughput: %.0f orders/sec%n",
-                         receivedCount * 1_000_000_000.0 / totalTimeNanos);
+        if (ordersSent > 0) {
+            printLatencyTestResults(ordersSent, receivedCount, totalTimeNanos, totalBackpressureTimeNanos);
+            printLatencyStats(receivedCount);
+        } else {
+            System.out.println("  No orders were sent successfully.");
+        }
 
-        printLatencyStats(receivedCount);
+        return !errorOccurred;
+    }
+
+    /**
+     * Print latency test results including rate statistics.
+     */
+    private void printLatencyTestResults(int ordersSent, int acksReceived, long totalTimeNanos, long backpressureTimeNanos) {
+        double totalTimeMs = totalTimeNanos / 1_000_000.0;
+        double backpressureTimeMs = backpressureTimeNanos / 1_000_000.0;
+        double effectiveTimeMs = totalTimeMs - backpressureTimeMs;
+        double overallRate = ordersSent * 1000.0 / totalTimeMs;
+        double effectiveRate = effectiveTimeMs > 0 ? ordersSent * 1000.0 / effectiveTimeMs : 0;
+
+        System.out.printf("  Sent: %d orders, Received: %d acks in %.2f ms%n", ordersSent, acksReceived, totalTimeMs);
+        System.out.printf("  Overall rate: %.0f orders/sec%n", overallRate);
+
+        if (backpressureTimeMs > 0) {
+            System.out.printf("  Backpressure time: %.0f ms (%.1f%%)%n", backpressureTimeMs, backpressureTimeMs * 100.0 / totalTimeMs);
+            System.out.printf("  Effective rate (excluding backpressure): %.0f orders/sec%n", effectiveRate);
+        }
     }
 
     /**
@@ -337,6 +557,7 @@ public class SampleInitiator implements Callable<Integer> {
         System.out.println("  ┌─────────────┬──────────────┐");
         System.out.println("  │ Metric      │ Value        │");
         System.out.println("  ├─────────────┼──────────────┤");
+        System.out.printf("  │ Count       │ %,12d │%n", count);
         System.out.printf("  │ Min         │ %,12.2f │%n", min / 1000.0);
         System.out.printf("  │ Max         │ %,12.2f │%n", max / 1000.0);
         System.out.printf("  │ Avg         │ %,12.2f │%n", avg / 1000.0);
@@ -350,24 +571,20 @@ public class SampleInitiator implements Callable<Integer> {
 
     /**
      * Send an order for latency testing (minimal overhead).
+     * Uses OutgoingFixMessage for sending.
+     * Throws exception on failure to allow caller to handle it.
      */
-    private void sendLatencyOrder(String clOrdId) {
-        FixMessage order = new FixMessage();
-        order.setMsgType(FixTags.MsgTypes.NewOrderSingle);
+    private void sendLatencyOrder(String clOrdId) throws Exception {
+        OutgoingFixMessage order = session.acquireMessage(FixTags.MsgTypes.NewOrderSingle);
         order.setField(FixTags.ClOrdID, clOrdId);
         order.setField(FixTags.Symbol, "TEST");
         order.setField(FixTags.Side, FixTags.SIDE_BUY);
         order.setField(FixTags.OrderQty, 100);
         order.setField(FixTags.OrdType, FixTags.ORD_TYPE_LIMIT);
-        order.setField(FixTags.Price, 100.0);
+        order.setField(FixTags.Price, 100.00, 2);
         order.setField(FixTags.TimeInForce, FixTags.TIF_DAY);
-        order.setField(FixTags.TransactTime, java.time.Instant.now().toString());
-
-        try {
-            session.send(order);
-        } catch (Exception e) {
-            log.error("Error sending latency order", e);
-        }
+        // Skip TransactTime to reduce allocations - it's optional for testing
+        session.send(order);  // Auto-releases back to pool
     }
 
     /**
@@ -470,21 +687,20 @@ public class SampleInitiator implements Callable<Integer> {
     private void sendNewOrder(String symbol, char side, int qty, char ordType, double price) {
         String clOrdId = "ORDER" + clOrdIdCounter.getAndIncrement();
 
-        FixMessage order = new FixMessage();
-        order.setMsgType(FixTags.MsgTypes.NewOrderSingle);
-        order.setField(FixTags.ClOrdID, clOrdId);
-        order.setField(FixTags.Symbol, symbol);
-        order.setField(FixTags.Side, side);
-        order.setField(FixTags.OrderQty, qty);
-        order.setField(FixTags.OrdType, ordType);
-        order.setField(FixTags.TimeInForce, FixTags.TIF_DAY);
-        order.setField(FixTags.TransactTime, java.time.Instant.now().toString());
-
-        if (ordType == FixTags.ORD_TYPE_LIMIT && price > 0) {
-            order.setField(FixTags.Price, price);
-        }
-
         try {
+            OutgoingFixMessage order = session.acquireMessage(FixTags.MsgTypes.NewOrderSingle);
+            order.setField(FixTags.ClOrdID, clOrdId);
+            order.setField(FixTags.Symbol, symbol);
+            order.setField(FixTags.Side, side);
+            order.setField(FixTags.OrderQty, qty);
+            order.setField(FixTags.OrdType, ordType);
+            order.setField(FixTags.TimeInForce, FixTags.TIF_DAY);
+            order.setField(FixTags.TransactTime, java.time.Instant.now().toString());
+
+            if (ordType == FixTags.ORD_TYPE_LIMIT && price > 0) {
+                order.setField(FixTags.Price, price, 2);
+            }
+
             int seqNum = session.send(order);
             log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}, SeqNum={}",
                     clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price, seqNum);
@@ -499,15 +715,14 @@ public class SampleInitiator implements Callable<Integer> {
     private void sendCancelRequest(String origClOrdId) {
         String clOrdId = "CANCEL" + clOrdIdCounter.getAndIncrement();
 
-        FixMessage cancel = new FixMessage();
-        cancel.setMsgType(FixTags.MsgTypes.OrderCancelRequest);
-        cancel.setField(FixTags.ClOrdID, clOrdId);
-        cancel.setField(41, origClOrdId); // OrigClOrdID
-        cancel.setField(FixTags.Symbol, "UNKNOWN"); // In real app, would lookup
-        cancel.setField(FixTags.Side, FixTags.SIDE_BUY); // In real app, would lookup
-        cancel.setField(FixTags.TransactTime, java.time.Instant.now().toString());
-
         try {
+            OutgoingFixMessage cancel = session.acquireMessage(FixTags.MsgTypes.OrderCancelRequest);
+            cancel.setField(FixTags.ClOrdID, clOrdId);
+            cancel.setField(41, origClOrdId); // OrigClOrdID
+            cancel.setField(FixTags.Symbol, "UNKNOWN"); // In real app, would lookup
+            cancel.setField(FixTags.Side, FixTags.SIDE_BUY); // In real app, would lookup
+            cancel.setField(FixTags.TransactTime, java.time.Instant.now().toString());
+
             int seqNum = session.send(cancel);
             log.info("Sent OrderCancelRequest: ClOrdID={}, OrigClOrdID={}, SeqNum={}",
                     clOrdId, origClOrdId, seqNum);
@@ -553,7 +768,7 @@ public class SampleInitiator implements Callable<Integer> {
      */
     private class InitiatorMessageListener implements MessageListener {
         @Override
-        public void onMessage(FixSession session, FixMessage message) {
+        public void onMessage(FixSession session, IncomingFixMessage message) {
             long receiveTime = System.nanoTime();
             String msgType = message.getMsgType();
 
@@ -575,19 +790,26 @@ public class SampleInitiator implements Callable<Integer> {
     /**
      * Handle an execution report.
      */
-    private void handleExecutionReport(FixMessage execReport, long receiveTime) {
-        String clOrdId = execReport.getString(FixTags.ClOrdID);
+    private void handleExecutionReport(IncomingFixMessage execReport, long receiveTime) {
+        String clOrdId = asString(execReport.getCharSequence(FixTags.ClOrdID));
         char execType = execReport.getChar(FixTags.ExecType);
 
-        // Track latency for NEW acks only (first response to our order)
-        if (trackingLatency && execType == FixTags.EXEC_TYPE_NEW) {
-            Long sendTime = sendTimestamps.remove(clOrdId);
-            if (sendTime != null) {
-                long latencyNanos = receiveTime - sendTime;
-                int idx = latencyIndex.getAndIncrement();
-                if (idx < latencies.length) {
-                    latencies[idx] = latencyNanos;
+        // Handle NEW acks (first response to our order)
+        if (execType == FixTags.EXEC_TYPE_NEW) {
+            // Track latency during latency test phase
+            if (trackingLatency && clOrdId != null) {
+                Long sendTime = sendTimestamps.remove(clOrdId);
+                if (sendTime != null) {
+                    long latencyNanos = receiveTime - sendTime;
+                    int idx = latencyIndex.getAndIncrement();
+                    if (idx < latencies.length) {
+                        latencies[idx] = latencyNanos;
+                    }
                 }
+            }
+            // Decrement pending orders count in latency mode (warmup or test)
+            if (latencyMode) {
+                pendingOrders.decrementAndGet();
             }
         }
 
@@ -598,13 +820,13 @@ public class SampleInitiator implements Callable<Integer> {
 
         // Only log in non-latency mode
         if (!latencyMode) {
-            String orderId = execReport.getString(FixTags.OrderID);
+            String orderId = asString(execReport.getCharSequence(FixTags.OrderID));
             char ordStatus = execReport.getChar(FixTags.OrdStatus);
-            String symbol = execReport.getString(FixTags.Symbol);
+            String symbol = asString(execReport.getCharSequence(FixTags.Symbol));
             double cumQty = execReport.getDouble(FixTags.CumQty);
             double leavesQty = execReport.getDouble(FixTags.LeavesQty);
             double avgPx = execReport.getDouble(FixTags.AvgPx);
-            String text = execReport.getString(FixTags.Text);
+            String text = asString(execReport.getCharSequence(FixTags.Text));
 
             String execTypeStr = switch (execType) {
                 case FixTags.EXEC_TYPE_NEW -> "NEW";
@@ -625,14 +847,18 @@ public class SampleInitiator implements Callable<Integer> {
     /**
      * Handle a cancel reject.
      */
-    private void handleCancelReject(FixMessage reject) {
-        String clOrdId = reject.getString(FixTags.ClOrdID);
-        String orderId = reject.getString(FixTags.OrderID);
+    private void handleCancelReject(IncomingFixMessage reject) {
+        String clOrdId = asString(reject.getCharSequence(FixTags.ClOrdID));
+        String orderId = asString(reject.getCharSequence(FixTags.OrderID));
         int rejectReason = reject.getInt(102); // CxlRejReason
-        String text = reject.getString(FixTags.Text);
+        String text = asString(reject.getCharSequence(FixTags.Text));
 
         log.warn("OrderCancelReject: ClOrdID={}, OrdID={}, Reason={}, Text={}",
                 clOrdId, orderId, rejectReason, text);
+    }
+
+    private static String asString(CharSequence cs) {
+        return cs != null ? cs.toString() : null;
     }
 
     public static void main(String[] args) {

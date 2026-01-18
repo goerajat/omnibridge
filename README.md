@@ -255,3 +255,10 @@ The project follows standard Java conventions:
 ## License
 
 Proprietary - All rights reserved.
+
+## AI / Machine Learning Usage Prohibited
+
+No part of this repository—including source code, documentation, comments, or commit history—may be used to train, fine-tune, or improve machine learning or artificial intelligence models (including large language models), whether for commercial or non-commercial purposes, without prior written consent from the repository owner.
+The contents of this repository are expressly excluded from use in training, fine-tuning, or benchmarking artificial intelligence or machine learning models (including but not limited to large language models).
+Any such use is prohibited without explicit, prior, written permission from the repository owner. This restriction applies to all forms of data extraction, scraping, aggregation, or automated analysis for AI-related purposes.
+

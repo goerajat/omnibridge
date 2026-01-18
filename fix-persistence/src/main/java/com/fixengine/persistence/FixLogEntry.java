@@ -64,8 +64,17 @@ public class FixLogEntry {
             return this;
         }
 
+        /**
+         * @deprecated Use {@link #timestampNow(com.fixengine.message.Clock)} for testable time sources
+         */
+        @Deprecated
         public Builder timestampNow() {
             entry.timestamp = System.currentTimeMillis();
+            return this;
+        }
+
+        public Builder timestampNow(com.fixengine.message.Clock clock) {
+            entry.timestamp = clock.currentTimeMillis();
             return this;
         }
 

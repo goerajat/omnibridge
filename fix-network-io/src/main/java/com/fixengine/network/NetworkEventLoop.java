@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
@@ -240,6 +241,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
     public void connect(String host, int port, NetworkHandler handler) throws IOException {
         SocketChannel socketChannel = SocketChannel.open();
         socketChannel.configureBlocking(false);
+        socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
 
         InetSocketAddress address = new InetSocketAddress(host, port);
         boolean connected = socketChannel.connect(address);
@@ -359,6 +361,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
         SocketChannel socketChannel = serverChannel.accept();
         if (socketChannel != null) {
             socketChannel.configureBlocking(false);
+            socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
 
             TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
             SelectionKey channelKey = socketChannel.register(selector, SelectionKey.OP_READ,

@@ -7,22 +7,21 @@ import java.time.format.DateTimeFormatter;
 
 /**
  * Builder for creating FIX messages.
- * Writes fields directly to a FixMessage buffer.
+ * Manages its own internal buffer for writing messages.
  *
  * <p>Usage:</p>
  * <pre>{@code
- * FixMessage msg = new FixMessage();
- * FixWriter writer = new FixWriter(msg);
- * writer.startMessage("FIX.4.4", "D")
- *       .setSenderCompId("SENDER")
- *       .setTargetCompId("TARGET")
- *       .setMsgSeqNum(1)
- *       .setString(FixTags.ClOrdID, "ORDER-001")
- *       .setString(FixTags.Symbol, "AAPL")
- *       .setChar(FixTags.Side, FixTags.Side.Buy)
+ * FixWriter writer = new FixWriter();
+ * writer.beginMessage("FIX.4.4", "D")
+ *       .addField(FixTags.SENDER_COMP_ID, "SENDER")
+ *       .addField(FixTags.TARGET_COMP_ID, "TARGET")
+ *       .addField(FixTags.MSG_SEQ_NUM, 1)
+ *       .addField(FixTags.ClOrdID, "ORDER-001")
+ *       .addField(FixTags.Symbol, "AAPL")
+ *       .setChar(FixTags.Side, '1')
  *       .setInt(FixTags.OrderQty, 100)
- *       .setDouble(FixTags.Price, 150.25)
- *       .finishMessage();
+ *       .setDouble(FixTags.Price, 150.25);
+ * byte[] rawMessage = writer.finish();
  * }</pre>
  */
 public class FixWriter {
@@ -30,40 +29,38 @@ public class FixWriter {
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd-HH:mm:ss.SSS").withZone(ZoneOffset.UTC);
 
-    private static final byte SOH = FixMessage.SOH;
-    private static final byte EQUALS = FixMessage.EQUALS;
+    private static final byte SOH = 0x01; // Field delimiter
+    private static final byte EQUALS = '=';
+    private static final int INITIAL_CAPACITY = 4096;
 
-    private final FixMessage message;
-    private final byte[] buffer;
-
+    private byte[] buffer;
     private int bodyStart;
     private int position;
     private String beginString;
     private String msgType;
 
     /**
-     * Create a new FixWriter that writes to the given message.
+     * Create a new FixWriter with an internal buffer.
      */
-    public FixWriter(FixMessage message) {
-        this.message = message;
-        this.buffer = message.getBuffer();
+    public FixWriter() {
+        this.buffer = new byte[INITIAL_CAPACITY];
     }
 
     /**
-     * Create a new FixWriter with an internal message buffer.
+     * Create a new FixWriter with specified initial capacity.
      */
-    public FixWriter() {
-        this(new FixMessage());
+    public FixWriter(int initialCapacity) {
+        this.buffer = new byte[initialCapacity];
     }
 
     // ==================== Alias methods for FixSession compatibility ====================
 
     /**
-     * Clear the writer for reuse (alias for starting fresh).
+     * Clear the writer for reuse.
      */
     public void clear() {
-        message.reset();
         position = 0;
+        bodyStart = 0;
     }
 
     /**
@@ -112,7 +109,6 @@ public class FixWriter {
      * @return this writer for chaining
      */
     public FixWriter startMessage(String beginString, String msgType) {
-        message.reset();
         this.beginString = beginString;
         this.msgType = msgType;
         this.position = 0;
@@ -124,7 +120,6 @@ public class FixWriter {
         // Reserve space for BodyLength (we'll fill it in at finish)
         // Format: 9=XXXX|  (4 digits is sufficient for most messages)
         writeTag(FixTags.BodyLength);
-        int bodyLengthPos = position;
         writeBytes("0000".getBytes(StandardCharsets.US_ASCII)); // Placeholder
         buffer[position++] = SOH;
 
@@ -246,10 +241,8 @@ public class FixWriter {
 
     /**
      * Finish the message by calculating and writing BodyLength and CheckSum.
-     *
-     * @return the FixMessage with complete content
      */
-    public FixMessage finishMessage() {
+    private void finishMessage() {
         int bodyEnd = position;
         int bodyLength = bodyEnd - bodyStart;
 
@@ -280,15 +273,16 @@ public class FixWriter {
         buffer[position++] = (byte) ('0' + ((checksum / 10) % 10));
         buffer[position++] = (byte) ('0' + (checksum % 10));
         buffer[position++] = SOH;
-
-        message.setLength(position);
-        return message;
     }
 
     // ==================== Private Helper Methods ====================
 
     private void ensureCapacity(int required) {
-        message.ensureCapacity(required);
+        if (buffer.length < required) {
+            byte[] newBuffer = new byte[Math.max(required, buffer.length * 2)];
+            System.arraycopy(buffer, 0, newBuffer, 0, position);
+            buffer = newBuffer;
+        }
     }
 
     private void writeTag(int tag) {

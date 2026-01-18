@@ -2,7 +2,7 @@ package com.fixengine.tester.tests;
 
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.MessageListener;
-import com.fixengine.message.FixMessage;
+import com.fixengine.message.IncomingFixMessage;
 import com.fixengine.message.FixTags;
 import com.fixengine.tester.SessionTest;
 import com.fixengine.tester.TestContext;
@@ -54,12 +54,12 @@ public class ResendRequestTest implements SessionTest {
 
             MessageListener listener = new MessageListener() {
                 @Override
-                public void onMessage(FixSession session, FixMessage message) {
+                public void onMessage(FixSession session, IncomingFixMessage message) {
                     String msgType = message.getMsgType();
                     if (FixTags.MSG_TYPE_RESEND_REQUEST.equals(msgType)) {
                         resendRequestSent.set(true);
                     } else if (FixTags.MSG_TYPE_SEQUENCE_RESET.equals(msgType)) {
-                        if (message.getBoolField(FixTags.GAP_FILL_FLAG)) {
+                        if (message.getBool(FixTags.GAP_FILL_FLAG)) {
                             gapFillReceived.set(true);
                             responseReceived.countDown();
                         }

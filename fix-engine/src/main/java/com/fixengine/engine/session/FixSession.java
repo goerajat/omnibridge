@@ -1,10 +1,16 @@
 package com.fixengine.engine.session;
 
 import com.fixengine.engine.config.SessionConfig;
-import com.fixengine.message.FixMessage;
+import com.fixengine.message.Clock;
 import com.fixengine.message.FixReader;
 import com.fixengine.message.FixTags;
 import com.fixengine.message.FixWriter;
+import com.fixengine.message.IncomingFixMessage;
+import com.fixengine.message.IncomingMessagePool;
+import com.fixengine.message.IncomingMessagePoolConfig;
+import com.fixengine.message.MessagePool;
+import com.fixengine.message.MessagePoolConfig;
+import com.fixengine.message.OutgoingFixMessage;
 import com.fixengine.network.NetworkHandler;
 import com.fixengine.network.TcpChannel;
 import com.fixengine.persistence.FixLogEntry;
@@ -56,9 +62,52 @@ public class FixSession implements NetworkHandler {
     private int resendBeginSeqNo = 0;
     private int resendEndSeqNo = 0;
 
+    // Message pool for latency-optimized sending (outgoing)
+    private final MessagePool messagePool;
+
+    // Message pool for incoming message parsing
+    private final IncomingMessagePool incomingMessagePool;
+
+    // Reusable incoming message for non-pooled mode
+    private final IncomingFixMessage reusableIncomingMessage;
+
+    // Clock for time sources
+    private final Clock clock;
+
     public FixSession(SessionConfig config, FixLogStore logStore) {
         this.config = config;
         this.logStore = logStore;
+        this.clock = config.getClock();
+
+        // Initialize outgoing message pool if enabled
+        if (config.isUsePooledMessages()) {
+            MessagePoolConfig poolConfig = MessagePoolConfig.builder()
+                    .poolSize(config.getMessagePoolSize())
+                    .maxMessageLength(config.getMaxMessageLength())
+                    .maxTagNumber(config.getMaxTagNumber())
+                    .beginString(config.getBeginString())
+                    .senderCompId(config.getSenderCompId())
+                    .targetCompId(config.getTargetCompId())
+                    .clock(clock)
+                    .build();
+            this.messagePool = new MessagePool(poolConfig);
+            this.messagePool.warmUp();
+            log.info("[{}] Outgoing message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
+
+            // Initialize incoming message pool
+            IncomingMessagePoolConfig incomingConfig = IncomingMessagePoolConfig.builder()
+                    .poolSize(config.getMessagePoolSize())
+                    .bufferSize(config.getMaxMessageLength())
+                    .maxTagNumber(config.getMaxTagNumber())
+                    .build();
+            this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
+            this.reusableIncomingMessage = null;
+            log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
+        } else {
+            this.messagePool = null;
+            this.incomingMessagePool = null;
+            this.reusableIncomingMessage = new IncomingFixMessage();
+        }
     }
 
     // ==================== Session Management ====================
@@ -151,7 +200,7 @@ public class FixSession implements NetworkHandler {
         log.info("[{}] Connected to {}:{}", config.getSessionId(), config.getHost(), config.getPort());
         this.channel = channel;
         setState(SessionState.CONNECTED);
-        lastReceivedTime = System.currentTimeMillis();
+        lastReceivedTime = clock.currentTimeMillis();
 
         // Initiator sends logon first
         if (config.isInitiator()) {
@@ -161,25 +210,75 @@ public class FixSession implements NetworkHandler {
 
     @Override
     public int onDataReceived(TcpChannel channel, ByteBuffer data) {
-        lastReceivedTime = System.currentTimeMillis();
+        lastReceivedTime = clock.currentTimeMillis();
         int bytesConsumed = data.remaining();
 
         // Feed data to reader
         reader.addData(data);
 
-        // Process complete messages
-        FixMessage message;
-        while ((message = reader.readMessage()) != null) {
+        // Process complete messages using pooled or non-pooled approach
+        if (incomingMessagePool != null) {
+            processIncomingMessagesPooled();
+        } else {
+            processIncomingMessagesNonPooled();
+        }
+
+        return bytesConsumed;
+    }
+
+    /**
+     * Process incoming messages using pooled IncomingFixMessage.
+     * Messages are released back to the pool after callbacks complete.
+     */
+    private void processIncomingMessagesPooled() {
+        while (true) {
+            IncomingFixMessage message;
             try {
-                processMessage(message);
+                message = incomingMessagePool.tryAcquire();
+                if (message == null) {
+                    // No messages available in pool, fall back to blocking acquire
+                    message = incomingMessagePool.acquire();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+
+            // Try to read a message into the pooled IncomingFixMessage
+            boolean hasMessage = reader.readIncomingMessage(message);
+            if (!hasMessage) {
+                message.release();
+                return;
+            }
+
+            try {
+                processIncomingMessage(message);
             } catch (Exception e) {
                 log.error("[{}] Error processing message", config.getSessionId(), e);
                 sendReject(message.getSeqNum(), message.getMsgType(),
                           FixTags.SESSION_REJECT_REASON_OTHER, e.getMessage());
+            } finally {
+                // Release message back to pool after callback completes
+                message.release();
             }
         }
+    }
 
-        return bytesConsumed;
+    /**
+     * Process incoming messages using non-pooled IncomingFixMessage.
+     */
+    private void processIncomingMessagesNonPooled() {
+        while (reader.readIncomingMessage(reusableIncomingMessage)) {
+            try {
+                processIncomingMessage(reusableIncomingMessage);
+            } catch (Exception e) {
+                log.error("[{}] Error processing message", config.getSessionId(), e);
+                sendReject(reusableIncomingMessage.getSeqNum(), reusableIncomingMessage.getMsgType(),
+                          FixTags.SESSION_REJECT_REASON_OTHER, e.getMessage());
+            } finally {
+                reusableIncomingMessage.reset();
+            }
+        }
     }
 
     @Override
@@ -227,18 +326,22 @@ public class FixSession implements NetworkHandler {
 
     // ==================== Message Processing ====================
 
-    private void processMessage(FixMessage message) {
+    /**
+     * Process an incoming FIX message (pooled mode).
+     * The message will be released back to the pool after this method returns.
+     */
+    private void processIncomingMessage(IncomingFixMessage message) {
         String msgType = message.getMsgType();
         int seqNum = message.getSeqNum();
 
         log.debug("[{}] Received: {} SeqNum={}", config.getSessionId(), msgType, seqNum);
-        log.info("[{}] IN  >>> {}", config.getSessionId(), formatRawMessage(message.getRawMessage()));
+        log.debug("[{}] IN  >>> {}", config.getSessionId(), formatRawMessage(message.getRawMessage()));
 
         // Log incoming message
-        logMessage(message, FixLogEntry.Direction.INBOUND);
+        logIncomingMessage(message, FixLogEntry.Direction.INBOUND);
 
         // Validate session identifiers
-        if (!validateSessionIds(message)) {
+        if (!validateIncomingSessionIds(message)) {
             return;
         }
 
@@ -251,7 +354,7 @@ public class FixSession implements NetworkHandler {
                 return;
             } else if (seqNum < expectedIncomingSeqNum.get()) {
                 // Duplicate or old message
-                if (!message.getBoolField(FixTags.POSS_DUP_FLAG)) {
+                if (!message.getBool(FixTags.POSS_DUP_FLAG)) {
                     log.warn("[{}] Sequence number too low: expected={}, received={}",
                             config.getSessionId(), expectedIncomingSeqNum.get(), seqNum);
                     disconnect("Sequence number too low");
@@ -264,32 +367,32 @@ public class FixSession implements NetworkHandler {
         // Process by message type
         switch (msgType) {
             case FixTags.MSG_TYPE_LOGON:
-                processLogon(message);
+                processIncomingLogon(message);
                 break;
             case FixTags.MSG_TYPE_LOGOUT:
-                processLogout(message);
+                processIncomingLogout(message);
                 break;
             case FixTags.MSG_TYPE_HEARTBEAT:
-                processHeartbeat(message);
+                processIncomingHeartbeat(message);
                 break;
             case FixTags.MSG_TYPE_TEST_REQUEST:
-                processTestRequest(message);
+                processIncomingTestRequest(message);
                 break;
             case FixTags.MSG_TYPE_RESEND_REQUEST:
-                processResendRequest(message);
+                processIncomingResendRequest(message);
                 break;
             case FixTags.MSG_TYPE_SEQUENCE_RESET:
-                processSequenceReset(message);
+                processIncomingSequenceReset(message);
                 break;
             case FixTags.MSG_TYPE_REJECT:
-                processReject(message);
+                processIncomingReject(message);
                 break;
             case FixTags.MSG_TYPE_BUSINESS_REJECT:
-                processBusinessReject(message);
+                processIncomingBusinessReject(message);
                 break;
             default:
                 // Application message
-                processApplicationMessage(message);
+                processIncomingApplicationMessage(message);
                 break;
         }
 
@@ -299,12 +402,12 @@ public class FixSession implements NetworkHandler {
         }
     }
 
-    private boolean validateSessionIds(FixMessage message) {
-        String senderCompId = message.getStringField(FixTags.SENDER_COMP_ID);
-        String targetCompId = message.getStringField(FixTags.TARGET_COMP_ID);
+    private boolean validateIncomingSessionIds(IncomingFixMessage message) {
+        CharSequence senderCompId = message.getSenderCompIdCharSeq();
+        CharSequence targetCompId = message.getTargetCompIdCharSeq();
 
         // Their sender should be our target
-        if (!config.getTargetCompId().equals(senderCompId)) {
+        if (!config.getTargetCompId().contentEquals(senderCompId)) {
             log.error("[{}] Invalid SenderCompID: expected={}, received={}",
                     config.getSessionId(), config.getTargetCompId(), senderCompId);
             sendReject(message.getSeqNum(), message.getMsgType(),
@@ -314,7 +417,7 @@ public class FixSession implements NetworkHandler {
         }
 
         // Their target should be our sender
-        if (!config.getSenderCompId().equals(targetCompId)) {
+        if (!config.getSenderCompId().contentEquals(targetCompId)) {
             log.error("[{}] Invalid TargetCompID: expected={}, received={}",
                     config.getSessionId(), config.getSenderCompId(), targetCompId);
             sendReject(message.getSeqNum(), message.getMsgType(),
@@ -326,34 +429,43 @@ public class FixSession implements NetworkHandler {
         return true;
     }
 
-    // ==================== Admin Message Handlers ====================
+    private void logIncomingMessage(IncomingFixMessage message, FixLogEntry.Direction direction) {
+        if (logStore != null && config.isLogMessages()) {
+            FixLogEntry entry = new FixLogEntry(
+                Instant.now().toEpochMilli(),
+                message.getSeqNum(),
+                direction,
+                config.getSessionId(),
+                message.getMsgType(),
+                0,
+                message.getRawMessage(),
+                null
+            );
+            logStore.write(entry);
+        }
+    }
 
-    private void processLogon(FixMessage message) {
+    // ==================== Incoming Admin Message Handlers (for pooled messages) ====================
+
+    private void processIncomingLogon(IncomingFixMessage message) {
         log.info("[{}] Logon received", config.getSessionId());
 
-        int heartbeatInt = message.getIntField(FixTags.HEARTBT_INT);
-        boolean resetSeqNum = message.getBoolField(FixTags.RESET_SEQ_NUM_FLAG);
+        int heartbeatInt = message.getInt(FixTags.HEARTBT_INT);
+        boolean resetSeqNum = message.getBool(FixTags.RESET_SEQ_NUM_FLAG);
 
         SessionState currentState = state.get();
 
         if (resetSeqNum || config.isResetOnLogon()) {
             log.info("[{}] Resetting sequence numbers", config.getSessionId());
-            // For initiator: we already sent logon with seqNum=1, so outgoing should be 2
-            // For acceptor: we haven't sent logon yet, so outgoing should be 1
             if (config.isInitiator()) {
-                // Initiator already sent logon as seqNum=1
                 outgoingSeqNum.set(2);
             } else {
-                // Acceptor will send logon with seqNum=1
                 outgoingSeqNum.set(1);
             }
-            // We just received their logon as seqNum=1, next expected is 2
-            // (will be set by processMessage at the end)
             expectedIncomingSeqNum.set(1);
         }
 
         if (config.isAcceptor() && currentState == SessionState.CONNECTED) {
-            // Acceptor responds to logon
             sendLogon();
         }
 
@@ -361,14 +473,14 @@ public class FixSession implements NetworkHandler {
         testRequestPending = false;
     }
 
-    private void processLogout(FixMessage message) {
-        String text = message.getStringField(FixTags.TEXT);
+    private void processIncomingLogout(IncomingFixMessage message) {
+        CharSequence textCs = message.getCharSequence(FixTags.TEXT);
+        String text = textCs != null ? textCs.toString() : null;
         log.info("[{}] Logout received: {}", config.getSessionId(), text);
 
         SessionState currentState = state.get();
 
         if (currentState == SessionState.LOGGED_ON) {
-            // Send logout response
             sendLogout("Logout acknowledged");
         }
 
@@ -376,7 +488,6 @@ public class FixSession implements NetworkHandler {
             resetSequenceNumbers();
         }
 
-        // Notify listeners
         for (SessionStateListener listener : stateListeners) {
             try {
                 listener.onSessionLogout(this, text);
@@ -388,8 +499,9 @@ public class FixSession implements NetworkHandler {
         disconnect(null);
     }
 
-    private void processHeartbeat(FixMessage message) {
-        String testReqId = message.getStringField(FixTags.TEST_REQ_ID);
+    private void processIncomingHeartbeat(IncomingFixMessage message) {
+        CharSequence testReqIdCs = message.getCharSequence(FixTags.TEST_REQ_ID);
+        String testReqId = testReqIdCs != null ? testReqIdCs.toString() : null;
         log.debug("[{}] Heartbeat received, TestReqID={}", config.getSessionId(), testReqId);
 
         if (testRequestPending && testReqId != null) {
@@ -397,50 +509,41 @@ public class FixSession implements NetworkHandler {
         }
     }
 
-    private void processTestRequest(FixMessage message) {
-        String testReqId = message.getStringField(FixTags.TEST_REQ_ID);
+    private void processIncomingTestRequest(IncomingFixMessage message) {
+        CharSequence testReqIdCs = message.getCharSequence(FixTags.TEST_REQ_ID);
+        String testReqId = testReqIdCs != null ? testReqIdCs.toString() : null;
         log.debug("[{}] TestRequest received, TestReqID={}", config.getSessionId(), testReqId);
-
-        // Respond with heartbeat containing the same TestReqID
         sendHeartbeat(testReqId);
     }
 
-    private void processResendRequest(FixMessage message) {
-        int beginSeqNo = message.getIntField(FixTags.BEGIN_SEQ_NO);
-        int endSeqNo = message.getIntField(FixTags.END_SEQ_NO);
+    private void processIncomingResendRequest(IncomingFixMessage message) {
+        int beginSeqNo = message.getInt(FixTags.BEGIN_SEQ_NO);
+        int endSeqNo = message.getInt(FixTags.END_SEQ_NO);
 
         log.info("[{}] ResendRequest received: {} to {}", config.getSessionId(), beginSeqNo, endSeqNo);
 
         setState(SessionState.RESENDING);
 
-        // If endSeqNo is 0, it means "to infinity"
         if (endSeqNo == 0) {
             endSeqNo = outgoingSeqNum.get() - 1;
         }
 
-        // Resend messages from log store
         if (logStore != null) {
             final int finalEndSeqNo = endSeqNo;
             logStore.replay(config.getSessionId(), entry -> {
                 if (entry.getDirection() == FixLogEntry.Direction.OUTBOUND &&
                     entry.getSeqNum() >= beginSeqNo && entry.getSeqNum() <= finalEndSeqNo) {
 
-                    // Check if this is an admin message that should be gap-filled
                     if (shouldGapFill(entry.getMsgType())) {
-                        // Will be gap-filled
                         return true;
                     }
-
-                    // Resend with PossDupFlag set
                     resendMessage(entry);
                 }
                 return true;
             });
         }
 
-        // Send gap fill for any admin messages
         sendGapFill(beginSeqNo, endSeqNo);
-
         setState(SessionState.LOGGED_ON);
     }
 
@@ -454,15 +557,14 @@ public class FixSession implements NetworkHandler {
                msgType.equals(FixTags.MSG_TYPE_SEQUENCE_RESET);
     }
 
-    private void processSequenceReset(FixMessage message) {
-        int newSeqNo = message.getIntField(FixTags.NEW_SEQ_NO);
-        boolean gapFill = message.getBoolField(FixTags.GAP_FILL_FLAG);
+    private void processIncomingSequenceReset(IncomingFixMessage message) {
+        int newSeqNo = message.getInt(FixTags.NEW_SEQ_NO);
+        boolean gapFill = message.getBool(FixTags.GAP_FILL_FLAG);
 
         log.info("[{}] SequenceReset received: NewSeqNo={}, GapFill={}",
                 config.getSessionId(), newSeqNo, gapFill);
 
         if (gapFill) {
-            // Gap fill mode - only allow increasing sequence
             if (newSeqNo >= expectedIncomingSeqNum.get()) {
                 expectedIncomingSeqNum.set(newSeqNo);
             } else {
@@ -470,21 +572,21 @@ public class FixSession implements NetworkHandler {
                         config.getSessionId(), newSeqNo, expectedIncomingSeqNum.get());
             }
         } else {
-            // Reset mode - allow any value
             expectedIncomingSeqNum.set(newSeqNo);
         }
     }
 
-    private void processReject(FixMessage message) {
-        int refSeqNum = message.getIntField(FixTags.REF_SEQ_NUM);
-        String refMsgType = message.getStringField(FixTags.REF_MSG_TYPE);
-        int rejectReason = message.getIntField(FixTags.SESSION_REJECT_REASON);
-        String text = message.getStringField(FixTags.TEXT);
+    private void processIncomingReject(IncomingFixMessage message) {
+        int refSeqNum = message.getInt(FixTags.REF_SEQ_NUM);
+        CharSequence refMsgTypeCs = message.getCharSequence(FixTags.REF_MSG_TYPE);
+        String refMsgType = refMsgTypeCs != null ? refMsgTypeCs.toString() : null;
+        int rejectReason = message.getInt(FixTags.SESSION_REJECT_REASON);
+        CharSequence textCs = message.getCharSequence(FixTags.TEXT);
+        String text = textCs != null ? textCs.toString() : null;
 
         log.warn("[{}] Reject received: RefSeqNum={}, RefMsgType={}, Reason={}, Text={}",
                 config.getSessionId(), refSeqNum, refMsgType, rejectReason, text);
 
-        // Notify listeners
         for (MessageListener listener : messageListeners) {
             try {
                 listener.onReject(this, refSeqNum, refMsgType, rejectReason, text);
@@ -494,15 +596,15 @@ public class FixSession implements NetworkHandler {
         }
     }
 
-    private void processBusinessReject(FixMessage message) {
-        int refSeqNum = message.getIntField(FixTags.REF_SEQ_NUM);
-        int businessRejectReason = message.getIntField(FixTags.BUSINESS_REJECT_REASON);
-        String text = message.getStringField(FixTags.TEXT);
+    private void processIncomingBusinessReject(IncomingFixMessage message) {
+        int refSeqNum = message.getInt(FixTags.REF_SEQ_NUM);
+        int businessRejectReason = message.getInt(FixTags.BUSINESS_REJECT_REASON);
+        CharSequence textCs = message.getCharSequence(FixTags.TEXT);
+        String text = textCs != null ? textCs.toString() : null;
 
         log.warn("[{}] BusinessReject received: RefSeqNum={}, Reason={}, Text={}",
                 config.getSessionId(), refSeqNum, businessRejectReason, text);
 
-        // Notify listeners
         for (MessageListener listener : messageListeners) {
             try {
                 listener.onBusinessReject(this, refSeqNum, businessRejectReason, text);
@@ -512,10 +614,9 @@ public class FixSession implements NetworkHandler {
         }
     }
 
-    private void processApplicationMessage(FixMessage message) {
+    private void processIncomingApplicationMessage(IncomingFixMessage message) {
         log.debug("[{}] Application message received: {}", config.getSessionId(), message.getMsgType());
 
-        // Notify listeners
         for (MessageListener listener : messageListeners) {
             try {
                 listener.onMessage(this, message);
@@ -528,70 +629,197 @@ public class FixSession implements NetworkHandler {
     // ==================== Message Sending ====================
 
     /**
-     * Send an application message.
-     * Returns the sequence number assigned to the message.
+     * Acquire a pre-allocated message from the pool for latency-optimized sending.
+     *
+     * <p>The message is pre-populated with header fields (BeginString, SenderCompID,
+     * TargetCompID) and ready for body fields to be added.</p>
+     *
+     * @param msgType the message type (e.g., "D" for NewOrderSingle)
+     * @return a pooled message ready for use
+     * @throws IllegalStateException if message pooling is not enabled
+     * @throws InterruptedException if the thread is interrupted while waiting for a message
      */
-    public int send(FixMessage message) {
+    public OutgoingFixMessage acquireMessage(String msgType) throws InterruptedException {
+        if (messagePool == null) {
+            throw new IllegalStateException("Message pooling is not enabled. Set usePooledMessages(true) in SessionConfig.");
+        }
+
+        OutgoingFixMessage msg = messagePool.acquire();
+        msg.setMsgType(msgType);
+        return msg;
+    }
+
+    /**
+     * Try to acquire a pre-allocated message without blocking.
+     *
+     * @param msgType the message type
+     * @return a pooled message, or null if none are available
+     * @throws IllegalStateException if message pooling is not enabled
+     */
+    public OutgoingFixMessage tryAcquireMessage(String msgType) {
+        if (messagePool == null) {
+            throw new IllegalStateException("Message pooling is not enabled. Set usePooledMessages(true) in SessionConfig.");
+        }
+
+        OutgoingFixMessage msg = messagePool.tryAcquire();
+        if (msg != null) {
+            msg.setMsgType(msgType);
+        }
+        return msg;
+    }
+
+    /**
+     * Send a pre-allocated pooled message.
+     *
+     * <p>This method fills in the sequence number, sending time, body length,
+     * and checksum, then sends the message. The message is automatically
+     * released back to the pool after sending.</p>
+     *
+     * @param message the pooled message to send
+     * @return the sequence number assigned to the message
+     * @throws IllegalStateException if not in a state that allows sending
+     */
+    public int send(OutgoingFixMessage message) {
         if (!state.get().canSendAppMessage()) {
             throw new IllegalStateException("Cannot send application message in state: " + state.get());
         }
 
-        return sendInternal(message);
+        return sendPooledInternal(message, true);
     }
 
-    private int sendInternal(FixMessage message) {
+    /**
+     * Send a pre-allocated pooled message without auto-releasing.
+     *
+     * <p>Use this method if you need to reuse the message or control the release timing.</p>
+     *
+     * @param message the pooled message to send
+     * @param autoRelease true to automatically release the message back to the pool
+     * @return the sequence number assigned to the message
+     */
+    public int send(OutgoingFixMessage message, boolean autoRelease) {
+        if (!state.get().canSendAppMessage()) {
+            throw new IllegalStateException("Cannot send application message in state: " + state.get());
+        }
+
+        return sendPooledInternal(message, autoRelease);
+    }
+
+    /**
+     * Internal method to send a pooled message.
+     */
+    private int sendPooledInternal(OutgoingFixMessage message, boolean autoRelease) {
+        int seqNum = outgoingSeqNum.getAndIncrement();
+        long sendingTime = clock.currentTimeMillis();
+
+        // Prepare the message (fills in SeqNum, SendingTime, BodyLength, CheckSum)
+        byte[] rawMessage = message.prepareForSend(seqNum, sendingTime);
+        int length = message.getLength();
+
+        // Log outgoing message
+        if (logStore != null && config.isLogMessages()) {
+            byte[] logCopy = new byte[length];
+            System.arraycopy(rawMessage, 0, logCopy, 0, length);
+
+            FixLogEntry entry = new FixLogEntry(
+                Instant.now().toEpochMilli(),
+                seqNum,
+                FixLogEntry.Direction.OUTBOUND,
+                config.getSessionId(),
+                message.getMsgType(),
+                0,
+                logCopy,
+                null
+            );
+            logStore.write(entry);
+        }
+
+        // Send on the wire
+        TcpChannel ch = channel;
+        SessionState currentState = state.get();
+        if (ch != null && currentState != SessionState.DISCONNECTED) {
+            try {
+                ch.write(ByteBuffer.wrap(rawMessage, 0, length));
+                lastSentTime = clock.currentTimeMillis();
+                log.debug("[{}] Sent pooled: {} SeqNum={}", config.getSessionId(), message.getMsgType(), seqNum);
+                if (config.isLogMessages()) {
+                    log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage, length));
+                }
+            } catch (java.io.IOException e) {
+                log.error("[{}] Error writing to channel", config.getSessionId(), e);
+            }
+        } else {
+            log.debug("[{}] Skipped sending pooled {} SeqNum={} - channel closed or disconnected",
+                    config.getSessionId(), message.getMsgType(), seqNum);
+        }
+
+        // Release back to pool if requested
+        if (autoRelease) {
+            message.release();
+        }
+
+        return seqNum;
+    }
+
+    /**
+     * Get the message pool (for advanced use).
+     *
+     * @return the message pool, or null if pooling is not enabled
+     */
+    public MessagePool getMessagePool() {
+        return messagePool;
+    }
+
+    /**
+     * Build and send an admin message using the FixWriter directly.
+     * This is the internal method for all admin message sending.
+     */
+    private int sendAdminMessage(String msgType, java.util.function.Consumer<FixWriter> fieldAdder) {
         int seqNum = outgoingSeqNum.getAndIncrement();
 
         writer.clear();
-        writer.beginMessage(config.getBeginString(), message.getMsgType());
+        writer.beginMessage(config.getBeginString(), msgType);
         writer.addField(FixTags.SENDER_COMP_ID, config.getSenderCompId());
         writer.addField(FixTags.TARGET_COMP_ID, config.getTargetCompId());
         writer.addField(FixTags.MSG_SEQ_NUM, seqNum);
         writer.addField(FixTags.SENDING_TIME, FIX_TIMESTAMP_FORMAT.format(Instant.now()));
 
-        // Add all fields from the message
-        for (int tag : message.getTags()) {
-            if (tag != FixTags.BEGIN_STRING && tag != FixTags.BODY_LENGTH &&
-                tag != FixTags.MSG_TYPE && tag != FixTags.SENDER_COMP_ID &&
-                tag != FixTags.TARGET_COMP_ID && tag != FixTags.MSG_SEQ_NUM &&
-                tag != FixTags.SENDING_TIME && tag != FixTags.CHECKSUM) {
-                writer.addField(tag, message.getStringField(tag));
-            }
-        }
+        // Add message-specific fields
+        fieldAdder.accept(writer);
 
         byte[] rawMessage = writer.finish();
 
         // Log outgoing message
-        FixLogEntry entry = new FixLogEntry(
-            Instant.now().toEpochMilli(),
-            seqNum,
-            FixLogEntry.Direction.OUTBOUND,
-            config.getSessionId(),
-            message.getMsgType(),
-            0,
-            rawMessage,
-            null
-        );
-
-        if (logStore != null) {
+        if (logStore != null && config.isLogMessages()) {
+            FixLogEntry entry = new FixLogEntry(
+                Instant.now().toEpochMilli(),
+                seqNum,
+                FixLogEntry.Direction.OUTBOUND,
+                config.getSessionId(),
+                msgType,
+                0,
+                rawMessage,
+                null
+            );
             logStore.write(entry);
         }
 
-        // Send on the wire - check both channel and state
+        // Send on the wire
         TcpChannel ch = channel;
         SessionState currentState = state.get();
         if (ch != null && currentState != SessionState.DISCONNECTED) {
             try {
                 ch.write(ByteBuffer.wrap(rawMessage));
-                lastSentTime = System.currentTimeMillis();
-                log.debug("[{}] Sent: {} SeqNum={}", config.getSessionId(), message.getMsgType(), seqNum);
-                log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage));
+                lastSentTime = clock.currentTimeMillis();
+                log.debug("[{}] Sent: {} SeqNum={}", config.getSessionId(), msgType, seqNum);
+                if (config.isLogMessages()) {
+                    log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage));
+                }
             } catch (java.io.IOException e) {
                 log.error("[{}] Error writing to channel", config.getSessionId(), e);
             }
         } else {
             log.debug("[{}] Skipped sending {} SeqNum={} - channel closed or disconnected",
-                    config.getSessionId(), message.getMsgType(), seqNum);
+                    config.getSessionId(), msgType, seqNum);
         }
 
         return seqNum;
@@ -602,16 +830,13 @@ public class FixSession implements NetworkHandler {
 
         setState(SessionState.LOGON_SENT);
 
-        FixMessage logon = new FixMessage();
-        logon.setMsgType(FixTags.MSG_TYPE_LOGON);
-        logon.setField(FixTags.ENCRYPT_METHOD, 0); // None
-        logon.setField(FixTags.HEARTBT_INT, config.getHeartbeatInterval());
-
-        if (config.isResetOnLogon()) {
-            logon.setField(FixTags.RESET_SEQ_NUM_FLAG, "Y");
-        }
-
-        sendInternal(logon);
+        sendAdminMessage(FixTags.MSG_TYPE_LOGON, w -> {
+            w.addField(FixTags.ENCRYPT_METHOD, 0); // None
+            w.addField(FixTags.HEARTBT_INT, config.getHeartbeatInterval());
+            if (config.isResetOnLogon()) {
+                w.addField(FixTags.RESET_SEQ_NUM_FLAG, "Y");
+            }
+        });
     }
 
     private void sendLogout(String text) {
@@ -619,23 +844,19 @@ public class FixSession implements NetworkHandler {
 
         setState(SessionState.LOGOUT_SENT);
 
-        FixMessage logout = new FixMessage();
-        logout.setMsgType(FixTags.MSG_TYPE_LOGOUT);
-        if (text != null) {
-            logout.setField(FixTags.TEXT, text);
-        }
-
-        sendInternal(logout);
+        sendAdminMessage(FixTags.MSG_TYPE_LOGOUT, w -> {
+            if (text != null) {
+                w.addField(FixTags.TEXT, text);
+            }
+        });
     }
 
     private void sendHeartbeat(String testReqId) {
-        FixMessage heartbeat = new FixMessage();
-        heartbeat.setMsgType(FixTags.MSG_TYPE_HEARTBEAT);
-        if (testReqId != null) {
-            heartbeat.setField(FixTags.TEST_REQ_ID, testReqId);
-        }
-
-        sendInternal(heartbeat);
+        sendAdminMessage(FixTags.MSG_TYPE_HEARTBEAT, w -> {
+            if (testReqId != null) {
+                w.addField(FixTags.TEST_REQ_ID, testReqId);
+            }
+        });
     }
 
     /**
@@ -646,11 +867,9 @@ public class FixSession implements NetworkHandler {
         String testReqId = String.valueOf(++testRequestId);
         log.debug("[{}] Sending TestRequest: {}", config.getSessionId(), testReqId);
 
-        FixMessage testRequest = new FixMessage();
-        testRequest.setMsgType(FixTags.MSG_TYPE_TEST_REQUEST);
-        testRequest.setField(FixTags.TEST_REQ_ID, testReqId);
-
-        sendInternal(testRequest);
+        sendAdminMessage(FixTags.MSG_TYPE_TEST_REQUEST, w -> {
+            w.addField(FixTags.TEST_REQ_ID, testReqId);
+        });
         testRequestPending = true;
         return testReqId;
     }
@@ -658,23 +877,16 @@ public class FixSession implements NetworkHandler {
     private void sendResendRequest(int beginSeqNo, int endSeqNo) {
         log.info("[{}] Sending ResendRequest: {} to {}", config.getSessionId(), beginSeqNo, endSeqNo);
 
-        FixMessage resendRequest = new FixMessage();
-        resendRequest.setMsgType(FixTags.MSG_TYPE_RESEND_REQUEST);
-        resendRequest.setField(FixTags.BEGIN_SEQ_NO, beginSeqNo);
-        resendRequest.setField(FixTags.END_SEQ_NO, endSeqNo);
-
-        sendInternal(resendRequest);
+        sendAdminMessage(FixTags.MSG_TYPE_RESEND_REQUEST, w -> {
+            w.addField(FixTags.BEGIN_SEQ_NO, beginSeqNo);
+            w.addField(FixTags.END_SEQ_NO, endSeqNo);
+        });
     }
 
     private void sendGapFill(int beginSeqNo, int newSeqNo) {
         log.debug("[{}] Sending GapFill: {} to {}", config.getSessionId(), beginSeqNo, newSeqNo);
 
-        FixMessage sequenceReset = new FixMessage();
-        sequenceReset.setMsgType(FixTags.MSG_TYPE_SEQUENCE_RESET);
-        sequenceReset.setField(FixTags.GAP_FILL_FLAG, "Y");
-        sequenceReset.setField(FixTags.NEW_SEQ_NO, newSeqNo);
-
-        // Gap fill uses the sequence number of the first message in the gap
+        // Gap fill uses the sequence number of the first message in the gap (not auto-incremented)
         int seqNum = beginSeqNo;
 
         writer.clear();
@@ -693,7 +905,7 @@ public class FixSession implements NetworkHandler {
         if (ch != null && state.get() != SessionState.DISCONNECTED) {
             try {
                 ch.write(ByteBuffer.wrap(rawMessage));
-                lastSentTime = System.currentTimeMillis();
+                lastSentTime = clock.currentTimeMillis();
                 log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage));
             } catch (java.io.IOException e) {
                 log.error("[{}] Error writing gap fill to channel", config.getSessionId(), e);
@@ -705,18 +917,16 @@ public class FixSession implements NetworkHandler {
         log.warn("[{}] Sending Reject: RefSeqNum={}, Reason={}, Text={}",
                 config.getSessionId(), refSeqNum, rejectReason, text);
 
-        FixMessage reject = new FixMessage();
-        reject.setMsgType(FixTags.MSG_TYPE_REJECT);
-        reject.setField(FixTags.REF_SEQ_NUM, refSeqNum);
-        if (refMsgType != null) {
-            reject.setField(FixTags.REF_MSG_TYPE, refMsgType);
-        }
-        reject.setField(FixTags.SESSION_REJECT_REASON, rejectReason);
-        if (text != null) {
-            reject.setField(FixTags.TEXT, text);
-        }
-
-        sendInternal(reject);
+        sendAdminMessage(FixTags.MSG_TYPE_REJECT, w -> {
+            w.addField(FixTags.REF_SEQ_NUM, refSeqNum);
+            if (refMsgType != null) {
+                w.addField(FixTags.REF_MSG_TYPE, refMsgType);
+            }
+            w.addField(FixTags.SESSION_REJECT_REASON, rejectReason);
+            if (text != null) {
+                w.addField(FixTags.TEXT, text);
+            }
+        });
     }
 
     private void resendMessage(FixLogEntry entry) {
@@ -728,7 +938,7 @@ public class FixSession implements NetworkHandler {
         if (ch != null && state.get() != SessionState.DISCONNECTED) {
             try {
                 ch.write(ByteBuffer.wrap(entry.getRawMessage()));
-                lastSentTime = System.currentTimeMillis();
+                lastSentTime = clock.currentTimeMillis();
                 log.info("[{}] OUT <<< (resend) {}", config.getSessionId(), formatRawMessage(entry.getRawMessage()));
             } catch (java.io.IOException e) {
                 log.error("[{}] Error resending message", config.getSessionId(), e);
@@ -828,7 +1038,7 @@ public class FixSession implements NetworkHandler {
             return;
         }
 
-        long now = System.currentTimeMillis();
+        long now = clock.currentTimeMillis();
         long heartbeatMs = config.getHeartbeatInterval() * 1000L;
 
         // Send heartbeat if we haven't sent anything in a while
@@ -848,22 +1058,6 @@ public class FixSession implements NetworkHandler {
         }
     }
 
-    private void logMessage(FixMessage message, FixLogEntry.Direction direction) {
-        if (logStore != null && config.isLogMessages()) {
-            FixLogEntry entry = new FixLogEntry(
-                Instant.now().toEpochMilli(),
-                message.getSeqNum(),
-                direction,
-                config.getSessionId(),
-                message.getMsgType(),
-                0,
-                message.getRawMessage(),
-                null
-            );
-            logStore.write(entry);
-        }
-    }
-
     /**
      * Format raw FIX message bytes for logging.
      * Replaces SOH (0x01) delimiter with '|' for readability.
@@ -872,8 +1066,20 @@ public class FixSession implements NetworkHandler {
         if (rawMessage == null || rawMessage.length == 0) {
             return "<empty>";
         }
-        StringBuilder sb = new StringBuilder(rawMessage.length);
-        for (byte b : rawMessage) {
+        return formatRawMessage(rawMessage, rawMessage.length);
+    }
+
+    /**
+     * Format raw FIX message bytes for logging with specific length.
+     * Replaces SOH (0x01) delimiter with '|' for readability.
+     */
+    private static String formatRawMessage(byte[] rawMessage, int length) {
+        if (rawMessage == null || length == 0) {
+            return "<empty>";
+        }
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            byte b = rawMessage[i];
             if (b == 0x01) {
                 sb.append('|');
             } else {

@@ -14,30 +14,26 @@ import java.nio.ByteBuffer;
  *   <li>Handling partial messages</li>
  * </ul>
  *
+ * <p>This implementation works directly with ByteBuffer without creating
+ * temporary byte arrays, minimizing allocations for high-performance parsing.</p>
+ *
  * <p>Usage:</p>
  * <pre>{@code
  * FixReader reader = new FixReader();
- * FixMessage msg = new FixMessage();
+ * IncomingFixMessage msg = new IncomingFixMessage();
  *
- * while (buffer.hasRemaining()) {
- *     int result = reader.read(buffer, msg);
- *     if (result > 0) {
- *         // Complete message available in msg
- *         processMessage(msg);
- *     } else if (result == 0) {
- *         // Need more data
- *         break;
- *     } else {
- *         // Error - invalid message
- *         handleError();
- *     }
+ * reader.addData(buffer);
+ * while (reader.readIncomingMessage(msg)) {
+ *     // Complete message available in msg
+ *     processMessage(msg);
+ *     msg.reset();
  * }
  * }</pre>
  */
 public class FixReader {
 
-    private static final byte SOH = FixMessage.SOH;
-    private static final byte EQUALS = FixMessage.EQUALS;
+    private static final byte SOH = 0x01; // Field delimiter
+    private static final byte EQUALS = '=';
 
     // BeginString prefix: "8=FIX"
     private static final byte[] BEGIN_STRING_PREFIX = {'8', '=', 'F', 'I', 'X'};
@@ -82,29 +78,32 @@ public class FixReader {
     }
 
     /**
-     * Try to read a complete message from the accumulated data.
+     * Try to read a complete message from the accumulated data into an IncomingFixMessage.
      *
-     * @return a complete FixMessage, or null if no complete message is available
+     * <p>This is the preferred method for latency-optimized message processing.
+     * The message should be released back to its pool after processing.</p>
+     *
+     * @param message the IncomingFixMessage to populate (typically from a pool)
+     * @return true if a message was successfully read, false if more data is needed
      */
-    public FixMessage readMessage() {
+    public boolean readIncomingMessage(IncomingFixMessage message) {
         if (accumulationBuffer.position() == 0) {
-            return null;
+            return false;
         }
 
         accumulationBuffer.flip();
 
-        FixMessage message = new FixMessage();
         int result = read(accumulationBuffer, message);
 
         if (result > 0) {
             // Successfully read a message, compact remaining data
             accumulationBuffer.compact();
-            return message;
+            return true;
         } else {
             // No complete message, restore position for more data
             accumulationBuffer.position(accumulationBuffer.limit());
             accumulationBuffer.limit(accumulationBuffer.capacity());
-            return null;
+            return false;
         }
     }
 
@@ -119,15 +118,39 @@ public class FixReader {
     }
 
     /**
-     * Try to read a complete FIX message from the buffer.
+     * Try to read a complete FIX message from the buffer into an IncomingFixMessage.
+     *
+     * <p>This is the preferred method for latency-optimized message processing.</p>
      *
      * @param buffer the buffer containing incoming data (position at start of unread data)
-     * @param message the message to populate with the parsed message
+     * @param message the incoming message to populate
      * @return positive value = message length (message is complete),
      *         0 = need more data,
      *         negative value = error
      */
-    public int read(ByteBuffer buffer, FixMessage message) {
+    public int read(ByteBuffer buffer, IncomingFixMessage message) {
+        return readInternal(buffer, (buf, msgLen) -> message.wrap(buf, msgLen));
+    }
+
+    /**
+     * Functional interface for wrapping message data from ByteBuffer.
+     */
+    @FunctionalInterface
+    private interface MessageWrapper {
+        /**
+         * Wrap message data from a ByteBuffer.
+         *
+         * @param buffer the ByteBuffer positioned at the start of the message
+         * @param length the length of the message in bytes
+         */
+        void wrap(ByteBuffer buffer, int length);
+    }
+
+    /**
+     * Internal read implementation shared by both FixMessage and IncomingFixMessage.
+     * Works directly with ByteBuffer without creating temporary byte arrays.
+     */
+    private int readInternal(ByteBuffer buffer, MessageWrapper wrapper) {
         int startPos = buffer.position();
         int available = buffer.remaining();
 
@@ -136,13 +159,8 @@ public class FixReader {
             return 0;
         }
 
-        byte[] data = new byte[available];
-        buffer.mark();
-        buffer.get(data);
-        buffer.reset();
-
-        // Find BeginString (8=FIX...)
-        int msgStart = findBeginString(data, 0, available);
+        // Find BeginString (8=FIX...) - work directly with ByteBuffer
+        int msgStart = findBeginString(buffer, startPos, available);
         if (msgStart < 0) {
             // No valid message start found - discard data up to this point
             buffer.position(buffer.limit());
@@ -153,28 +171,28 @@ public class FixReader {
         if (msgStart > 0) {
             buffer.position(startPos + msgStart);
             // Recursively try again with adjusted buffer
-            return read(buffer, message);
+            return readInternal(buffer, wrapper);
         }
 
         // Parse BodyLength (9=XXX)
-        int bodyLengthStart = findTag(data, 0, available, 9);
+        int bodyLengthStart = findTag(buffer, startPos, available, 9);
         if (bodyLengthStart < 0) {
             return 0; // Need more data
         }
 
-        int bodyLengthValue = parseIntValue(data, bodyLengthStart, available);
+        int bodyLengthValue = parseIntValue(buffer, bodyLengthStart, startPos + available);
         if (bodyLengthValue < 0) {
             return 0; // Need more data
         }
 
         // Find where body starts (after 9=XXX<SOH>)
         int bodyStartPos = bodyLengthStart;
-        while (bodyStartPos < available && data[bodyStartPos] != SOH) {
+        while (bodyStartPos < startPos + available && buffer.get(bodyStartPos) != SOH) {
             bodyStartPos++;
         }
         bodyStartPos++; // Skip SOH
 
-        if (bodyStartPos >= available) {
+        if (bodyStartPos >= startPos + available) {
             return 0; // Need more data
         }
 
@@ -183,18 +201,18 @@ public class FixReader {
         // CheckSum is always "10=XXX<SOH>" = 7 bytes
         int expectedEnd = bodyStartPos + bodyLengthValue + 7;
 
-        if (expectedEnd > available) {
+        if (expectedEnd > startPos + available) {
             return 0; // Need more data
         }
 
         // Validate CheckSum position
         int checksumPos = bodyStartPos + bodyLengthValue;
-        if (checksumPos + 7 > available) {
+        if (checksumPos + 7 > startPos + available) {
             return 0; // Need more data
         }
 
         // Verify "10=" at expected position
-        if (data[checksumPos] != '1' || data[checksumPos + 1] != '0' || data[checksumPos + 2] != '=') {
+        if (buffer.get(checksumPos) != '1' || buffer.get(checksumPos + 1) != '0' || buffer.get(checksumPos + 2) != '=') {
             // CheckSum not at expected position - invalid message
             buffer.position(startPos + 1);
             return -2;
@@ -202,12 +220,12 @@ public class FixReader {
 
         // Verify checksum value
         int calculatedChecksum = 0;
-        for (int i = 0; i < checksumPos; i++) {
-            calculatedChecksum += (data[i] & 0xFF);
+        for (int i = startPos; i < checksumPos; i++) {
+            calculatedChecksum += (buffer.get(i) & 0xFF);
         }
         calculatedChecksum = calculatedChecksum % 256;
 
-        int receivedChecksum = parseChecksum(data, checksumPos + 3);
+        int receivedChecksum = parseChecksum(buffer, checksumPos + 3);
         if (receivedChecksum < 0) {
             buffer.position(startPos + 1);
             return -3; // Invalid checksum format
@@ -221,67 +239,87 @@ public class FixReader {
 
         // Find actual message end (SOH after checksum)
         int messageEnd = checksumPos + 3;
-        while (messageEnd < available && data[messageEnd] != SOH) {
+        while (messageEnd < startPos + available && buffer.get(messageEnd) != SOH) {
             messageEnd++;
         }
         messageEnd++; // Include final SOH
 
-        // Valid complete message
-        message.wrap(data, 0, messageEnd);
+        int messageLength = messageEnd - startPos;
 
-        // Advance buffer position past this message
-        buffer.position(startPos + messageEnd);
+        // Valid complete message - wrap using the provided wrapper
+        // Create a slice of the buffer for the message
+        int savedLimit = buffer.limit();
+        buffer.position(startPos);
+        buffer.limit(messageEnd);
+        wrapper.wrap(buffer, messageLength);
 
-        return messageEnd;
+        // Restore limit and advance position past this message
+        buffer.limit(savedLimit);
+        buffer.position(messageEnd);
+
+        return messageLength;
     }
 
     /**
-     * Find the start of a FIX message (8=FIX...).
+     * Find the start of a FIX message (8=FIX...) in the ByteBuffer.
+     *
+     * @param buffer the ByteBuffer to search
+     * @param offset the starting position in the buffer
+     * @param length the number of bytes to search
+     * @return the offset (relative to start) of the message, or -1 if not found
      */
-    private int findBeginString(byte[] data, int offset, int length) {
-        for (int i = offset; i <= length - BEGIN_STRING_PREFIX.length; i++) {
+    private int findBeginString(ByteBuffer buffer, int offset, int length) {
+        int searchEnd = offset + length - BEGIN_STRING_PREFIX.length;
+        for (int i = offset; i <= searchEnd; i++) {
             boolean match = true;
             for (int j = 0; j < BEGIN_STRING_PREFIX.length; j++) {
-                if (data[i + j] != BEGIN_STRING_PREFIX[j]) {
+                if (buffer.get(i + j) != BEGIN_STRING_PREFIX[j]) {
                     match = false;
                     break;
                 }
             }
             if (match) {
-                return i;
+                return i - offset; // Return relative offset
             }
         }
         return -1;
     }
 
     /**
-     * Find a tag in the message and return the position of its value.
+     * Find a tag in the message and return the absolute position of its value.
+     *
+     * @param buffer the ByteBuffer to search
+     * @param offset the starting position in the buffer
+     * @param length the number of bytes to search
+     * @param tag the tag number to find
+     * @return the absolute position of the value, or -1 if not found
      */
-    private int findTag(byte[] data, int offset, int length, int tag) {
+    private int findTag(ByteBuffer buffer, int offset, int length, int tag) {
+        int end = offset + length;
         int pos = offset;
-        while (pos < length) {
-            int tagStart = pos;
 
+        while (pos < end) {
             // Parse tag number
             int parsedTag = 0;
-            while (pos < length && data[pos] != EQUALS && data[pos] != SOH) {
-                if (data[pos] >= '0' && data[pos] <= '9') {
-                    parsedTag = parsedTag * 10 + (data[pos] - '0');
+            while (pos < end && buffer.get(pos) != EQUALS && buffer.get(pos) != SOH) {
+                byte b = buffer.get(pos);
+                if (b >= '0' && b <= '9') {
+                    parsedTag = parsedTag * 10 + (b - '0');
                 }
                 pos++;
             }
 
-            if (pos >= length || data[pos] != EQUALS) {
+            if (pos >= end || buffer.get(pos) != EQUALS) {
                 return -1;
             }
             pos++; // Skip '='
 
             if (parsedTag == tag) {
-                return pos; // Return position of value
+                return pos; // Return absolute position of value
             }
 
             // Skip to next SOH
-            while (pos < length && data[pos] != SOH) {
+            while (pos < end && buffer.get(pos) != SOH) {
                 pos++;
             }
             pos++; // Skip SOH
@@ -290,14 +328,19 @@ public class FixReader {
     }
 
     /**
-     * Parse an integer value starting at the given position.
+     * Parse an integer value starting at the given absolute position.
+     *
+     * @param buffer the ByteBuffer
+     * @param offset the absolute position to start parsing
+     * @param limit the limit of valid data
+     * @return the parsed integer value
      */
-    private int parseIntValue(byte[] data, int offset, int length) {
+    private int parseIntValue(ByteBuffer buffer, int offset, int limit) {
         int value = 0;
         int pos = offset;
 
-        while (pos < length && data[pos] != SOH) {
-            byte b = data[pos];
+        while (pos < limit && buffer.get(pos) != SOH) {
+            byte b = buffer.get(pos);
             if (b >= '0' && b <= '9') {
                 value = value * 10 + (b - '0');
             } else if (b != '-' && b != '+') {
@@ -311,15 +354,19 @@ public class FixReader {
 
     /**
      * Parse the 3-digit checksum value.
+     *
+     * @param buffer the ByteBuffer
+     * @param offset the absolute position to start parsing
+     * @return the parsed checksum value, or -1 if invalid
      */
-    private int parseChecksum(byte[] data, int offset) {
-        if (offset + 3 > data.length) {
+    private int parseChecksum(ByteBuffer buffer, int offset) {
+        if (offset + 3 > buffer.limit()) {
             return -1;
         }
 
         int value = 0;
         for (int i = 0; i < 3; i++) {
-            byte b = data[offset + i];
+            byte b = buffer.get(offset + i);
             if (b >= '0' && b <= '9') {
                 value = value * 10 + (b - '0');
             } else {

@@ -4,8 +4,7 @@ import com.fixengine.engine.FixEngine;
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.SessionState;
 import com.fixengine.engine.session.SessionStateListener;
-import com.fixengine.message.FixMessage;
-import com.fixengine.message.FixTags;
+import com.fixengine.message.OutgoingFixMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -176,8 +175,15 @@ public class TestContext {
     /**
      * Send an application message.
      */
-    public int send(FixMessage message) {
+    public int send(OutgoingFixMessage message) {
         return session.send(message);
+    }
+
+    /**
+     * Acquire a pooled message for sending.
+     */
+    public OutgoingFixMessage acquireMessage(String msgType) throws Exception {
+        return session.acquireMessage(msgType);
     }
 
     /**

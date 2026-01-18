@@ -7,8 +7,9 @@ import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.MessageListener;
 import com.fixengine.engine.session.SessionState;
 import com.fixengine.engine.session.SessionStateListener;
-import com.fixengine.message.FixMessage;
 import com.fixengine.message.FixTags;
+import com.fixengine.message.IncomingFixMessage;
+import com.fixengine.message.OutgoingFixMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -60,6 +61,7 @@ public class SampleAcceptor implements Callable<Integer> {
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency mode enabled - log level set to ERROR");
+            System.out.println("Message pooling: ENABLED (zero-allocation mode)");
         }
 
         log.info("Starting Sample FIX Acceptor on port {}", port);
@@ -67,7 +69,7 @@ public class SampleAcceptor implements Callable<Integer> {
 
         try {
             // Build configuration
-            SessionConfig sessionConfig = SessionConfig.builder()
+            SessionConfig.Builder sessionConfigBuilder = SessionConfig.builder()
                     .sessionName("ACCEPTOR")
                     .senderCompId(senderCompId)
                     .targetCompId(targetCompId)
@@ -75,8 +77,17 @@ public class SampleAcceptor implements Callable<Integer> {
                     .port(port)
                     .heartbeatInterval(heartbeatInterval)
                     .resetOnLogon(true)
-                    .logMessages(!latencyMode) // Disable message logging in latency mode
-                    .build();
+                    .logMessages(!latencyMode); // Disable message logging in latency mode
+
+            // Enable message pooling in latency mode for zero-allocation sending
+            if (latencyMode) {
+                sessionConfigBuilder.usePooledMessages(true)
+                        .messagePoolSize(128)       // Pool size for execution reports
+                        .maxMessageLength(512)      // Exec reports are small
+                        .maxTagNumber(200);         // Standard exec report tags
+            }
+
+            SessionConfig sessionConfig = sessionConfigBuilder.build();
 
             EngineConfig.Builder configBuilder = EngineConfig.builder()
                     .addSession(sessionConfig);
@@ -155,9 +166,11 @@ public class SampleAcceptor implements Callable<Integer> {
      */
     private class AcceptorMessageListener implements MessageListener {
         @Override
-        public void onMessage(FixSession session, FixMessage message) {
+        public void onMessage(FixSession session, IncomingFixMessage message) {
             String msgType = message.getMsgType();
-            log.info("Received message: {} from {}", msgType, session.getConfig().getSessionId());
+            if (!latencyMode) {
+                log.info("Received message: {} from {}", msgType, session.getConfig().getSessionId());
+            }
 
             switch (msgType) {
                 case FixTags.MsgTypes.NewOrderSingle:
@@ -180,44 +193,40 @@ public class SampleAcceptor implements Callable<Integer> {
         }
     }
 
+    // ==================== Order Handlers ====================
+
     /**
      * Handle a new order.
      */
-    private void handleNewOrder(FixSession session, FixMessage order) {
-        String clOrdId = order.getString(FixTags.ClOrdID);
-        String symbol = order.getString(FixTags.Symbol);
+    private void handleNewOrder(FixSession session, IncomingFixMessage order) {
+        // Copy values we need before message is released
+        CharSequence clOrdId = order.getCharSequence(FixTags.ClOrdID);
+        CharSequence symbol = order.getCharSequence(FixTags.Symbol);
         char side = order.getChar(FixTags.Side);
-        double orderQty = order.getDouble(FixTags.OrderQty);
+        int orderQty = order.getInt(FixTags.OrderQty);
         char ordType = order.getChar(FixTags.OrdType);
         double price = order.getDouble(FixTags.Price);
 
-        log.info("New Order: ClOrdID={}, Symbol={}, Side={}, Qty={}, Type={}, Price={}",
-                clOrdId, symbol, side, orderQty, ordType, price);
+        if (!latencyMode) {
+            log.info("New Order: ClOrdID={}, Symbol={}, Side={}, Qty={}, Type={}, Price={}",
+                    clOrdId, symbol, side, orderQty, ordType, price);
+        }
 
-        String orderId = "ORD" + orderIdCounter.getAndIncrement();
+        String orderId = "ORD";// + orderIdCounter.getAndIncrement();
 
-        // Send acknowledgment (New)
+        // Send acknowledgment (New) - always send in latency mode
         sendExecutionReport(session, clOrdId, orderId, symbol, side,
                 FixTags.EXEC_TYPE_NEW, FixTags.ORD_STATUS_NEW,
                 orderQty, 0, 0, price, 0, "Order accepted");
 
-        // Simulate fill based on fill rate
-        if (Math.random() < fillRate) {
-            // Full fill
-            String execId = "EXEC" + execIdCounter.getAndIncrement();
-            double fillPrice = price > 0 ? price : 100.0; // Use limit price or market price
-
-            sendExecutionReport(session, clOrdId, orderId, symbol, side,
-                    FixTags.EXEC_TYPE_FILL, FixTags.ORD_STATUS_FILLED,
-                    orderQty, orderQty, 0, fillPrice, fillPrice, "Order filled");
-        } else {
-            // Partial fill
-            double fillQty = Math.floor(orderQty * Math.random() * 0.5);
-            if (fillQty > 0) {
+        // In latency mode, skip fill simulation to minimize latency
+        if (!latencyMode) {
+            // Simulate fill based on fill rate
+            if (Math.random() < fillRate) {
                 double fillPrice = price > 0 ? price : 100.0;
                 sendExecutionReport(session, clOrdId, orderId, symbol, side,
-                        FixTags.EXEC_TYPE_PARTIAL_FILL, FixTags.ORD_STATUS_PARTIALLY_FILLED,
-                        orderQty, fillQty, orderQty - fillQty, fillPrice, fillPrice, "Partial fill");
+                        FixTags.EXEC_TYPE_FILL, FixTags.ORD_STATUS_FILLED,
+                        orderQty, orderQty, 0, fillPrice, fillPrice, "Order filled");
             }
         }
     }
@@ -225,18 +234,18 @@ public class SampleAcceptor implements Callable<Integer> {
     /**
      * Handle an order cancel request.
      */
-    private void handleOrderCancel(FixSession session, FixMessage cancel) {
-        String clOrdId = cancel.getString(FixTags.ClOrdID);
-        String origClOrdId = cancel.getString(41); // OrigClOrdID
-        String symbol = cancel.getString(FixTags.Symbol);
+    private void handleOrderCancel(FixSession session, IncomingFixMessage cancel) {
+        String clOrdId = asString(cancel.getCharSequence(FixTags.ClOrdID));
+        String origClOrdId = asString(cancel.getCharSequence(41));
+        String symbol = asString(cancel.getCharSequence(FixTags.Symbol));
         char side = cancel.getChar(FixTags.Side);
-        double orderQty = cancel.getDouble(FixTags.OrderQty);
+        int orderQty = cancel.getInt(FixTags.OrderQty);
 
-        log.info("Cancel Request: ClOrdID={}, OrigClOrdID={}", clOrdId, origClOrdId);
+        if (!latencyMode) {
+            log.info("Cancel Request: ClOrdID={}, OrigClOrdID={}", clOrdId, origClOrdId);
+        }
 
         String orderId = "ORD" + orderIdCounter.getAndIncrement();
-
-        // For simplicity, always accept the cancel
         sendExecutionReport(session, clOrdId, orderId, symbol, side,
                 FixTags.EXEC_TYPE_CANCELED, FixTags.ORD_STATUS_CANCELED,
                 orderQty, 0, 0, 0, 0, "Order canceled");
@@ -245,66 +254,69 @@ public class SampleAcceptor implements Callable<Integer> {
     /**
      * Handle an order cancel/replace request.
      */
-    private void handleOrderReplace(FixSession session, FixMessage replace) {
-        String clOrdId = replace.getString(FixTags.ClOrdID);
-        String origClOrdId = replace.getString(41); // OrigClOrdID
-        String symbol = replace.getString(FixTags.Symbol);
+    private void handleOrderReplace(FixSession session, IncomingFixMessage replace) {
+        String clOrdId = asString(replace.getCharSequence(FixTags.ClOrdID));
+        String origClOrdId = asString(replace.getCharSequence(41));
+        String symbol = asString(replace.getCharSequence(FixTags.Symbol));
         char side = replace.getChar(FixTags.Side);
-        double orderQty = replace.getDouble(FixTags.OrderQty);
+        int orderQty = replace.getInt(FixTags.OrderQty);
         double price = replace.getDouble(FixTags.Price);
 
-        log.info("Replace Request: ClOrdID={}, OrigClOrdID={}, NewQty={}, NewPrice={}",
-                clOrdId, origClOrdId, orderQty, price);
+        if (!latencyMode) {
+            log.info("Replace Request: ClOrdID={}, OrigClOrdID={}, NewQty={}, NewPrice={}",
+                    clOrdId, origClOrdId, orderQty, price);
+        }
 
         String orderId = "ORD" + orderIdCounter.getAndIncrement();
-
-        // For simplicity, always accept the replace
         sendExecutionReport(session, clOrdId, orderId, symbol, side,
                 FixTags.EXEC_TYPE_REPLACED, FixTags.ORD_STATUS_REPLACED,
                 orderQty, 0, orderQty, price, 0, "Order replaced");
     }
 
     /**
-     * Send an execution report.
+     * Send an execution report using OutgoingFixMessage.
      */
-    private void sendExecutionReport(FixSession session, String clOrdId, String orderId,
-                                     String symbol, char side, char execType, char ordStatus,
+    private void sendExecutionReport(FixSession session, CharSequence clOrdId, String orderId,
+                                     CharSequence symbol, char side, char execType, char ordStatus,
                                      double orderQty, double cumQty, double leavesQty,
                                      double price, double avgPx, String text) {
-        FixMessage execReport = new FixMessage();
-        execReport.setMsgType(FixTags.MsgTypes.ExecutionReport);
-        execReport.setField(FixTags.OrderID, orderId);
-        execReport.setField(FixTags.ClOrdID, clOrdId);
-        execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
-        execReport.setField(FixTags.ExecType, execType);
-        execReport.setField(FixTags.OrdStatus, ordStatus);
-        execReport.setField(FixTags.Symbol, symbol);
-        execReport.setField(FixTags.Side, side);
-        execReport.setField(FixTags.OrderQty, (int) orderQty);
-        execReport.setField(FixTags.CumQty, (int) cumQty);
-        execReport.setField(FixTags.LeavesQty, (int) leavesQty);
-        execReport.setField(FixTags.AvgPx, avgPx);
-
-        if (price > 0) {
-            execReport.setField(FixTags.Price, price);
-        }
-
-        if (cumQty > 0) {
-            execReport.setField(FixTags.LastQty, (int) cumQty);
-            execReport.setField(FixTags.LastPx, avgPx);
-        }
-
-        if (text != null) {
-            execReport.setField(FixTags.Text, text);
-        }
-
         try {
-            session.send(execReport);
+            OutgoingFixMessage execReport = session.acquireMessage(FixTags.MsgTypes.ExecutionReport);
+            execReport.setField(FixTags.OrderID, orderId);
+            execReport.setField(FixTags.ClOrdID, clOrdId);
+            execReport.setField(FixTags.ExecID, "EXEC" );//+ execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecType, execType);
+            execReport.setField(FixTags.OrdStatus, ordStatus);
+            execReport.setField(FixTags.Symbol, symbol);
+            execReport.setField(FixTags.Side, side);
+            execReport.setField(FixTags.OrderQty, (int) orderQty);
+            execReport.setField(FixTags.CumQty, (int) cumQty);
+            execReport.setField(FixTags.LeavesQty, (int) leavesQty);
+            execReport.setField(FixTags.AvgPx, avgPx, 2);
+
+            if (price > 0) {
+                execReport.setField(FixTags.Price, price, 2);
+            }
+
+            if (cumQty > 0) {
+                execReport.setField(FixTags.LastQty, (int) cumQty);
+                execReport.setField(FixTags.LastPx, avgPx, 2);
+            }
+
+            if (text != null && !latencyMode) {
+                execReport.setField(FixTags.Text, text);
+            }
+
+            session.send(execReport);  // Auto-releases back to pool
             log.info("Sent ExecutionReport: OrdID={}, ExecType={}, OrdStatus={}",
                     orderId, execType, ordStatus);
         } catch (Exception e) {
             log.error("Error sending execution report", e);
         }
+    }
+
+    private static String asString(CharSequence cs) {
+        return cs != null ? cs.toString() : null;
     }
 
     public static void main(String[] args) {

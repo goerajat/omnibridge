@@ -2,7 +2,7 @@ package com.fixengine.tester.tests;
 
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.MessageListener;
-import com.fixengine.message.FixMessage;
+import com.fixengine.message.IncomingFixMessage;
 import com.fixengine.message.FixTags;
 import com.fixengine.tester.SessionTest;
 import com.fixengine.tester.TestContext;
@@ -58,7 +58,7 @@ public class HeartbeatTest implements SessionTest {
 
             MessageListener listener = new MessageListener() {
                 @Override
-                public void onMessage(FixSession session, FixMessage message) {
+                public void onMessage(FixSession session, IncomingFixMessage message) {
                     if (FixTags.MSG_TYPE_HEARTBEAT.equals(message.getMsgType())) {
                         heartbeatCount.incrementAndGet();
                         firstHeartbeat.countDown();

@@ -41,9 +41,9 @@ quickfix-store/
 *.ear
 *.class
 
-# Persistence data
+# Persistence data (but not fix-persistence module)
 data/
-persistence/
+/persistence/
 
 # Node modules (for fix-admin-ui)
 node_modules/
@@ -55,6 +55,11 @@ dist/
 .env
 .env.local
 .env.*.local
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
 
 # Test output
 test-output/

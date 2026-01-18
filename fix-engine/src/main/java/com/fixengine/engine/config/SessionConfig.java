@@ -1,5 +1,8 @@
 package com.fixengine.engine.config;
 
+import com.fixengine.message.Clock;
+import com.fixengine.message.SystemClock;
+
 import java.time.LocalTime;
 
 /**
@@ -49,6 +52,15 @@ public class SessionConfig {
 
     // Logging
     private boolean logMessages = true;
+
+    // Message pooling (latency optimization)
+    private int messagePoolSize = 64;
+    private int maxMessageLength = 4096;
+    private int maxTagNumber = 1000;
+    private boolean usePooledMessages = false;
+
+    // Clock for time sources (allows testing with mock clocks)
+    private Clock clock = SystemClock.INSTANCE;
 
     // ==================== Builder ====================
 
@@ -169,6 +181,34 @@ public class SessionConfig {
             return this;
         }
 
+        public Builder messagePoolSize(int size) {
+            config.messagePoolSize = size;
+            return this;
+        }
+
+        public Builder maxMessageLength(int length) {
+            config.maxMessageLength = length;
+            return this;
+        }
+
+        public Builder maxTagNumber(int maxTag) {
+            config.maxTagNumber = maxTag;
+            return this;
+        }
+
+        public Builder usePooledMessages(boolean use) {
+            config.usePooledMessages = use;
+            return this;
+        }
+
+        public Builder clock(Clock clock) {
+            if (clock == null) {
+                throw new IllegalArgumentException("Clock cannot be null");
+            }
+            config.clock = clock;
+            return this;
+        }
+
         public SessionConfig build() {
             validate();
             return config;
@@ -284,6 +324,31 @@ public class SessionConfig {
 
     public boolean isLogMessages() {
         return logMessages;
+    }
+
+    public int getMessagePoolSize() {
+        return messagePoolSize;
+    }
+
+    public int getMaxMessageLength() {
+        return maxMessageLength;
+    }
+
+    public int getMaxTagNumber() {
+        return maxTagNumber;
+    }
+
+    public boolean isUsePooledMessages() {
+        return usePooledMessages;
+    }
+
+    /**
+     * Get the clock used for timestamps and timing.
+     *
+     * @return the clock instance
+     */
+    public Clock getClock() {
+        return clock;
     }
 
     /**

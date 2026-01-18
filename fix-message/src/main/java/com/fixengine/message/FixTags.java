@@ -134,6 +134,59 @@ public final class FixTags {
                 default -> false;
             };
         }
+
+        /**
+         * Check if the message type is an admin (session-level) message.
+         * This overload accepts CharSequence for zero-allocation comparison.
+         *
+         * @param msgType the message type as CharSequence
+         * @return true if admin message
+         */
+        public static boolean isAdmin(CharSequence msgType) {
+            if (msgType == null || msgType.length() == 0) {
+                return false;
+            }
+            if (msgType.length() == 1) {
+                char c = msgType.charAt(0);
+                return c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == 'A';
+            }
+            return false;
+        }
+
+        /**
+         * Check if the message type is ExecutionReport (8).
+         */
+        public static boolean isExecutionReport(CharSequence msgType) {
+            return msgType != null && msgType.length() == 1 && msgType.charAt(0) == '8';
+        }
+
+        /**
+         * Check if the message type is OrderCancelReject (9).
+         */
+        public static boolean isOrderCancelReject(CharSequence msgType) {
+            return msgType != null && msgType.length() == 1 && msgType.charAt(0) == '9';
+        }
+
+        /**
+         * Check if the message type is NewOrderSingle (D).
+         */
+        public static boolean isNewOrderSingle(CharSequence msgType) {
+            return msgType != null && msgType.length() == 1 && msgType.charAt(0) == 'D';
+        }
+
+        /**
+         * Check if the message type is OrderCancelRequest (F).
+         */
+        public static boolean isOrderCancelRequest(CharSequence msgType) {
+            return msgType != null && msgType.length() == 1 && msgType.charAt(0) == 'F';
+        }
+
+        /**
+         * Check if the message type is OrderCancelReplaceRequest (G).
+         */
+        public static boolean isOrderCancelReplaceRequest(CharSequence msgType) {
+            return msgType != null && msgType.length() == 1 && msgType.charAt(0) == 'G';
+        }
     }
 
     // Side values
