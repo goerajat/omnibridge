@@ -57,7 +57,6 @@ public class SessionConfig {
     private int messagePoolSize = 64;
     private int maxMessageLength = 4096;
     private int maxTagNumber = 1000;
-    private boolean usePooledMessages = false;
 
     // Clock for time sources (allows testing with mock clocks)
     private Clock clock = SystemClock.INSTANCE;
@@ -196,11 +195,6 @@ public class SessionConfig {
             return this;
         }
 
-        public Builder usePooledMessages(boolean use) {
-            config.usePooledMessages = use;
-            return this;
-        }
-
         public Builder clock(Clock clock) {
             if (clock == null) {
                 throw new IllegalArgumentException("Clock cannot be null");
@@ -336,10 +330,6 @@ public class SessionConfig {
 
     public int getMaxTagNumber() {
         return maxTagNumber;
-    }
-
-    public boolean isUsePooledMessages() {
-        return usePooledMessages;
     }
 
     /**

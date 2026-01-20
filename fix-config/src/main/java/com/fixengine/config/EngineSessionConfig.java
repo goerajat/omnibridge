@@ -35,7 +35,6 @@ public final class EngineSessionConfig {
     private final LocalTime eodTime;
     private final boolean resetOnEod;
     private final boolean logMessages;
-    private final boolean usePooledMessages;
     private final int messagePoolSize;
     private final int maxMessageLength;
     private final int maxTagNumber;
@@ -61,7 +60,6 @@ public final class EngineSessionConfig {
         this.eodTime = builder.eodTime;
         this.resetOnEod = builder.resetOnEod;
         this.logMessages = builder.logMessages;
-        this.usePooledMessages = builder.usePooledMessages;
         this.messagePoolSize = builder.messagePoolSize;
         this.maxMessageLength = builder.maxMessageLength;
         this.maxTagNumber = builder.maxTagNumber;
@@ -90,7 +88,6 @@ public final class EngineSessionConfig {
                 .timeZone(config.getString("time-zone"))
                 .resetOnEod(config.getBoolean("reset-on-eod"))
                 .logMessages(config.getBoolean("log-messages"))
-                .usePooledMessages(config.getBoolean("use-pooled-messages"))
                 .messagePoolSize(config.getInt("message-pool-size"))
                 .maxMessageLength(config.getInt("max-message-length"))
                 .maxTagNumber(config.getInt("max-tag-number"));
@@ -191,10 +188,6 @@ public final class EngineSessionConfig {
         return logMessages;
     }
 
-    public boolean isUsePooledMessages() {
-        return usePooledMessages;
-    }
-
     public int getMessagePoolSize() {
         return messagePoolSize;
     }
@@ -242,7 +235,6 @@ public final class EngineSessionConfig {
         private LocalTime eodTime;
         private boolean resetOnEod = false;
         private boolean logMessages = true;
-        private boolean usePooledMessages = false;
         private int messagePoolSize = 64;
         private int maxMessageLength = 4096;
         private int maxTagNumber = 1000;
@@ -342,11 +334,6 @@ public final class EngineSessionConfig {
 
         public Builder logMessages(boolean logMessages) {
             this.logMessages = logMessages;
-            return this;
-        }
-
-        public Builder usePooledMessages(boolean usePooledMessages) {
-            this.usePooledMessages = usePooledMessages;
             return this;
         }
 

@@ -128,7 +128,6 @@ public class SampleAcceptor implements Callable<Integer> {
                         .timeZone(s.getTimeZone())
                         .resetOnEod(s.isResetOnEod())
                         .logMessages(false)  // Disable logging in latency mode
-                        .usePooledMessages(true)  // Enable pooling in latency mode
                         .messagePoolSize(Math.max(s.getMessagePoolSize(), 128))
                         .maxMessageLength(s.getMaxMessageLength())
                         .maxTagNumber(s.getMaxTagNumber())

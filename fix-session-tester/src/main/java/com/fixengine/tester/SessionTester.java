@@ -115,7 +115,6 @@ public class SessionTester implements Callable<Integer> {
                     .initiator()
                     .heartbeatInterval(heartbeatInterval)
                     .resetOnLogon(true)
-                    .usePooledMessages(true)
                     .build();
 
             EngineConfig engineConfig = EngineConfig.builder()

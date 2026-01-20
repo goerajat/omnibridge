@@ -71,9 +71,6 @@ public class FixSession implements NetworkHandler {
     // Message pool for incoming message parsing
     private final IncomingMessagePool incomingMessagePool;
 
-    // Reusable incoming message for non-pooled mode
-    private final IncomingFixMessage reusableIncomingMessage;
-
     // Clock for time sources
     private final Clock clock;
 
@@ -82,35 +79,28 @@ public class FixSession implements NetworkHandler {
         this.logStore = logStore;
         this.clock = config.getClock();
 
-        // Initialize outgoing message pool if enabled
-        if (config.isUsePooledMessages()) {
-            MessagePoolConfig poolConfig = MessagePoolConfig.builder()
-                    .poolSize(config.getMessagePoolSize())
-                    .maxMessageLength(config.getMaxMessageLength())
-                    .maxTagNumber(config.getMaxTagNumber())
-                    .beginString(config.getBeginString())
-                    .senderCompId(config.getSenderCompId())
-                    .targetCompId(config.getTargetCompId())
-                    .clock(clock)
-                    .build();
-            this.messagePool = new MessagePool(poolConfig);
-            this.messagePool.warmUp();
-            log.info("[{}] Outgoing message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
+        // Initialize outgoing message pool
+        MessagePoolConfig poolConfig = MessagePoolConfig.builder()
+                .poolSize(config.getMessagePoolSize())
+                .maxMessageLength(config.getMaxMessageLength())
+                .maxTagNumber(config.getMaxTagNumber())
+                .beginString(config.getBeginString())
+                .senderCompId(config.getSenderCompId())
+                .targetCompId(config.getTargetCompId())
+                .clock(clock)
+                .build();
+        this.messagePool = new MessagePool(poolConfig);
+        this.messagePool.warmUp();
+        log.info("[{}] Outgoing message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
 
-            // Initialize incoming message pool
-            IncomingMessagePoolConfig incomingConfig = IncomingMessagePoolConfig.builder()
-                    .poolSize(config.getMessagePoolSize())
-                    .bufferSize(config.getMaxMessageLength())
-                    .maxTagNumber(config.getMaxTagNumber())
-                    .build();
-            this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
-            this.reusableIncomingMessage = null;
-            log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
-        } else {
-            this.messagePool = null;
-            this.incomingMessagePool = null;
-            this.reusableIncomingMessage = new IncomingFixMessage();
-        }
+        // Initialize incoming message pool
+        IncomingMessagePoolConfig incomingConfig = IncomingMessagePoolConfig.builder()
+                .poolSize(config.getMessagePoolSize())
+                .bufferSize(config.getMaxMessageLength())
+                .maxTagNumber(config.getMaxTagNumber())
+                .build();
+        this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
+        log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
     }
 
     // ==================== Session Management ====================
@@ -230,12 +220,8 @@ public class FixSession implements NetworkHandler {
         // Feed data to reader
         reader.addData(data);
 
-        // Process complete messages using pooled or non-pooled approach
-        if (incomingMessagePool != null) {
-            processIncomingMessagesPooled();
-        } else {
-            processIncomingMessagesNonPooled();
-        }
+        // Process complete messages
+        processIncomingMessages();
 
         return bytesConsumed;
     }
@@ -244,7 +230,7 @@ public class FixSession implements NetworkHandler {
      * Process incoming messages using pooled IncomingFixMessage.
      * Messages are released back to the pool after callbacks complete.
      */
-    private void processIncomingMessagesPooled() {
+    private void processIncomingMessages() {
         while (true) {
             IncomingFixMessage message;
             try {
@@ -274,23 +260,6 @@ public class FixSession implements NetworkHandler {
             } finally {
                 // Release message back to pool after callback completes
                 message.release();
-            }
-        }
-    }
-
-    /**
-     * Process incoming messages using non-pooled IncomingFixMessage.
-     */
-    private void processIncomingMessagesNonPooled() {
-        while (reader.readIncomingMessage(reusableIncomingMessage)) {
-            try {
-                processIncomingMessage(reusableIncomingMessage);
-            } catch (Exception e) {
-                log.error("[{}] Error processing message", config.getSessionId(), e);
-                sendReject(reusableIncomingMessage.getSeqNum(), reusableIncomingMessage.getMsgType(),
-                          FixTags.SESSION_REJECT_REASON_OTHER, e.getMessage());
-            } finally {
-                reusableIncomingMessage.reset();
             }
         }
     }
@@ -660,14 +629,9 @@ public class FixSession implements NetworkHandler {
      *
      * @param msgType the message type (e.g., "D" for NewOrderSingle)
      * @return a pooled message ready for use
-     * @throws IllegalStateException if message pooling is not enabled
      * @throws InterruptedException if the thread is interrupted while waiting for a message
      */
     public OutgoingFixMessage acquireMessage(String msgType) throws InterruptedException {
-        if (messagePool == null) {
-            throw new IllegalStateException("Message pooling is not enabled. Set usePooledMessages(true) in SessionConfig.");
-        }
-
         OutgoingFixMessage msg = messagePool.acquire();
         msg.setMsgType(msgType);
         return msg;
@@ -678,13 +642,8 @@ public class FixSession implements NetworkHandler {
      *
      * @param msgType the message type
      * @return a pooled message, or null if none are available
-     * @throws IllegalStateException if message pooling is not enabled
      */
     public OutgoingFixMessage tryAcquireMessage(String msgType) {
-        if (messagePool == null) {
-            throw new IllegalStateException("Message pooling is not enabled. Set usePooledMessages(true) in SessionConfig.");
-        }
-
         OutgoingFixMessage msg = messagePool.tryAcquire();
         if (msg != null) {
             msg.setMsgType(msgType);
