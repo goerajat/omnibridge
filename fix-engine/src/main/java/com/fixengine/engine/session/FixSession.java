@@ -71,8 +71,8 @@ public class FixSession implements NetworkHandler {
     // Clock for time sources
     private final Clock clock;
 
-    // Ring buffer message wrapper (reusable, single-threaded access on commit)
-    private final RingBufferOutgoingMessage ringBufferMessage;
+    // Thread-local ring buffer message wrappers for concurrent access
+    private final ThreadLocal<RingBufferOutgoingMessage> ringBufferMessageThreadLocal;
 
     // Configuration for ring buffer messages
     private final MessagePoolConfig poolConfig;
@@ -93,8 +93,8 @@ public class FixSession implements NetworkHandler {
                 .clock(clock)
                 .build();
 
-        // Initialize ring buffer message wrapper
-        this.ringBufferMessage = new RingBufferOutgoingMessage(poolConfig);
+        // Initialize thread-local ring buffer message wrappers for concurrent access
+        this.ringBufferMessageThreadLocal = ThreadLocal.withInitial(() -> new RingBufferOutgoingMessage(poolConfig));
         log.info("[{}] Ring buffer capacity: {}", config.getSessionId(), config.getRingBufferCapacity());
 
         // Initialize incoming message pool
@@ -676,13 +676,14 @@ public class FixSession implements NetworkHandler {
         // Assign sequence number atomically
         int seqNum = outgoingSeqNum.getAndIncrement();
 
-        // Get the buffer and wrap the message
+        // Get the buffer and wrap the thread-local message
         MutableDirectBuffer buffer = ch.buffer();
-        ringBufferMessage.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
+        RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
+        message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
                 config.getBeginString(), config.getSenderCompId(), config.getTargetCompId());
-        ringBufferMessage.setMsgType(msgType);
+        message.setMsgType(msgType);
 
-        return ringBufferMessage;
+        return message;
     }
 
     /**

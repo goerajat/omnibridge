@@ -67,6 +67,7 @@ public class SessionTester implements Callable<Integer> {
         registerTest(new TestRequestTest());
         registerTest(new HeartbeatTest());
         registerTest(new ResendRequestTest());
+        registerTest(new ConcurrentOrderTest());
     }
 
     private void registerTest(SessionTest test) {
