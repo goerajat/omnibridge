@@ -13,6 +13,7 @@
     <description>High-performance FIX protocol engine with non-blocking I/O and shared memory persistence</description>
 
     <modules>
+        <module>fix-config</module>
         <module>fix-network-io</module>
         <module>fix-persistence</module>
         <module>fix-message</module>
@@ -38,11 +39,17 @@
         <agrona.version>1.20.0</agrona.version>
         <jackson.version>2.16.1</jackson.version>
         <picocli.version>4.7.5</picocli.version>
+        <typesafe.config.version>1.4.3</typesafe.config.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <!-- Internal modules -->
+            <dependency>
+                <groupId>com.fixengine</groupId>
+                <artifactId>fix-config</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
                 <artifactId>fix-network-io</artifactId>
@@ -114,6 +121,13 @@
                 <groupId>info.picocli</groupId>
                 <artifactId>picocli</artifactId>
                 <version>${picocli.version}</version>
+            </dependency>
+
+            <!-- Configuration -->
+            <dependency>
+                <groupId>com.typesafe</groupId>
+                <artifactId>config</artifactId>
+                <version>${typesafe.config.version}</version>
             </dependency>
 
             <!-- Testing -->

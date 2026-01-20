@@ -1,102 +1,112 @@
 #!/bin/bash
-# Run latency test: launches acceptor in latency mode, then initiator in latency mode
-# Usage: ./run-latency-test.sh [initiator-options]
-#
-# Default test configuration:
-#   Acceptor: port 9876, latency mode enabled
-#   Initiator: connects to localhost:9876, latency mode enabled
-#
-# Example:
-#   ./run-latency-test.sh
-#   ./run-latency-test.sh --warmup-orders 5000 --test-orders 500 --rate 200
 
-set -e
+# ==========================================================================
+# Latency Test Script for Development Environment
+# Runs acceptor in background, then initiator in latency mode
+# Usage: run-latency-test.sh [warmup-orders] [test-orders] [rate]
+# ==========================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="$SCRIPT_DIR/fix-sample-apps/target"
+cd "$SCRIPT_DIR"
 
-echo "============================================================"
-echo "FIX Engine Latency Test"
-echo "============================================================"
-echo
+UBER_JAR="fix-sample-apps/target/fix-sample-apps-1.0.0-SNAPSHOT-all.jar"
+CONFIG_DIR="fix-sample-apps/src/main/resources"
 
-# Check if compiled
-if [ ! -d "$TARGET_DIR/classes" ]; then
-    echo "Project not compiled. Running mvn compile..."
-    cd "$SCRIPT_DIR"
-    mvn compile -q
-fi
-
-# Build classpath
-CP="$TARGET_DIR/classes"
-CP="$CP:$SCRIPT_DIR/fix-engine/target/classes"
-CP="$CP:$SCRIPT_DIR/fix-message/target/classes"
-CP="$CP:$SCRIPT_DIR/fix-network-io/target/classes"
-CP="$CP:$SCRIPT_DIR/fix-persistence/target/classes"
-
-# Add Maven dependencies from local repo
-M2_REPO="$HOME/.m2/repository"
-CP="$CP:$M2_REPO/org/slf4j/slf4j-api/2.0.9/slf4j-api-2.0.9.jar"
-CP="$CP:$M2_REPO/ch/qos/logback/logback-classic/1.4.14/logback-classic-1.4.14.jar"
-CP="$CP:$M2_REPO/ch/qos/logback/logback-core/1.4.14/logback-core-1.4.14.jar"
-CP="$CP:$M2_REPO/info/picocli/picocli/4.7.5/picocli-4.7.5.jar"
-CP="$CP:$M2_REPO/com/fasterxml/jackson/core/jackson-databind/2.16.1/jackson-databind-2.16.1.jar"
-CP="$CP:$M2_REPO/com/fasterxml/jackson/core/jackson-core/2.16.1/jackson-core-2.16.1.jar"
-CP="$CP:$M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.16.1/jackson-annotations-2.16.1.jar"
-CP="$CP:$M2_REPO/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar"
-CP="$CP:$M2_REPO/net/java/dev/jna/jna-platform/5.14.0/jna-platform-5.14.0.jar"
-CP="$CP:$M2_REPO/org/agrona/agrona/1.20.0/agrona-1.20.0.jar"
-
-# Cleanup function to kill acceptor on exit
-ACCEPTOR_PID=""
-cleanup() {
-    if [ -n "$ACCEPTOR_PID" ] && kill -0 "$ACCEPTOR_PID" 2>/dev/null; then
-        echo "Stopping acceptor (PID: $ACCEPTOR_PID)..."
-        kill "$ACCEPTOR_PID" 2>/dev/null || true
-        wait "$ACCEPTOR_PID" 2>/dev/null || true
-    fi
-}
-trap cleanup EXIT
-
-# Start acceptor in background
-echo "Starting FIX Acceptor in latency mode (background)..."
-java -cp "$CP" com.fixengine.samples.acceptor.SampleAcceptor --latency --fill-rate 1.0 &
-ACCEPTOR_PID=$!
-
-# Wait for acceptor to start listening
-echo "Waiting for acceptor to start..."
-sleep 3
-
-# Check if acceptor is still running
-if ! kill -0 "$ACCEPTOR_PID" 2>/dev/null; then
-    echo "ERROR: Acceptor failed to start!"
+# Check if uber jar exists
+if [ ! -f "$UBER_JAR" ]; then
+    echo "ERROR: Uber jar not found at $UBER_JAR"
+    echo "Please run 'mvn install -DskipTests' first."
     exit 1
 fi
 
-echo
-echo "Starting FIX Initiator in latency mode..."
-echo "============================================================"
-echo
+# Default parameters
+WARMUP_ORDERS=${1:-10000}
+TEST_ORDERS=${2:-1000}
+RATE=${3:-100}
 
-# Run initiator in foreground
-set +e
-java -cp "$CP" com.fixengine.samples.initiator.SampleInitiator --latency "$@"
-INITIATOR_EXIT_CODE=$?
-set -e
+echo "=========================================================================="
+echo "FIX Engine Latency Test"
+echo "=========================================================================="
+echo "Uber JAR: $UBER_JAR"
+echo "Warmup Orders: $WARMUP_ORDERS"
+echo "Test Orders: $TEST_ORDERS"
+echo "Rate: $RATE orders/sec"
+echo "=========================================================================="
 
-echo
-echo "============================================================"
+# JVM options for low latency
+JVM_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch"
 
-# Report result
-echo
-if [ $INITIATOR_EXIT_CODE -eq 0 ]; then
-    echo "============================================================"
-    echo "LATENCY TEST COMPLETED SUCCESSFULLY"
-    echo "============================================================"
-else
-    echo "============================================================"
-    echo "LATENCY TEST FAILED (exit code: $INITIATOR_EXIT_CODE)"
-    echo "============================================================"
+ACCEPTOR_PID=""
+
+# Cleanup function
+cleanup() {
+    echo ""
+    echo "Stopping acceptor..."
+    if [ -n "$ACCEPTOR_PID" ] && kill -0 "$ACCEPTOR_PID" 2>/dev/null; then
+        kill "$ACCEPTOR_PID" 2>/dev/null || true
+        sleep 1
+        kill -9 "$ACCEPTOR_PID" 2>/dev/null || true
+    fi
+    # Also kill any process on port 9876
+    if command -v lsof &> /dev/null; then
+        lsof -ti:9876 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    elif command -v fuser &> /dev/null; then
+        fuser -k 9876/tcp 2>/dev/null || true
+    fi
+}
+
+trap cleanup EXIT
+
+# Start acceptor in background (uber jar default main class is acceptor)
+echo ""
+echo "Starting FIX Acceptor in background..."
+java $JVM_OPTS -jar "$UBER_JAR" -c "$CONFIG_DIR/latency-acceptor.conf" --latency > acceptor.log 2>&1 &
+ACCEPTOR_PID=$!
+
+# Wait for acceptor to start (check if port is listening)
+echo "Waiting for acceptor to start..."
+ACCEPTOR_READY=0
+for i in {1..30}; do
+    if nc -z localhost 9876 2>/dev/null; then
+        ACCEPTOR_READY=1
+        echo "Acceptor is ready on port 9876"
+        break
+    fi
+    # Fallback check using /dev/tcp (bash built-in)
+    if (echo >/dev/tcp/localhost/9876) 2>/dev/null; then
+        ACCEPTOR_READY=1
+        echo "Acceptor is ready on port 9876"
+        break
+    fi
+    sleep 1
+done
+
+if [ $ACCEPTOR_READY -eq 0 ]; then
+    echo "ERROR: Acceptor failed to start within 30 seconds"
+    echo "Check acceptor.log for details"
+    cat acceptor.log
+    exit 1
 fi
 
-exit $INITIATOR_EXIT_CODE
+# Small delay to ensure acceptor is fully initialized
+sleep 2
+
+# Run initiator in latency mode (use -cp to specify different main class)
+echo ""
+echo "Starting FIX Initiator in latency mode..."
+echo ""
+
+TEST_EXIT_CODE=0
+java $JVM_OPTS -cp "$UBER_JAR" com.fixengine.samples.initiator.SampleInitiator -c "$CONFIG_DIR/latency-initiator.conf" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+
+echo "=========================================================================="
+if [ $TEST_EXIT_CODE -eq 0 ]; then
+    echo "Latency test completed successfully"
+else
+    echo "Latency test completed with errors (exit code: $TEST_EXIT_CODE)"
+fi
+echo "=========================================================================="
+echo "Acceptor log saved to: acceptor.log"
+echo "=========================================================================="
+
+exit $TEST_EXIT_CODE

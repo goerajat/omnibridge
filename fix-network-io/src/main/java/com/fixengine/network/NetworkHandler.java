@@ -9,6 +9,31 @@ import java.nio.ByteBuffer;
 public interface NetworkHandler {
 
     /**
+     * Default number of bytes to read when no specific amount is requested.
+     */
+    int DEFAULT_BYTES_TO_READ = 8192;
+
+    /**
+     * Get the number of bytes the handler wants to read from the network.
+     * This allows protocol-aware handlers to specify exact byte counts for
+     * efficient message framing.
+     *
+     * <p>For FIX protocol handlers:</p>
+     * <ul>
+     *   <li>Return a small amount (e.g., 25 bytes) when starting to read a new message,
+     *       enough to parse the header and determine message length</li>
+     *   <li>After parsing the header, return the exact number of remaining bytes needed</li>
+     *   <li>Once the message is complete, return the header size again for the next message</li>
+     * </ul>
+     *
+     * @param channel the channel to read from
+     * @return the number of bytes to read, or DEFAULT_BYTES_TO_READ if unspecified
+     */
+    default int getNumBytesToRead(TcpChannel channel) {
+        return DEFAULT_BYTES_TO_READ;
+    }
+
+    /**
      * Called when a connection is established.
      * For acceptors, this is called for each accepted connection.
      * For connectors, this is called when the connection completes.

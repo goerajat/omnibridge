@@ -1,5 +1,8 @@
 package com.fixengine.engine;
 
+import com.fixengine.config.EngineSessionConfig;
+import com.fixengine.config.FixEngineConfig;
+import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.engine.config.EngineConfig;
 import com.fixengine.engine.config.SessionConfig;
 import com.fixengine.engine.session.EodEvent;
@@ -39,6 +42,8 @@ public class FixEngine {
     private static final Logger log = LoggerFactory.getLogger(FixEngine.class);
 
     private final EngineConfig config;
+    private final FixEngineConfig engineConfig;
+    private final ComponentProvider<?, ?, ?> componentProvider;
     private final NetworkEventLoop eventLoop;
     private final FixLogStore logStore;
 
@@ -65,17 +70,21 @@ public class FixEngine {
 
     /**
      * Create a FIX engine with the given configuration.
+     * @deprecated Use FixEngine(FixEngineConfig, ComponentProvider) instead
      */
+    @Deprecated
     public FixEngine(EngineConfig config) throws IOException {
         this.config = config;
+        this.engineConfig = null;
+        this.componentProvider = null;
 
-        // Create event loop
+        // Create event loop directly (legacy mode)
         this.eventLoop = new NetworkEventLoop();
         if (config.getCpuAffinity() >= 0) {
             eventLoop.setCpuAffinity(config.getCpuAffinity());
         }
 
-        // Create log store
+        // Create log store directly (legacy mode)
         if (config.getPersistencePath() != null) {
             this.logStore = new MemoryMappedFixLogStore(
                 config.getPersistencePath(),
@@ -85,7 +94,59 @@ public class FixEngine {
             this.logStore = null;
         }
 
-        log.info("FIX Engine created: {}", config);
+        log.info("FIX Engine created (legacy mode): {}", config);
+    }
+
+    /**
+     * Create a FIX engine using the provider pattern.
+     * The provider is used to access the NetworkEventLoop and FixLogStore.
+     *
+     * @param engineConfig the FIX engine configuration
+     * @param provider the component provider
+     */
+    public FixEngine(FixEngineConfig engineConfig, ComponentProvider<?, ?, ?> provider) {
+        this.engineConfig = engineConfig;
+        this.componentProvider = provider;
+        this.config = null; // Not using legacy config
+
+        // Get event loop from provider
+        try {
+            this.eventLoop = (NetworkEventLoop) provider.getNetworkProvider().get();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get NetworkEventLoop from provider", e);
+        }
+
+        // Get log store from provider
+        if (provider.getPersistenceProvider().isEnabled()) {
+            try {
+                this.logStore = (FixLogStore) provider.getPersistenceProvider().get();
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to get FixLogStore from provider", e);
+            }
+        } else {
+            this.logStore = null;
+        }
+
+        log.info("FIX Engine created with provider: network={}, persistence={}",
+                eventLoop != null, logStore != null);
+    }
+
+    /**
+     * Create a FIX engine with pre-created NetworkEventLoop and FixLogStore.
+     * This constructor is useful when you want direct control over component creation.
+     *
+     * @param engineConfig the FIX engine configuration
+     * @param eventLoop the network event loop
+     * @param logStore the persistence store (may be null)
+     */
+    public FixEngine(FixEngineConfig engineConfig, NetworkEventLoop eventLoop, FixLogStore logStore) {
+        this.engineConfig = engineConfig;
+        this.componentProvider = null;
+        this.config = null;
+        this.eventLoop = eventLoop;
+        this.logStore = logStore;
+
+        log.info("FIX Engine created with pre-built components");
     }
 
     /**
@@ -120,9 +181,19 @@ public class FixEngine {
             0, 1, TimeUnit.MINUTES
         );
 
-        // Start acceptor listeners
-        for (SessionConfig sessionConfig : config.getSessions()) {
-            if (sessionConfig.isAcceptor()) {
+        // Start acceptor listeners (legacy mode only - sessions configured in EngineConfig)
+        if (config != null) {
+            for (SessionConfig sessionConfig : config.getSessions()) {
+                if (sessionConfig.isAcceptor()) {
+                    startAcceptor(sessionConfig);
+                }
+            }
+        }
+
+        // Start acceptor listeners for dynamically created sessions
+        for (FixSession session : sessions.values()) {
+            SessionConfig sessionConfig = session.getConfig();
+            if (sessionConfig.isAcceptor() && !acceptors.containsKey(sessionConfig.getPort())) {
                 startAcceptor(sessionConfig);
             }
         }
@@ -205,7 +276,7 @@ public class FixEngine {
     // ==================== Session Management ====================
 
     /**
-     * Create a session from configuration.
+     * Create a session from SessionConfig.
      */
     public FixSession createSession(SessionConfig sessionConfig) {
         String sessionId = sessionConfig.getSessionId();
@@ -228,6 +299,85 @@ public class FixEngine {
         log.info("Session created: {}", sessionId);
 
         return session;
+    }
+
+    /**
+     * Create a session from EngineSessionConfig (HOCON-based configuration).
+     * This is the preferred method when using the new configuration system.
+     *
+     * @param engineSessionConfig the session configuration from HOCON
+     * @return the created FixSession
+     */
+    public FixSession createSession(EngineSessionConfig engineSessionConfig) {
+        return createSession(convertToSessionConfig(engineSessionConfig));
+    }
+
+    /**
+     * Convert EngineSessionConfig to SessionConfig.
+     * This bridges the new HOCON-based configuration with the existing session infrastructure.
+     */
+    private SessionConfig convertToSessionConfig(EngineSessionConfig config) {
+        SessionConfig.Builder builder = SessionConfig.builder()
+                .sessionName(config.getSessionName())
+                .beginString(config.getBeginString())
+                .senderCompId(config.getSenderCompId())
+                .targetCompId(config.getTargetCompId())
+                .port(config.getPort())
+                .heartbeatInterval(config.getHeartbeatInterval())
+                .resetOnLogon(config.isResetOnLogon())
+                .resetOnLogout(config.isResetOnLogout())
+                .resetOnDisconnect(config.isResetOnDisconnect())
+                .reconnectInterval(config.getReconnectInterval())
+                .maxReconnectAttempts(config.getMaxReconnectAttempts())
+                .timeZone(config.getTimeZone())
+                .resetOnEod(config.isResetOnEod())
+                .logMessages(config.isLogMessages())
+                .usePooledMessages(config.isUsePooledMessages())
+                .messagePoolSize(config.getMessagePoolSize())
+                .maxMessageLength(config.getMaxMessageLength())
+                .maxTagNumber(config.getMaxTagNumber());
+
+        // Set role
+        if (config.getRole() == EngineSessionConfig.Role.ACCEPTOR) {
+            builder.acceptor();
+        } else {
+            builder.initiator();
+            if (config.getHost() != null) {
+                builder.host(config.getHost());
+            }
+        }
+
+        // Set optional time fields
+        config.getStartTime().ifPresent(builder::startTime);
+        config.getEndTime().ifPresent(builder::endTime);
+        config.getEodTime().ifPresent(builder::eodTime);
+        config.getPersistencePath().ifPresent(builder::persistencePath);
+
+        return builder.build();
+    }
+
+    /**
+     * Create all sessions defined in the FixEngineConfig.
+     * This is typically called automatically during engine initialization.
+     *
+     * @return list of created sessions
+     */
+    public List<FixSession> createSessionsFromConfig() {
+        if (engineConfig == null) {
+            log.warn("No FixEngineConfig available, cannot create sessions from config");
+            return List.of();
+        }
+
+        List<FixSession> createdSessions = new java.util.ArrayList<>();
+        for (EngineSessionConfig sessionConfig : engineConfig.getSessions()) {
+            try {
+                FixSession session = createSession(sessionConfig);
+                createdSessions.add(session);
+            } catch (Exception e) {
+                log.error("Failed to create session: {}", sessionConfig.getSessionName(), e);
+            }
+        }
+        return createdSessions;
     }
 
     /**
@@ -404,6 +554,10 @@ public class FixEngine {
 
     private void checkHeartbeats() {
         for (FixSession session : sessions.values()) {
+            // Only check heartbeat for sessions that are logged on
+            if (!session.getState().isLoggedOn()) {
+                continue;
+            }
             try {
                 session.checkHeartbeat();
             } catch (Exception e) {
@@ -413,11 +567,23 @@ public class FixEngine {
     }
 
     private void checkSchedules() {
-        for (SessionConfig sessionConfig : config.getSessions()) {
+        // Check schedules for legacy config sessions
+        if (config != null) {
+            for (SessionConfig sessionConfig : config.getSessions()) {
+                try {
+                    checkSessionSchedule(sessionConfig);
+                } catch (Exception e) {
+                    log.error("Error checking schedule for session {}", sessionConfig.getSessionId(), e);
+                }
+            }
+        }
+
+        // Check schedules for dynamically created sessions
+        for (FixSession session : sessions.values()) {
             try {
-                checkSessionSchedule(sessionConfig);
+                checkSessionSchedule(session.getConfig());
             } catch (Exception e) {
-                log.error("Error checking schedule for session {}", sessionConfig.getSessionId(), e);
+                log.error("Error checking schedule for session {}", session.getConfig().getSessionId(), e);
             }
         }
     }
@@ -603,6 +769,14 @@ public class FixEngine {
         }
 
         @Override
+        public int getNumBytesToRead(TcpChannel channel) {
+            if (session != null) {
+                return session.getNumBytesToRead(channel);
+            }
+            return NetworkHandler.DEFAULT_BYTES_TO_READ;
+        }
+
+        @Override
         public void onConnected(TcpChannel channel) {
             log.info("Accepted connection on port {}", templateConfig.getPort());
 
@@ -645,10 +819,40 @@ public class FixEngine {
     }
 
     /**
-     * Get the engine configuration.
+     * Get the legacy engine configuration.
+     * @deprecated Use getEngineConfig() instead
      */
+    @Deprecated
     public EngineConfig getConfig() {
         return config;
+    }
+
+    /**
+     * Get the FIX engine configuration.
+     */
+    public FixEngineConfig getEngineConfig() {
+        return engineConfig;
+    }
+
+    /**
+     * Get the component provider.
+     */
+    public ComponentProvider<?, ?, ?> getComponentProvider() {
+        return componentProvider;
+    }
+
+    /**
+     * Get the network event loop.
+     */
+    public NetworkEventLoop getEventLoop() {
+        return eventLoop;
+    }
+
+    /**
+     * Get the log store.
+     */
+    public FixLogStore getLogStore() {
+        return logStore;
     }
 
     /**

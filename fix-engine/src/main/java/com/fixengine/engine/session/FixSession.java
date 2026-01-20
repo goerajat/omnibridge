@@ -196,6 +196,11 @@ public class FixSession implements NetworkHandler {
     // ==================== NetworkHandler Implementation ====================
 
     @Override
+    public int getNumBytesToRead(TcpChannel channel) {
+        return reader.getBytesNeeded();
+    }
+
+    @Override
     public void onConnected(TcpChannel channel) {
         log.info("[{}] Connected to {}:{}", config.getSessionId(), config.getHost(), config.getPort());
         this.channel = channel;

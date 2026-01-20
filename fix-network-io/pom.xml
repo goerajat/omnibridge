@@ -15,6 +15,12 @@
     <description>Non-blocking network I/O abstractions with CPU affinity support</description>
 
     <dependencies>
+        <!-- Configuration -->
+        <dependency>
+            <groupId>com.fixengine</groupId>
+            <artifactId>fix-config</artifactId>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>

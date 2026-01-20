@@ -171,9 +171,9 @@ public final class IncomingFixMessage {
         Arrays.fill(fieldIndex, -1);
 
         // Reset CharSequence pool
-        //for (int i = 0; i < charSeqPoolIndex; i++) {
-        //    charSeqPool[i].reset();
-        //}
+        for (int i = 0; i < charSeqPoolIndex; i++) {
+            charSeqPool[i].reset();
+        }
         charSeqPoolIndex = 0;
     }
 

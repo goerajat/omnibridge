@@ -18,6 +18,10 @@
         <!-- Internal modules -->
         <dependency>
             <groupId>com.fixengine</groupId>
+            <artifactId>fix-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fixengine</groupId>
             <artifactId>fix-network-io</artifactId>
         </dependency>
         <dependency>

@@ -38,11 +38,20 @@ public class FixReader {
     // BeginString prefix: "8=FIX"
     private static final byte[] BEGIN_STRING_PREFIX = {'8', '=', 'F', 'I', 'X'};
 
+    /**
+     * Number of bytes needed to read the FIX header and determine message length.
+     * This is enough for: "8=FIX.4.2|9=XXXXX|" (BeginString + BodyLength)
+     */
+    public static final int HEADER_READ_SIZE = 25;
+
     // State
     private boolean inMessage = false;
     private int expectedLength = -1;
     private int bodyStart = -1;
     private int checksumStart = -1;
+
+    // Total expected message length (set after parsing header)
+    private int expectedTotalMessageLength = -1;
 
     // Buffer for accumulating incoming data
     private ByteBuffer accumulationBuffer;
@@ -53,6 +62,104 @@ public class FixReader {
      */
     public FixReader() {
         this.accumulationBuffer = ByteBuffer.allocate(DEFAULT_BUFFER_SIZE);
+    }
+
+    /**
+     * Get the number of bytes needed for the next read operation.
+     *
+     * <p>This method enables efficient network I/O by allowing the caller to
+     * read exactly the right number of bytes:</p>
+     * <ul>
+     *   <li>If no message is in progress, returns {@link #HEADER_READ_SIZE} bytes
+     *       (enough to parse the header and determine message length)</li>
+     *   <li>If the header has been parsed and we know the message length,
+     *       returns the remaining bytes needed to complete the message</li>
+     * </ul>
+     *
+     * @return the number of bytes needed for the next read
+     */
+    public int getBytesNeeded() {
+        int currentBytes = accumulationBuffer.position();
+
+        if (expectedTotalMessageLength > 0) {
+            // We know the total message length, return remaining bytes needed
+            int remaining = expectedTotalMessageLength - currentBytes;
+            return Math.max(remaining, 0);
+        }
+
+        // No message length determined yet, request header bytes
+        if (currentBytes < HEADER_READ_SIZE) {
+            return HEADER_READ_SIZE - currentBytes;
+        }
+
+        // We have header bytes but haven't parsed the length yet
+        // Try to parse the header to determine message length
+        tryParseHeader();
+
+        if (expectedTotalMessageLength > 0) {
+            int remaining = expectedTotalMessageLength - currentBytes;
+            return Math.max(remaining, 0);
+        }
+
+        // Couldn't parse header, request more header bytes
+        return HEADER_READ_SIZE;
+    }
+
+    /**
+     * Try to parse the header to determine the expected total message length.
+     * This is called internally when we have enough bytes but haven't parsed yet.
+     */
+    private void tryParseHeader() {
+        if (accumulationBuffer.position() < 20) {
+            return; // Not enough data for minimal header
+        }
+
+        // Temporarily flip buffer for reading
+        int savedPosition = accumulationBuffer.position();
+        accumulationBuffer.flip();
+
+        try {
+            int startPos = 0;
+            int available = accumulationBuffer.remaining();
+
+            // Find BeginString
+            int msgStart = findBeginString(accumulationBuffer, startPos, available);
+            if (msgStart < 0) {
+                return;
+            }
+
+            // Parse BodyLength (9=XXX)
+            int bodyLengthStart = findTag(accumulationBuffer, startPos, available, 9);
+            if (bodyLengthStart < 0) {
+                return;
+            }
+
+            int bodyLengthValue = parseIntValue(accumulationBuffer, bodyLengthStart, startPos + available);
+            if (bodyLengthValue < 0) {
+                return;
+            }
+
+            // Find where body starts (after 9=XXX<SOH>)
+            int bodyStartPos = bodyLengthStart;
+            while (bodyStartPos < startPos + available && accumulationBuffer.get(bodyStartPos) != SOH) {
+                bodyStartPos++;
+            }
+            bodyStartPos++; // Skip SOH
+
+            if (bodyStartPos >= startPos + available) {
+                return;
+            }
+
+            // Calculate expected total message length
+            // Message = BeginString + BodyLength + Body + CheckSum
+            // CheckSum is always "10=XXX<SOH>" = 7 bytes
+            expectedTotalMessageLength = bodyStartPos + bodyLengthValue + 7;
+
+        } finally {
+            // Restore buffer state for writing
+            accumulationBuffer.position(savedPosition);
+            accumulationBuffer.limit(accumulationBuffer.capacity());
+        }
     }
 
     /**
@@ -98,6 +205,8 @@ public class FixReader {
         if (result > 0) {
             // Successfully read a message, compact remaining data
             accumulationBuffer.compact();
+            // Reset expected length for next message
+            expectedTotalMessageLength = -1;
             return true;
         } else {
             // No complete message, restore position for more data
@@ -115,6 +224,7 @@ public class FixReader {
         expectedLength = -1;
         bodyStart = -1;
         checksumStart = -1;
+        expectedTotalMessageLength = -1;
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.fixengine.network;
 
+import com.fixengine.config.NetworkConfig;
+import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.network.affinity.CpuAffinity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,11 +11,10 @@ import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
-import java.util.Iterator;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Single-threaded non-blocking network event loop.
@@ -21,6 +22,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * connecting to remote hosts, reading, and writing data.
  *
  * <p>All callbacks are invoked on the event loop thread.</p>
+ *
+ * <p>Supports two modes of operation:</p>
+ * <ul>
+ *   <li><b>Normal mode</b>: Uses blocking select() with timeout for power efficiency</li>
+ *   <li><b>Busy spin mode</b>: Uses selectNow() for minimal latency at cost of CPU usage</li>
+ * </ul>
  */
 public class NetworkEventLoop implements Runnable, AutoCloseable {
 
@@ -28,20 +35,26 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
 
     private static final int DEFAULT_READ_BUFFER_SIZE = 64 * 1024;
     private static final int DEFAULT_WRITE_BUFFER_SIZE = 64 * 1024;
-    private static final long SELECT_TIMEOUT_MS = 100;
+    private static final long DEFAULT_SELECT_TIMEOUT_MS = 100;
 
     private final String name;
     private final int cpuAffinity;
     private final int readBufferSize;
     private final int writeBufferSize;
+    private final long selectTimeoutMs;
+    private final boolean busySpinMode;
 
     private final Selector selector;
     private final Queue<Runnable> taskQueue;
     private final AtomicBoolean running;
     private final AtomicBoolean started;
 
+    // Reusable consumer to avoid garbage in busy spin mode
+    private final Consumer<SelectionKey> keyProcessor;
+
     private Thread eventLoopThread;
     private NetworkHandler defaultHandler;
+    private ComponentProvider<?, ?, ?> componentProvider;
 
     /**
      * Create a new NetworkEventLoop with default settings.
@@ -49,7 +62,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
      * @throws IOException if unable to open the selector
      */
     public NetworkEventLoop() throws IOException {
-        this("default", -1, DEFAULT_READ_BUFFER_SIZE, DEFAULT_WRITE_BUFFER_SIZE);
+        this("default", -1, DEFAULT_READ_BUFFER_SIZE, DEFAULT_WRITE_BUFFER_SIZE, DEFAULT_SELECT_TIMEOUT_MS, false);
     }
 
     /**
@@ -59,7 +72,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
      * @throws IOException if unable to open the selector
      */
     public NetworkEventLoop(String name) throws IOException {
-        this(name, -1, DEFAULT_READ_BUFFER_SIZE, DEFAULT_WRITE_BUFFER_SIZE);
+        this(name, -1, DEFAULT_READ_BUFFER_SIZE, DEFAULT_WRITE_BUFFER_SIZE, DEFAULT_SELECT_TIMEOUT_MS, false);
     }
 
     /**
@@ -70,7 +83,34 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
      * @throws IOException if unable to open the selector
      */
     public NetworkEventLoop(String name, int cpuAffinity) throws IOException {
-        this(name, cpuAffinity, DEFAULT_READ_BUFFER_SIZE, DEFAULT_WRITE_BUFFER_SIZE);
+        this(name, cpuAffinity, DEFAULT_READ_BUFFER_SIZE, DEFAULT_WRITE_BUFFER_SIZE, DEFAULT_SELECT_TIMEOUT_MS, false);
+    }
+
+    /**
+     * Create a new NetworkEventLoop from NetworkConfig.
+     *
+     * @param config the network configuration
+     * @throws IOException if unable to open the selector
+     */
+    public NetworkEventLoop(NetworkConfig config) throws IOException {
+        this(config, null);
+    }
+
+    /**
+     * Create a new NetworkEventLoop from NetworkConfig and ComponentProvider.
+     *
+     * @param config the network configuration
+     * @param provider the component provider (may be null)
+     * @throws IOException if unable to open the selector
+     */
+    public NetworkEventLoop(NetworkConfig config, ComponentProvider<?, ?, ?> provider) throws IOException {
+        this(config.getName(),
+             config.getCpuAffinity(),
+             config.getReadBufferSize(),
+             config.getWriteBufferSize(),
+             config.getSelectTimeoutMs(),
+             config.isBusySpinMode());
+        this.componentProvider = provider;
     }
 
     /**
@@ -83,14 +123,49 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
      * @throws IOException if unable to open the selector
      */
     public NetworkEventLoop(String name, int cpuAffinity, int readBufferSize, int writeBufferSize) throws IOException {
+        this(name, cpuAffinity, readBufferSize, writeBufferSize, DEFAULT_SELECT_TIMEOUT_MS, false);
+    }
+
+    /**
+     * Create a new NetworkEventLoop with full configuration.
+     *
+     * @param name the name of this event loop
+     * @param cpuAffinity the CPU core to bind to (-1 for no affinity)
+     * @param readBufferSize the size of read buffers for each channel
+     * @param writeBufferSize the size of write buffers for each channel
+     * @param selectTimeoutMs the select timeout in milliseconds
+     * @param busySpinMode whether to use busy spin mode (selectNow instead of select)
+     * @throws IOException if unable to open the selector
+     */
+    public NetworkEventLoop(String name, int cpuAffinity, int readBufferSize, int writeBufferSize,
+                            long selectTimeoutMs, boolean busySpinMode) throws IOException {
         this.name = name;
         this.cpuAffinity = cpuAffinity;
         this.readBufferSize = readBufferSize;
         this.writeBufferSize = writeBufferSize;
+        this.selectTimeoutMs = selectTimeoutMs;
+        this.busySpinMode = busySpinMode;
         this.selector = Selector.open();
         this.taskQueue = new ConcurrentLinkedQueue<>();
         this.running = new AtomicBoolean(false);
         this.started = new AtomicBoolean(false);
+
+        // Create reusable consumer to avoid garbage in selectNow path
+        this.keyProcessor = this::processKey;
+    }
+
+    /**
+     * Get the component provider.
+     */
+    public ComponentProvider<?, ?, ?> getComponentProvider() {
+        return componentProvider;
+    }
+
+    /**
+     * Set the component provider.
+     */
+    public void setComponentProvider(ComponentProvider<?, ?, ?> provider) {
+        this.componentProvider = provider;
     }
 
     /**
@@ -102,9 +177,18 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
 
     /**
      * Set CPU affinity (must be called before start).
+     * @deprecated Use constructor with NetworkConfig instead
      */
+    @Deprecated
     public void setCpuAffinity(int cpu) {
         // Note: this only takes effect if not already started
+    }
+
+    /**
+     * Check if busy spin mode is enabled.
+     */
+    public boolean isBusySpinMode() {
+        return busySpinMode;
     }
 
     /**
@@ -116,7 +200,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
             eventLoopThread = new Thread(this, "NetworkIO-" + name);
             eventLoopThread.setDaemon(true);
             eventLoopThread.start();
-            log.info("NetworkEventLoop '{}' started", name);
+            log.info("NetworkEventLoop '{}' started (busySpinMode={})", name, busySpinMode);
         }
     }
 
@@ -280,24 +364,13 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
             CpuAffinity.setAffinity(cpuAffinity);
         }
 
-        log.info("NetworkEventLoop '{}' thread started (cpuAffinity={})", name, cpuAffinity);
+        log.info("NetworkEventLoop '{}' thread started (cpuAffinity={}, busySpinMode={})",
+                name, cpuAffinity, busySpinMode);
 
-        while (running.get()) {
-            try {
-                // Process any queued tasks
-                processTasks();
-
-                // Wait for events
-                int selected = selector.select(SELECT_TIMEOUT_MS);
-
-                if (selected > 0) {
-                    processSelectedKeys();
-                }
-            } catch (IOException e) {
-                if (running.get()) {
-                    log.error("Error in event loop: {}", e.getMessage(), e);
-                }
-            }
+        if (busySpinMode) {
+            runBusySpinLoop();
+        } else {
+            runNormalLoop();
         }
 
         // Cleanup
@@ -311,6 +384,77 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
         log.info("NetworkEventLoop '{}' thread exited", name);
     }
 
+    /**
+     * Normal event loop using blocking select with timeout.
+     */
+    private void runNormalLoop() {
+        while (running.get()) {
+            try {
+                // Process any queued tasks
+                processTasks();
+
+                // Wait for events
+                int selected = selector.select(selectTimeoutMs);
+
+                if (selected > 0) {
+                    processSelectedKeysNormal();
+                }
+            } catch (IOException e) {
+                if (running.get()) {
+                    log.error("Error in event loop: {}", e.getMessage(), e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Busy spin event loop using selectNow for minimal latency.
+     * Uses selectNow(Consumer) to avoid Iterator allocation.
+     */
+    private void runBusySpinLoop() {
+        while (running.get()) {
+            try {
+                // Process any queued tasks
+                processTasks();
+
+                // Non-blocking select with consumer to avoid garbage
+                selector.selectNow(keyProcessor);
+
+            } catch (IOException e) {
+                if (running.get()) {
+                    log.error("Error in event loop: {}", e.getMessage(), e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Process a single selection key (used by busy spin mode).
+     */
+    private void processKey(SelectionKey key) {
+        if (!key.isValid()) {
+            return;
+        }
+
+        try {
+            if (key.isAcceptable()) {
+                handleAccept(key);
+            } else if (key.isConnectable()) {
+                handleConnect(key);
+            } else {
+                if (key.isReadable()) {
+                    handleRead(key);
+                }
+                if (key.isValid() && key.isWritable()) {
+                    handleWrite(key);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error processing key: {}", e.getMessage(), e);
+            handleError(key, e);
+        }
+    }
+
     private void processTasks() {
         Runnable task;
         while ((task = taskQueue.poll()) != null) {
@@ -322,35 +466,17 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
         }
     }
 
-    private void processSelectedKeys() {
-        Set<SelectionKey> selectedKeys = selector.selectedKeys();
-        Iterator<SelectionKey> iterator = selectedKeys.iterator();
+    /**
+     * Process selected keys using iterator (normal mode).
+     */
+    private void processSelectedKeysNormal() {
+        var selectedKeys = selector.selectedKeys();
+        var iterator = selectedKeys.iterator();
 
         while (iterator.hasNext()) {
             SelectionKey key = iterator.next();
             iterator.remove();
-
-            if (!key.isValid()) {
-                continue;
-            }
-
-            try {
-                if (key.isAcceptable()) {
-                    handleAccept(key);
-                } else if (key.isConnectable()) {
-                    handleConnect(key);
-                } else {
-                    if (key.isReadable()) {
-                        handleRead(key);
-                    }
-                    if (key.isValid() && key.isWritable()) {
-                        handleWrite(key);
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Error processing key: {}", e.getMessage(), e);
-                handleError(key, e);
-            }
+            processKey(key);
         }
     }
 
@@ -401,12 +527,24 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
         TcpChannel channel = ctx.channel;
         ByteBuffer buffer = channel.getReadBuffer();
 
+        // Ask handler how many bytes it needs
+        int bytesToRead = ctx.handler.getNumBytesToRead(channel);
+
+        // Limit buffer to read only the requested number of bytes
+        int originalLimit = buffer.limit();
+        int newLimit = Math.min(buffer.position() + bytesToRead, buffer.capacity());
+        buffer.limit(newLimit);
+
         int bytesRead;
         try {
             bytesRead = channel.getSocketChannel().read(buffer);
         } catch (IOException e) {
+            buffer.limit(originalLimit); // Restore limit before closing
             closeChannel(channel, ctx.handler, e);
             return;
+        } finally {
+            // Restore original limit
+            buffer.limit(originalLimit);
         }
 
         if (bytesRead == -1) {

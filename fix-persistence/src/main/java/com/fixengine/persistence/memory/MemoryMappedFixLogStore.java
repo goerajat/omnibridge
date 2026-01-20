@@ -1,5 +1,7 @@
 package com.fixengine.persistence.memory;
 
+import com.fixengine.config.PersistenceConfig;
+import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.persistence.FixLogCallback;
 import com.fixengine.persistence.FixLogEntry;
 import com.fixengine.persistence.FixLogStore;
@@ -47,8 +49,10 @@ public class MemoryMappedFixLogStore implements FixLogStore {
 
     private final File baseDir;
     private final long maxFileSize;
+    private final boolean syncOnWrite;
     private final Map<String, StreamStore> streams = new ConcurrentHashMap<>();
     private final AtomicLong totalEntries = new AtomicLong(0);
+    private ComponentProvider<?, ?, ?> componentProvider;
 
     /**
      * Create a new memory-mapped log store.
@@ -56,7 +60,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
      * @param basePath the base directory path for log files
      */
     public MemoryMappedFixLogStore(String basePath) {
-        this(new File(basePath), DEFAULT_FILE_SIZE);
+        this(new File(basePath), DEFAULT_FILE_SIZE, false);
     }
 
     /**
@@ -66,7 +70,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
      * @param maxFileSize the maximum size for each stream file
      */
     public MemoryMappedFixLogStore(String basePath, long maxFileSize) {
-        this(new File(basePath), maxFileSize);
+        this(new File(basePath), maxFileSize, false);
     }
 
     /**
@@ -75,7 +79,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
      * @param baseDir the base directory for log files
      */
     public MemoryMappedFixLogStore(File baseDir) {
-        this(baseDir, DEFAULT_FILE_SIZE);
+        this(baseDir, DEFAULT_FILE_SIZE, false);
     }
 
     /**
@@ -85,8 +89,40 @@ public class MemoryMappedFixLogStore implements FixLogStore {
      * @param maxFileSize the maximum size for each stream file
      */
     public MemoryMappedFixLogStore(File baseDir, long maxFileSize) {
+        this(baseDir, maxFileSize, false);
+    }
+
+    /**
+     * Create a new memory-mapped log store from PersistenceConfig.
+     *
+     * @param config the persistence configuration
+     */
+    public MemoryMappedFixLogStore(PersistenceConfig config) {
+        this(config, null);
+    }
+
+    /**
+     * Create a new memory-mapped log store from PersistenceConfig and ComponentProvider.
+     *
+     * @param config the persistence configuration
+     * @param provider the component provider (may be null)
+     */
+    public MemoryMappedFixLogStore(PersistenceConfig config, ComponentProvider<?, ?, ?> provider) {
+        this(new File(config.getBasePath()), config.getMaxFileSize(), config.isSyncOnWrite());
+        this.componentProvider = provider;
+    }
+
+    /**
+     * Create a new memory-mapped log store with full configuration.
+     *
+     * @param baseDir the base directory for log files
+     * @param maxFileSize the maximum size for each stream file
+     * @param syncOnWrite whether to sync to disk on every write
+     */
+    public MemoryMappedFixLogStore(File baseDir, long maxFileSize, boolean syncOnWrite) {
         this.baseDir = baseDir;
         this.maxFileSize = maxFileSize;
+        this.syncOnWrite = syncOnWrite;
 
         if (!baseDir.exists() && !baseDir.mkdirs()) {
             throw new IllegalStateException("Failed to create directory: " + baseDir);
@@ -95,8 +131,15 @@ public class MemoryMappedFixLogStore implements FixLogStore {
         // Load existing streams
         loadExistingStreams();
 
-        log.info("MemoryMappedFixLogStore initialized at {} (maxFileSize={}MB)",
-                baseDir.getAbsolutePath(), maxFileSize / (1024 * 1024));
+        log.info("MemoryMappedFixLogStore initialized at {} (maxFileSize={}MB, syncOnWrite={})",
+                baseDir.getAbsolutePath(), maxFileSize / (1024 * 1024), syncOnWrite);
+    }
+
+    /**
+     * Get the component provider.
+     */
+    public ComponentProvider<?, ?, ?> getComponentProvider() {
+        return componentProvider;
     }
 
     private void loadExistingStreams() {
@@ -105,7 +148,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
             for (File file : files) {
                 String streamName = file.getName().replace(".fixlog", "");
                 try {
-                    StreamStore store = new StreamStore(streamName, file, maxFileSize);
+                    StreamStore store = new StreamStore(streamName, file, maxFileSize, syncOnWrite);
                     streams.put(streamName, store);
                     totalEntries.addAndGet(store.getEntryCount());
                     log.debug("Loaded stream: {} ({} entries)", streamName, store.getEntryCount());
@@ -120,7 +163,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
         return streams.computeIfAbsent(streamName, name -> {
             try {
                 File file = new File(baseDir, name + ".fixlog");
-                return new StreamStore(name, file, maxFileSize);
+                return new StreamStore(name, file, maxFileSize, syncOnWrite);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to create stream: " + name, e);
             }
@@ -232,13 +275,15 @@ public class MemoryMappedFixLogStore implements FixLogStore {
         private MappedByteBuffer buffer;
         private final UnsafeBuffer unsafeBuffer;
         private final long maxSize;
+        private final boolean syncOnWrite;
         private long writePosition;
         private long entryCount;
 
-        StreamStore(String name, File file, long maxSize) throws IOException {
+        StreamStore(String name, File file, long maxSize, boolean syncOnWrite) throws IOException {
             this.name = name;
             this.file = file;
             this.maxSize = maxSize;
+            this.syncOnWrite = syncOnWrite;
 
             boolean newFile = !file.exists();
             this.raf = new RandomAccessFile(file, "rw");
@@ -325,6 +370,11 @@ public class MemoryMappedFixLogStore implements FixLogStore {
             // Update header
             buffer.putLong(0, entryCount);
             buffer.putLong(8, writePosition);
+
+            // Sync to disk if configured
+            if (syncOnWrite) {
+                buffer.force();
+            }
 
             return position;
         }

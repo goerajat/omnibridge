@@ -43,5 +43,16 @@ JVM_OPTS="${JVM_OPTS:--Xms256m -Xmx512m}"
 JVM_OPTS="$JVM_OPTS -XX:+UseG1GC"
 JVM_OPTS="$JVM_OPTS -XX:MaxGCPauseMillis=10"
 
+# Verbose GC logging (Java 11+ style)
+GC_LOG_DIR="$APP_HOME/logs"
+mkdir -p "$GC_LOG_DIR"
+GC_LOG_FILE="$GC_LOG_DIR/initiator-gc.log"
+JVM_OPTS="$JVM_OPTS -Xlog:gc*,gc+age=trace,gc+heap=debug,safepoint:file=$GC_LOG_FILE:time,uptime,level,tags:filecount=5,filesize=10m"
+
+# Additional low-latency tuning
+JVM_OPTS="$JVM_OPTS -XX:+AlwaysPreTouch"
+JVM_OPTS="$JVM_OPTS -XX:-UseBiasedLocking"
+JVM_OPTS="$JVM_OPTS -XX:+UseNUMA"
+
 # Run the initiator
 exec java $JVM_OPTS -cp "$CP" com.fixengine.samples.initiator.SampleInitiator "$@"

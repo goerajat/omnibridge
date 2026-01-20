@@ -20,6 +20,10 @@
             <groupId>com.fixengine</groupId>
             <artifactId>fix-message</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.fixengine</groupId>
+            <artifactId>fix-config</artifactId>
+        </dependency>
 
         <!-- Logging -->
         <dependency>
