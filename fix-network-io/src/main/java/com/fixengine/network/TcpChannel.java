@@ -1,6 +1,7 @@
 package com.fixengine.network;
 
 import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.ControlledMessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.ringbuffer.ManyToOneRingBuffer;
 import org.agrona.concurrent.ringbuffer.RingBufferDescriptor;
@@ -47,8 +48,8 @@ public class TcpChannel {
     // Reusable buffer for claims
     private final UnsafeBuffer claimBuffer = new UnsafeBuffer(new byte[0]);
 
-    // Temporary buffer for draining to socket
-    private final ByteBuffer drainBuffer;
+    // Direct ByteBuffer view of ring buffer for zero-copy socket writes
+    private final ByteBuffer ringBufferDirectView;
 
     private SelectionKey selectionKey;
     private volatile boolean connected;
@@ -86,11 +87,12 @@ public class TcpChannel {
 
         // Initialize ring buffer
         int totalBufferSize = ringBufferCapacity + RingBufferDescriptor.TRAILER_LENGTH;
-        this.ringBufferBackingBuffer = new UnsafeBuffer(ByteBuffer.allocateDirect(totalBufferSize));
+        ByteBuffer ringBufferBacking = ByteBuffer.allocateDirect(totalBufferSize);
+        this.ringBufferBackingBuffer = new UnsafeBuffer(ringBufferBacking);
         this.ringBuffer = new ManyToOneRingBuffer(ringBufferBackingBuffer);
 
-        // Drain buffer for writing to socket
-        this.drainBuffer = ByteBuffer.allocateDirect(writeBufferSize);
+        // Create a duplicate view of the ring buffer for zero-copy socket writes
+        this.ringBufferDirectView = ringBufferBacking.duplicate();
 
         InetSocketAddress remote = (InetSocketAddress) socketChannel.getRemoteAddress();
         InetSocketAddress local = (InetSocketAddress) socketChannel.getLocalAddress();
@@ -326,7 +328,7 @@ public class TcpChannel {
     }
 
     /**
-     * Drain all messages from the ring buffer to the socket.
+     * Drain all messages from the ring buffer to the socket (zero-copy).
      *
      * <p>Each message in the ring buffer has the format:</p>
      * <pre>
@@ -336,39 +338,51 @@ public class TcpChannel {
      * <p>Only the FIX message payload is sent to the socket. The length prefix
      * is used internally to know how many bytes to send.</p>
      *
+     * <p>This method writes directly from the ring buffer to the socket without
+     * intermediate copies. If the socket buffer becomes full during a write,
+     * the remaining bytes are copied to the write buffer and processing stops.</p>
+     *
      * @throws IOException if an I/O error occurs
      */
     private void drainRingBuffer() throws IOException {
-        ringBuffer.read((msgTypeId, buffer, index, length) -> {
+        // If there's pending data in writeBuffer from a previous partial write,
+        // don't drain more until it's flushed
+        if (writeBuffer.position() > 0) {
+            return;
+        }
+
+        ringBuffer.controlledRead((msgTypeId, buffer, index, length) -> {
             try {
                 // First 4 bytes = payload length (not sent)
                 int payloadLength = buffer.getInt(index);
                 int payloadOffset = index + LENGTH_PREFIX_SIZE;
 
-                // Copy to drain buffer and send
-                drainBuffer.clear();
-                buffer.getBytes(payloadOffset, drainBuffer, payloadLength);
-                drainBuffer.flip();
+                // Set up direct view of payload (zero-copy)
+                ringBufferDirectView.limit(payloadOffset + payloadLength);
+                ringBufferDirectView.position(payloadOffset);
 
-                // Write to socket
-                while (drainBuffer.hasRemaining()) {
-                    int written = socketChannel.write(drainBuffer);
+                // Write directly to socket from ring buffer
+                while (ringBufferDirectView.hasRemaining()) {
+                    int written = socketChannel.write(ringBufferDirectView);
                     if (written == 0) {
-                        // Socket buffer full, need to buffer remaining data
-                        if (writeBuffer.remaining() < drainBuffer.remaining()) {
+                        // Socket buffer full - copy remaining to writeBuffer
+                        // (unavoidable since ring buffer memory will be reclaimed)
+                        if (writeBuffer.remaining() < ringBufferDirectView.remaining()) {
                             log.error("Write buffer overflow during ring buffer drain");
-                            return;
+                            return ControlledMessageHandler.Action.BREAK;
                         }
-                        writeBuffer.put(drainBuffer);
+                        writeBuffer.put(ringBufferDirectView);
                         // Register for write interest
                         if (selectionKey != null && selectionKey.isValid()) {
                             selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_WRITE);
                         }
-                        return;
+                        return ControlledMessageHandler.Action.BREAK; // Stop draining until socket is writable
                     }
                 }
+                return ControlledMessageHandler.Action.CONTINUE;
             } catch (IOException e) {
                 log.error("Error draining ring buffer to socket: {}", e.getMessage());
+                return ControlledMessageHandler.Action.BREAK;
             }
         });
     }
