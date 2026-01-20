@@ -162,12 +162,25 @@ public class MemoryMappedFixLogStore implements FixLogStore {
     private StreamStore getOrCreateStream(String streamName) {
         return streams.computeIfAbsent(streamName, name -> {
             try {
-                File file = new File(baseDir, name + ".fixlog");
+                String sanitizedName = sanitizeFileName(name);
+                File file = new File(baseDir, sanitizedName + ".fixlog");
                 return new StreamStore(name, file, maxFileSize, syncOnWrite);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to create stream: " + name, e);
             }
         });
+    }
+
+    /**
+     * Sanitize a stream name to be safe for use as a filename.
+     * Replaces characters that are invalid in Windows/Unix filenames.
+     */
+    private String sanitizeFileName(String name) {
+        // Replace -> with _to_ for readability
+        String sanitized = name.replace("->", "_to_");
+        // Replace other invalid characters: < > : " / \ | ? *
+        sanitized = sanitized.replaceAll("[<>:\"/\\\\|?*]", "_");
+        return sanitized;
     }
 
     @Override
