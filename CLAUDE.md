@@ -39,3 +39,45 @@ The script:
 4. Cleans up processes when complete
 
 Prerequisites: Run `mvn install -DskipTests` first to build the uber jar.
+
+## Reference Testing
+
+Run reference tests using QuickFIX/J against the sample acceptor:
+
+```bash
+# Windows
+run-reference-test.bat [test-names]
+
+# Linux/Mac
+./run-reference-test.sh [test-names]
+```
+
+Available tests: HeartbeatTest, SequenceNumberTest, NewOrderTest, MarketOrderTest, OrderCancelTest, OrderModifyTest, MultipleOrdersTest, LogonLogoutTest
+
+Example:
+```bash
+run-reference-test.bat all
+run-reference-test.bat HeartbeatTest,NewOrderTest
+```
+
+## Session Testing
+
+Run session tests using our FIX engine against the sample acceptor:
+
+```bash
+# Windows
+run-session-test.bat [test-names] [report-format]
+
+# Linux/Mac
+./run-session-test.sh [test-names] [report-format]
+```
+
+Available tests: LogonLogoutTest, SequenceNumberTest, TestRequestTest, HeartbeatTest, ResendRequestTest
+
+Report formats: text (default), json, html
+
+Example:
+```bash
+run-session-test.bat all text
+run-session-test.bat HeartbeatTest json
+```
