@@ -4,7 +4,6 @@ import com.fixengine.engine.config.SessionConfig;
 import com.fixengine.message.Clock;
 import com.fixengine.message.FixReader;
 import com.fixengine.message.FixTags;
-import com.fixengine.message.FixWriter;
 import com.fixengine.message.IncomingFixMessage;
 import com.fixengine.message.IncomingMessagePool;
 import com.fixengine.message.IncomingMessagePoolConfig;
@@ -42,7 +41,6 @@ public class FixSession implements NetworkHandler {
     private final SessionConfig config;
     private final FixLogStore logStore;
     private final FixReader reader = new FixReader();
-    private final FixWriter writer = new FixWriter();
 
     private final AtomicReference<SessionState> state = new AtomicReference<>(SessionState.CREATED);
     private final AtomicInteger outgoingSeqNum = new AtomicInteger(1);
@@ -750,59 +748,55 @@ public class FixSession implements NetworkHandler {
     }
 
     /**
-     * Build and send an admin message using the FixWriter directly.
+     * Build and send an admin message using the ring buffer.
      * This is the internal method for all admin message sending.
      */
-    private int sendAdminMessage(String msgType, java.util.function.Consumer<FixWriter> fieldAdder) {
-        int seqNum = outgoingSeqNum.getAndIncrement();
+    private int sendAdminMessage(String msgType, java.util.function.Consumer<RingBufferOutgoingMessage> fieldAdder) {
+        RingBufferOutgoingMessage msg = tryClaimMessageInternal(msgType);
+        if (msg == null) {
+            log.warn("[{}] Failed to claim ring buffer for admin message: {}", config.getSessionId(), msgType);
+            return -1;
+        }
 
-        writer.clear();
-        writer.beginMessage(config.getBeginString(), msgType);
-        writer.addField(FixTags.SENDER_COMP_ID, config.getSenderCompId());
-        writer.addField(FixTags.TARGET_COMP_ID, config.getTargetCompId());
-        writer.addField(FixTags.MSG_SEQ_NUM, seqNum);
-        writer.addField(FixTags.SENDING_TIME, FIX_TIMESTAMP_FORMAT.format(Instant.now()));
+        int seqNum = msg.getSeqNum();
 
         // Add message-specific fields
-        fieldAdder.accept(writer);
+        fieldAdder.accept(msg);
 
-        byte[] rawMessage = writer.finish();
-
-        // Log outgoing message
-        if (logStore != null && config.isLogMessages()) {
-            FixLogEntry entry = new FixLogEntry(
-                Instant.now().toEpochMilli(),
-                seqNum,
-                FixLogEntry.Direction.OUTBOUND,
-                config.getSessionId(),
-                msgType,
-                0,
-                rawMessage,
-                null
-            );
-            logStore.write(entry);
-        }
-
-        // Send on the wire
-        TcpChannel ch = channel;
-        SessionState currentState = state.get();
-        if (ch != null && currentState != SessionState.DISCONNECTED) {
-            try {
-                ch.write(ByteBuffer.wrap(rawMessage));
-                lastSentTime = clock.currentTimeMillis();
-                log.debug("[{}] Sent: {} SeqNum={}", config.getSessionId(), msgType, seqNum);
-                if (config.isLogMessages()) {
-                    log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage));
-                }
-            } catch (java.io.IOException e) {
-                log.error("[{}] Error writing to channel", config.getSessionId(), e);
-            }
-        } else {
-            log.debug("[{}] Skipped sending {} SeqNum={} - channel closed or disconnected",
-                    config.getSessionId(), msgType, seqNum);
-        }
+        // Commit to ring buffer
+        commitMessage(msg);
 
         return seqNum;
+    }
+
+    /**
+     * Claim a message with a specific sequence number (for gap fills).
+     * Does not auto-increment the outgoing sequence number.
+     */
+    private RingBufferOutgoingMessage tryClaimMessageWithSeqNum(String msgType, int seqNum) {
+        TcpChannel ch = channel;
+        if (ch == null) {
+            return null;
+        }
+
+        // Calculate claim size: length prefix + max message length
+        int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
+
+        // Try to claim space in the ring buffer
+        int claimIndex = ch.tryClaim(claimSize);
+        if (claimIndex < 0) {
+            // Ring buffer is full
+            return null;
+        }
+
+        // Get the buffer and wrap the thread-local message
+        MutableDirectBuffer buffer = ch.buffer();
+        RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
+        message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
+                config.getBeginString(), config.getSenderCompId(), config.getTargetCompId());
+        message.setMsgType(msgType);
+
+        return message;
     }
 
     private void sendLogon() {
@@ -810,11 +804,11 @@ public class FixSession implements NetworkHandler {
 
         setState(SessionState.LOGON_SENT);
 
-        sendAdminMessage(FixTags.MSG_TYPE_LOGON, w -> {
-            w.addField(FixTags.ENCRYPT_METHOD, 0); // None
-            w.addField(FixTags.HEARTBT_INT, config.getHeartbeatInterval());
+        sendAdminMessage(FixTags.MSG_TYPE_LOGON, msg -> {
+            msg.setField(FixTags.ENCRYPT_METHOD, 0); // None
+            msg.setField(FixTags.HEARTBT_INT, config.getHeartbeatInterval());
             if (config.isResetOnLogon()) {
-                w.addField(FixTags.RESET_SEQ_NUM_FLAG, "Y");
+                msg.setField(FixTags.RESET_SEQ_NUM_FLAG, "Y");
             }
         });
     }
@@ -824,17 +818,17 @@ public class FixSession implements NetworkHandler {
 
         setState(SessionState.LOGOUT_SENT);
 
-        sendAdminMessage(FixTags.MSG_TYPE_LOGOUT, w -> {
+        sendAdminMessage(FixTags.MSG_TYPE_LOGOUT, msg -> {
             if (text != null) {
-                w.addField(FixTags.TEXT, text);
+                msg.setField(FixTags.TEXT, text);
             }
         });
     }
 
     private void sendHeartbeat(String testReqId) {
-        sendAdminMessage(FixTags.MSG_TYPE_HEARTBEAT, w -> {
+        sendAdminMessage(FixTags.MSG_TYPE_HEARTBEAT, msg -> {
             if (testReqId != null) {
-                w.addField(FixTags.TEST_REQ_ID, testReqId);
+                msg.setField(FixTags.TEST_REQ_ID, testReqId);
             }
         });
     }
@@ -847,8 +841,8 @@ public class FixSession implements NetworkHandler {
         String testReqId = String.valueOf(++testRequestId);
         log.debug("[{}] Sending TestRequest: {}", config.getSessionId(), testReqId);
 
-        sendAdminMessage(FixTags.MSG_TYPE_TEST_REQUEST, w -> {
-            w.addField(FixTags.TEST_REQ_ID, testReqId);
+        sendAdminMessage(FixTags.MSG_TYPE_TEST_REQUEST, msg -> {
+            msg.setField(FixTags.TEST_REQ_ID, testReqId);
         });
         testRequestPending = true;
         return testReqId;
@@ -857,9 +851,9 @@ public class FixSession implements NetworkHandler {
     private void sendResendRequest(int beginSeqNo, int endSeqNo) {
         log.info("[{}] Sending ResendRequest: {} to {}", config.getSessionId(), beginSeqNo, endSeqNo);
 
-        sendAdminMessage(FixTags.MSG_TYPE_RESEND_REQUEST, w -> {
-            w.addField(FixTags.BEGIN_SEQ_NO, beginSeqNo);
-            w.addField(FixTags.END_SEQ_NO, endSeqNo);
+        sendAdminMessage(FixTags.MSG_TYPE_RESEND_REQUEST, msg -> {
+            msg.setField(FixTags.BEGIN_SEQ_NO, beginSeqNo);
+            msg.setField(FixTags.END_SEQ_NO, endSeqNo);
         });
     }
 
@@ -867,44 +861,31 @@ public class FixSession implements NetworkHandler {
         log.debug("[{}] Sending GapFill: {} to {}", config.getSessionId(), beginSeqNo, newSeqNo);
 
         // Gap fill uses the sequence number of the first message in the gap (not auto-incremented)
-        int seqNum = beginSeqNo;
-
-        writer.clear();
-        writer.beginMessage(config.getBeginString(), FixTags.MSG_TYPE_SEQUENCE_RESET);
-        writer.addField(FixTags.SENDER_COMP_ID, config.getSenderCompId());
-        writer.addField(FixTags.TARGET_COMP_ID, config.getTargetCompId());
-        writer.addField(FixTags.MSG_SEQ_NUM, seqNum);
-        writer.addField(FixTags.SENDING_TIME, FIX_TIMESTAMP_FORMAT.format(Instant.now()));
-        writer.addField(FixTags.POSS_DUP_FLAG, "Y");
-        writer.addField(FixTags.GAP_FILL_FLAG, "Y");
-        writer.addField(FixTags.NEW_SEQ_NO, newSeqNo);
-
-        byte[] rawMessage = writer.finish();
-
-        TcpChannel ch = channel;
-        if (ch != null && state.get() != SessionState.DISCONNECTED) {
-            try {
-                ch.write(ByteBuffer.wrap(rawMessage));
-                lastSentTime = clock.currentTimeMillis();
-                log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage));
-            } catch (java.io.IOException e) {
-                log.error("[{}] Error writing gap fill to channel", config.getSessionId(), e);
-            }
+        RingBufferOutgoingMessage msg = tryClaimMessageWithSeqNum(FixTags.MSG_TYPE_SEQUENCE_RESET, beginSeqNo);
+        if (msg == null) {
+            log.warn("[{}] Failed to claim ring buffer for gap fill", config.getSessionId());
+            return;
         }
+
+        msg.setField(FixTags.POSS_DUP_FLAG, "Y");
+        msg.setField(FixTags.GAP_FILL_FLAG, "Y");
+        msg.setField(FixTags.NEW_SEQ_NO, newSeqNo);
+
+        commitMessage(msg);
     }
 
     private void sendReject(int refSeqNum, String refMsgType, int rejectReason, String text) {
         log.warn("[{}] Sending Reject: RefSeqNum={}, Reason={}, Text={}",
                 config.getSessionId(), refSeqNum, rejectReason, text);
 
-        sendAdminMessage(FixTags.MSG_TYPE_REJECT, w -> {
-            w.addField(FixTags.REF_SEQ_NUM, refSeqNum);
+        sendAdminMessage(FixTags.MSG_TYPE_REJECT, msg -> {
+            msg.setField(FixTags.REF_SEQ_NUM, refSeqNum);
             if (refMsgType != null) {
-                w.addField(FixTags.REF_MSG_TYPE, refMsgType);
+                msg.setField(FixTags.REF_MSG_TYPE, refMsgType);
             }
-            w.addField(FixTags.SESSION_REJECT_REASON, rejectReason);
+            msg.setField(FixTags.SESSION_REJECT_REASON, rejectReason);
             if (text != null) {
-                w.addField(FixTags.TEXT, text);
+                msg.setField(FixTags.TEXT, text);
             }
         });
     }
@@ -916,12 +897,13 @@ public class FixSession implements NetworkHandler {
 
         TcpChannel ch = channel;
         if (ch != null && state.get() != SessionState.DISCONNECTED) {
-            try {
-                ch.write(ByteBuffer.wrap(entry.getRawMessage()));
+            byte[] rawMessage = entry.getRawMessage();
+            int written = ch.writeRaw(rawMessage, 0, rawMessage.length);
+            if (written > 0) {
                 lastSentTime = clock.currentTimeMillis();
-                log.info("[{}] OUT <<< (resend) {}", config.getSessionId(), formatRawMessage(entry.getRawMessage()));
-            } catch (java.io.IOException e) {
-                log.error("[{}] Error resending message", config.getSessionId(), e);
+                log.info("[{}] OUT <<< (resend) {}", config.getSessionId(), formatRawMessage(rawMessage));
+            } else {
+                log.error("[{}] Failed to write resend message to ring buffer", config.getSessionId());
             }
         }
     }

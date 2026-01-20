@@ -1,15 +1,15 @@
 package com.fixengine.message;
 
 import org.agrona.MutableDirectBuffer;
+import org.agrona.collections.IntHashSet;
 
 import java.nio.charset.StandardCharsets;
-import java.util.BitSet;
 
 /**
  * FIX message that encodes directly into a ring buffer region for zero-copy sending.
  *
  * <p>This class wraps a claimed region from a {@link org.agrona.concurrent.ringbuffer.ManyToOneRingBuffer}
- * and provides the same field-setting API as {@link OutgoingFixMessage}. The message is encoded
+ * and provides a field-setting API for building FIX messages. The message is encoded
  * directly into the ring buffer without intermediate copies.</p>
  *
  * <h2>Memory Layout</h2>
@@ -64,7 +64,7 @@ public class RingBufferOutgoingMessage {
 
     // Dynamic state
     private int writePos;
-    private BitSet tagSet;
+    private IntHashSet tagSet;
     private int maxTagNumber;
     private String msgType;
 
@@ -84,7 +84,7 @@ public class RingBufferOutgoingMessage {
         this.bodyLengthDigits = 5;
         this.seqNumDigits = 8;
         this.maxTagNumber = 1000;
-        this.tagSet = new BitSet(maxTagNumber);
+        this.tagSet = new IntHashSet(64);  // Initial capacity, will grow as needed
     }
 
     /**
@@ -99,7 +99,7 @@ public class RingBufferOutgoingMessage {
         this.beginString = config.getBeginString();
         this.senderCompId = config.getSenderCompId();
         this.targetCompId = config.getTargetCompId();
-        this.tagSet = new BitSet(maxTagNumber);
+        this.tagSet = new IntHashSet(64);  // Initial capacity, will grow as needed
     }
 
     /**
@@ -417,6 +417,16 @@ public class RingBufferOutgoingMessage {
     }
 
     /**
+     * Set the sequence number for this message.
+     * Used for gap fills and resends that require a specific sequence number.
+     *
+     * @param seqNum the sequence number to use
+     */
+    public void setSeqNum(int seqNum) {
+        this.seqNum = seqNum;
+    }
+
+    /**
      * Get the claim index for commit/abort operations.
      *
      * @return the claim index
@@ -432,7 +442,7 @@ public class RingBufferOutgoingMessage {
      * @return true if the tag has been set
      */
     public boolean hasTag(int tag) {
-        return tag >= 0 && tag < maxTagNumber && tagSet.get(tag);
+        return tag >= 0 && tag < maxTagNumber && tagSet.contains(tag);
     }
 
     /**
@@ -493,10 +503,9 @@ public class RingBufferOutgoingMessage {
      */
     private void checkDuplicate(int tag) {
         if (tag >= 0 && tag < maxTagNumber) {
-            if (tagSet.get(tag)) {
+            if (!tagSet.add(tag)) {
                 throw new DuplicateTagException(tag);
             }
-            tagSet.set(tag);
         }
     }
 

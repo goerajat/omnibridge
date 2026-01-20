@@ -249,58 +249,41 @@ public class TcpChannel {
         return ringBuffer.size() > 0;
     }
 
-    // ==================== Write Methods ====================
-
     /**
-     * Write data to the channel.
-     * This method is non-blocking and may not write all data immediately.
-     * Data is queued in the write buffer and will be flushed when the channel becomes writable.
+     * Write raw bytes to the ring buffer for sending.
      *
-     * @param data the data to write
-     * @return the number of bytes queued for writing
-     * @throws IOException if the channel is closed or an I/O error occurs
-     */
-    public int write(ByteBuffer data) throws IOException {
-        if (closed) {
-            throw new IOException("Channel is closed");
-        }
-
-        int bytesToWrite = data.remaining();
-        if (bytesToWrite == 0) {
-            return 0;
-        }
-
-        // Try direct write first
-        int written = socketChannel.write(data);
-
-        if (data.hasRemaining()) {
-            // Buffer remaining data for later
-            if (writeBuffer.remaining() < data.remaining()) {
-                throw new IOException("Write buffer overflow - data: " + data.remaining() +
-                        ", available: " + writeBuffer.remaining());
-            }
-            writeBuffer.put(data);
-
-            // Register for write interest
-            if (selectionKey != null && selectionKey.isValid()) {
-                selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_WRITE);
-            }
-        }
-
-        return bytesToWrite;
-    }
-
-    /**
-     * Write data to the channel from a byte array.
+     * <p>This method is used for pre-encoded messages (like resends) that need
+     * to go through the ring buffer. The bytes are copied into a claimed region
+     * and committed for sending.</p>
      *
-     * @param data the data to write
-     * @param offset the offset in the array
+     * @param data the raw bytes to write
+     * @param offset the offset within the array
      * @param length the number of bytes to write
-     * @return the number of bytes queued for writing
-     * @throws IOException if the channel is closed or an I/O error occurs
+     * @return the number of bytes written, or -1 if the ring buffer is full
      */
-    public int write(byte[] data, int offset, int length) throws IOException {
-        return write(ByteBuffer.wrap(data, offset, length));
+    public int writeRaw(byte[] data, int offset, int length) {
+        if (closed) {
+            return -1;
+        }
+
+        // Claim space: length prefix + payload
+        int claimSize = LENGTH_PREFIX_SIZE + length;
+        int claimIndex = tryClaim(claimSize);
+        if (claimIndex < 0) {
+            return -1;
+        }
+
+        // Write length prefix
+        MutableDirectBuffer buf = ringBuffer.buffer();
+        buf.putInt(claimIndex, length);
+
+        // Copy payload
+        buf.putBytes(claimIndex + LENGTH_PREFIX_SIZE, data, offset, length);
+
+        // Commit
+        commit(claimIndex);
+
+        return length;
     }
 
     /**
