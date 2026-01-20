@@ -30,7 +30,7 @@ class EncodingCompatibilityTest {
                 .build();
         pool = new MessagePool(config);
         reader = new FixReader();
-        incomingMessage = new IncomingFixMessage(4096, 1000);
+        incomingMessage = new IncomingFixMessage(1000);
     }
 
     private static String asString(CharSequence cs) {

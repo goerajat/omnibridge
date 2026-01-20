@@ -54,10 +54,7 @@ public class IncomingMessagePool {
 
         // Pre-allocate all messages
         for (int i = 0; i < poolSize; i++) {
-            IncomingFixMessage msg = new IncomingFixMessage(
-                config.getBufferSize(),
-                config.getMaxTagNumber()
-            );
+            IncomingFixMessage msg = new IncomingFixMessage(config.getMaxTagNumber());
             msg.setOwnerPool(this);
             pool.offer(msg);
         }

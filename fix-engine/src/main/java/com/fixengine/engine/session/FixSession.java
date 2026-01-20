@@ -96,7 +96,6 @@ public class FixSession implements NetworkHandler {
         // Initialize incoming message pool
         IncomingMessagePoolConfig incomingConfig = IncomingMessagePoolConfig.builder()
                 .poolSize(config.getMessagePoolSize())
-                .bufferSize(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber())
                 .build();
         this.incomingMessagePool = new IncomingMessagePool(incomingConfig);

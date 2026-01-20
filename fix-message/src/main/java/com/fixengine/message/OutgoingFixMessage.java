@@ -49,11 +49,8 @@ public class OutgoingFixMessage {
     private final int bodyLengthValuePos;
     private final int bodyLengthDigits;
     private final int msgTypePos;
-    private int msgTypeEndPos;
     private final int seqNumValuePos;
     private final int seqNumDigits;
-    private final int senderCompIdPos;
-    private final int targetCompIdPos;
     private final int sendingTimeValuePos;
     private final int bodyStartPos;
 
@@ -100,7 +97,6 @@ public class OutgoingFixMessage {
         // Leave space for msg type (max 2 chars typically)
         buffer[pos++] = ' ';
         buffer[pos++] = SOH;
-        this.msgTypeEndPos = pos;
 
         // 34=NNNNNNNN| (placeholder for sequence number)
         pos = writeTag(pos, FixTags.MsgSeqNum);
@@ -111,20 +107,10 @@ public class OutgoingFixMessage {
         buffer[pos++] = SOH;
 
         // 49=SENDER| (pre-populated)
-        pos = writeTag(pos, FixTags.SenderCompID);
-        this.senderCompIdPos = pos;
-        byte[] senderBytes = config.getSenderCompId().getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(senderBytes, 0, buffer, pos, senderBytes.length);
-        pos += senderBytes.length;
-        buffer[pos++] = SOH;
+        pos = writeField(pos, FixTags.SenderCompID, config.getSenderCompId());
 
         // 56=TARGET| (pre-populated)
-        pos = writeTag(pos, FixTags.TargetCompID);
-        this.targetCompIdPos = pos;
-        byte[] targetBytes = config.getTargetCompId().getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(targetBytes, 0, buffer, pos, targetBytes.length);
-        pos += targetBytes.length;
-        buffer[pos++] = SOH;
+        pos = writeField(pos, FixTags.TargetCompID, config.getTargetCompId());
 
         // 52=YYYYMMDD-HH:MM:SS.sss| (placeholder for sending time)
         pos = writeTag(pos, FixTags.SendingTime);
@@ -158,18 +144,6 @@ public class OutgoingFixMessage {
         System.arraycopy(msgTypeBytes, 0, buffer, pos, msgTypeBytes.length);
         pos += msgTypeBytes.length;
         buffer[pos++] = SOH;
-        this.msgTypeEndPos = pos;
-
-        // Recalculate body start position if msg type length changed
-        rebuildHeaderAfterMsgType();
-    }
-
-    /**
-     * Rebuild header fields after MsgType position.
-     */
-    private void rebuildHeaderAfterMsgType() {
-        // For now, we keep the structure fixed with the initial layout
-        // The variable-length msg type is handled by the msgTypeEndPos marker
     }
 
     /**
@@ -390,7 +364,6 @@ public class OutgoingFixMessage {
         // Reset msg type placeholder
         buffer[msgTypePos] = ' ';
         buffer[msgTypePos + 1] = SOH;
-        msgTypeEndPos = msgTypePos + 2;
     }
 
     /**

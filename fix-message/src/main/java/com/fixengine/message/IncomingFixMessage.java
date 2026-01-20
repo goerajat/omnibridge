@@ -1,8 +1,9 @@
 package com.fixengine.message;
 
+import org.agrona.collections.Int2IntHashMap;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 /**
  * Read-only poolable FIX message for incoming message processing.
@@ -41,15 +42,15 @@ public final class IncomingFixMessage {
 
     private static final int MAX_FIELDS = 256;
     private static final int CHAR_SEQ_POOL_SIZE = 32;
+    private static final int MISSING_VALUE = -1;
 
     // Message buffer - direct reference to the provided ByteBuffer
     private ByteBuffer buffer;
     private int startOffset;  // Starting offset in the buffer
     private int length;
 
-    // Field index for fast lookup: [tag] -> index in fieldPositions (or -1)
-    private final int[] fieldIndex;
-    private final int maxTagNumber;
+    // Field index for fast lookup: tag -> index in fieldPositions
+    private final Int2IntHashMap fieldIndex;
 
     // Parsed field positions: [fieldNum][0]=valueStart, [fieldNum][1]=valueEnd
     private final int[][] fieldPositions;
@@ -73,22 +74,11 @@ public final class IncomingFixMessage {
      * Create a new IncomingFixMessage with default settings.
      */
     public IncomingFixMessage() {
-        this(4096, 10000);
-    }
-
-    /**
-     * Create a new IncomingFixMessage with specified settings.
-     *
-     * @param initialCapacity ignored (kept for API compatibility)
-     * @param maxTagNumber maximum tag number to support
-     */
-    public IncomingFixMessage(int initialCapacity, int maxTagNumber) {
         this.buffer = null;
         this.startOffset = 0;
         this.length = 0;
-        this.maxTagNumber = maxTagNumber;
-        this.fieldIndex = new int[maxTagNumber];
-        Arrays.fill(fieldIndex, -1);
+        // Initial capacity for ~64 fields with 0.65 load factor
+        this.fieldIndex = new Int2IntHashMap(128, 0.65f, MISSING_VALUE);
         this.fieldPositions = new int[MAX_FIELDS][2];
         this.fieldCount = 0;
 
@@ -103,6 +93,17 @@ public final class IncomingFixMessage {
             charSeqPool[i] = new ByteBufferCharSequence();
         }
         this.charSeqPoolIndex = 0;
+    }
+
+    /**
+     * Create a new IncomingFixMessage.
+     *
+     * @param maxTagNumber ignored, kept for API compatibility
+     * @deprecated Use the no-arg constructor instead
+     */
+    @Deprecated
+    public IncomingFixMessage(int maxTagNumber) {
+        this();
     }
 
     /**
@@ -165,10 +166,7 @@ public final class IncomingFixMessage {
         length = 0;
         fieldCount = 0;
         cachedMsgSeqNum = 0;
-        //cachedMsgType.reset();
-        //cachedSenderCompId.reset();
-        //cachedTargetCompId.reset();
-        Arrays.fill(fieldIndex, -1);
+        fieldIndex.clear();
 
         // Reset CharSequence pool
         for (int i = 0; i < charSeqPoolIndex; i++) {
@@ -203,7 +201,7 @@ public final class IncomingFixMessage {
      * @return true if the field is present
      */
     public boolean hasField(int tag) {
-        return tag >= 0 && tag < maxTagNumber && fieldIndex[tag] >= 0;
+        return fieldIndex.containsKey(tag);
     }
 
     /**
@@ -216,11 +214,8 @@ public final class IncomingFixMessage {
      * @return the field value, or null if not present
      */
     public CharSequence getCharSequence(int tag) {
-        if (tag < 0 || tag >= maxTagNumber) {
-            return null;
-        }
-        int fieldIdx = fieldIndex[tag];
-        if (fieldIdx < 0) {
+        int fieldIdx = fieldIndex.get(tag);
+        if (fieldIdx == MISSING_VALUE) {
             return null;
         }
 
@@ -237,11 +232,8 @@ public final class IncomingFixMessage {
      * @return the field value, or 0 if not present or not a valid integer
      */
     public int getInt(int tag) {
-        if (tag < 0 || tag >= maxTagNumber) {
-            return 0;
-        }
-        int fieldIdx = fieldIndex[tag];
-        if (fieldIdx < 0) {
+        int fieldIdx = fieldIndex.get(tag);
+        if (fieldIdx == MISSING_VALUE) {
             return 0;
         }
 
@@ -255,11 +247,8 @@ public final class IncomingFixMessage {
      * @return the field value, or 0 if not present or not a valid long
      */
     public long getLong(int tag) {
-        if (tag < 0 || tag >= maxTagNumber) {
-            return 0;
-        }
-        int fieldIdx = fieldIndex[tag];
-        if (fieldIdx < 0) {
+        int fieldIdx = fieldIndex.get(tag);
+        if (fieldIdx == MISSING_VALUE) {
             return 0;
         }
 
@@ -291,11 +280,8 @@ public final class IncomingFixMessage {
      * @return the first character of the field value, or '\0' if not present
      */
     public char getChar(int tag) {
-        if (tag < 0 || tag >= maxTagNumber) {
-            return '\0';
-        }
-        int fieldIdx = fieldIndex[tag];
-        if (fieldIdx < 0) {
+        int fieldIdx = fieldIndex.get(tag);
+        if (fieldIdx == MISSING_VALUE) {
             return '\0';
         }
 
@@ -534,8 +520,8 @@ public final class IncomingFixMessage {
                 fieldPositions[fieldCount][1] = valueEnd;
 
                 // Index the field
-                if (tag >= 0 && tag < maxTagNumber) {
-                    fieldIndex[tag] = fieldCount;
+                if (tag >= 0) {
+                    fieldIndex.put(tag, fieldCount);
                 }
 
                 fieldCount++;

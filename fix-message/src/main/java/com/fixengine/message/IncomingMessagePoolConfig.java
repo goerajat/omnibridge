@@ -6,7 +6,6 @@ package com.fixengine.message;
  * <p>This class defines the settings for incoming message pooling:</p>
  * <ul>
  *   <li>Pool size - number of pre-allocated messages</li>
- *   <li>Buffer size - initial capacity for message buffers</li>
  *   <li>Max tag number - maximum tag number to support for indexing</li>
  * </ul>
  *
@@ -14,7 +13,6 @@ package com.fixengine.message;
  * <pre>{@code
  * IncomingMessagePoolConfig config = IncomingMessagePoolConfig.builder()
  *     .poolSize(32)
- *     .bufferSize(4096)
  *     .maxTagNumber(10000)
  *     .build();
  * }</pre>
@@ -22,7 +20,6 @@ package com.fixengine.message;
 public class IncomingMessagePoolConfig {
 
     private int poolSize = 32;
-    private int bufferSize = 4096;
     private int maxTagNumber = 10000;
 
     /**
@@ -41,15 +38,6 @@ public class IncomingMessagePoolConfig {
      */
     public int getPoolSize() {
         return poolSize;
-    }
-
-    /**
-     * Get the initial buffer size for each message.
-     *
-     * @return the buffer size in bytes
-     */
-    public int getBufferSize() {
-        return bufferSize;
     }
 
     /**
@@ -82,20 +70,6 @@ public class IncomingMessagePoolConfig {
         }
 
         /**
-         * Set the initial buffer size for each message.
-         *
-         * @param bufferSize the buffer size in bytes (must be at least 256)
-         * @return this builder
-         */
-        public Builder bufferSize(int bufferSize) {
-            if (bufferSize < 256) {
-                throw new IllegalArgumentException("Buffer size must be at least 256: " + bufferSize);
-            }
-            config.bufferSize = bufferSize;
-            return this;
-        }
-
-        /**
          * Set the maximum tag number to support.
          *
          * @param maxTagNumber the maximum tag number (must be positive)
@@ -123,7 +97,6 @@ public class IncomingMessagePoolConfig {
     public String toString() {
         return "IncomingMessagePoolConfig{" +
                 "poolSize=" + poolSize +
-                ", bufferSize=" + bufferSize +
                 ", maxTagNumber=" + maxTagNumber +
                 '}';
     }
