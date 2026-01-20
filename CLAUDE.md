@@ -1,5 +1,15 @@
 # Claude Code Project Notes
 
+## Build
+
+Always use Maven for builds:
+
+```bash
+mvn install -DskipTests    # Build all modules
+mvn test                   # Run tests
+mvn compile                # Compile only
+```
+
 ## Latency Testing
 
 Run latency tests using the script in the project root:
@@ -29,16 +39,3 @@ The script:
 4. Cleans up processes when complete
 
 Prerequisites: Run `mvn install -DskipTests` first to build the uber jar.
-
-## Build Commands
-
-```bash
-# Build all modules
-mvn install -DskipTests
-
-# Run tests
-mvn test
-
-# Build specific module
-mvn install -DskipTests -pl fix-engine
-```
