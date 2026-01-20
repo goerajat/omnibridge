@@ -91,7 +91,7 @@ public class SequenceNumberTest implements SessionTest {
                         System.currentTimeMillis() - startTime);
             }
 
-            // Test 5: Reset sequence numbers
+            // Test 5: Reset sequence numbers (locally) and verify
             context.resetSequenceNumbers();
             if (context.getOutgoingSeqNum() != 1 || context.getExpectedIncomingSeqNum() != 1) {
                 return TestResult.failed(getName(),
@@ -99,6 +99,11 @@ public class SequenceNumberTest implements SessionTest {
                                 context.getOutgoingSeqNum(), context.getExpectedIncomingSeqNum()),
                         System.currentTimeMillis() - startTime);
             }
+
+            // Restore original sequence numbers so subsequent tests can continue
+            // without needing to re-establish the session
+            context.setOutgoingSeqNum(initialOutSeq);
+            context.setExpectedIncomingSeqNum(initialInSeq);
 
             return TestResult.passed(getName(),
                     "All sequence number operations successful",

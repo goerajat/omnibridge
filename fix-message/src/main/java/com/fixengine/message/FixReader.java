@@ -84,7 +84,10 @@ public class FixReader {
         if (expectedTotalMessageLength > 0) {
             // We know the total message length, return remaining bytes needed
             int remaining = expectedTotalMessageLength - currentBytes;
-            return Math.max(remaining, 0);
+            // If message is complete (remaining <= 0), return HEADER_READ_SIZE
+            // to allow reading the next message. Never return 0 as that would
+            // prevent the network layer from reading any data.
+            return remaining > 0 ? remaining : HEADER_READ_SIZE;
         }
 
         // No message length determined yet, request header bytes
@@ -98,7 +101,8 @@ public class FixReader {
 
         if (expectedTotalMessageLength > 0) {
             int remaining = expectedTotalMessageLength - currentBytes;
-            return Math.max(remaining, 0);
+            // Same as above - never return 0
+            return remaining > 0 ? remaining : HEADER_READ_SIZE;
         }
 
         // Couldn't parse header, request more header bytes
@@ -225,6 +229,9 @@ public class FixReader {
         bodyStart = -1;
         checksumStart = -1;
         expectedTotalMessageLength = -1;
+        // Clear the accumulation buffer - critical for reconnection scenarios
+        // where old data from a previous connection should not be mixed with new data
+        accumulationBuffer.clear();
     }
 
     /**

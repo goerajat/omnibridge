@@ -57,6 +57,9 @@ public class FixSession implements NetworkHandler {
     private int testRequestId = 0;
     private boolean testRequestPending = false;
 
+    // Flag to track sequence number reset during logon processing
+    private boolean seqNumResetDuringLogon = false;
+
     // Resend state
     private boolean resendInProgress = false;
     private int resendBeginSeqNo = 0;
@@ -206,6 +209,12 @@ public class FixSession implements NetworkHandler {
         this.channel = channel;
         setState(SessionState.CONNECTED);
         lastReceivedTime = clock.currentTimeMillis();
+
+        // Reset reader state for new connection
+        // This is critical for reconnection scenarios where the reader may have
+        // stale state (accumulated buffer data, expected message length) from
+        // the previous connection
+        reader.reset();
 
         // Initiator sends logon first
         if (config.isInitiator()) {
@@ -401,8 +410,23 @@ public class FixSession implements NetworkHandler {
                 break;
         }
 
+        // Notify message listeners for ALL messages (admin and application)
+        // This allows listeners to observe admin messages like Heartbeat, TestRequest, etc.
+        for (MessageListener listener : messageListeners) {
+            try {
+                listener.onMessage(this, message);
+            } catch (Exception e) {
+                log.error("[{}] Error notifying message listener", config.getSessionId(), e);
+            }
+        }
+
         // Update expected sequence number
-        if (seqNum >= expectedIncomingSeqNum.get()) {
+        if (seqNumResetDuringLogon) {
+            // After a sequence reset during logon, expect seqNum=2 for the next message
+            // regardless of what seqNum the logon message had
+            expectedIncomingSeqNum.set(2);
+            seqNumResetDuringLogon = false;
+        } else if (seqNum >= expectedIncomingSeqNum.get()) {
             expectedIncomingSeqNum.set(seqNum + 1);
         }
     }
@@ -468,6 +492,8 @@ public class FixSession implements NetworkHandler {
                 outgoingSeqNum.set(1);
             }
             expectedIncomingSeqNum.set(1);
+            // Mark that we just reset - the seqNum increment logic will handle this specially
+            seqNumResetDuringLogon = true;
         }
 
         if (config.isAcceptor() && currentState == SessionState.CONNECTED) {
@@ -621,14 +647,7 @@ public class FixSession implements NetworkHandler {
 
     private void processIncomingApplicationMessage(IncomingFixMessage message) {
         log.debug("[{}] Application message received: {}", config.getSessionId(), message.getMsgType());
-
-        for (MessageListener listener : messageListeners) {
-            try {
-                listener.onMessage(this, message);
-            } catch (Exception e) {
-                log.error("[{}] Error notifying message listener", config.getSessionId(), e);
-            }
-        }
+        // Message listener notification is done centrally in processIncomingMessage()
     }
 
     // ==================== Message Sending ====================
@@ -977,8 +996,16 @@ public class FixSession implements NetworkHandler {
     public void disconnect(String reason) {
         log.info("[{}] Disconnecting: {}", config.getSessionId(), reason);
 
-        if (channel != null) {
-            channel.close();
+        TcpChannel ch = channel;
+        if (ch != null) {
+            ch.close();
+        }
+
+        // Ensure state transitions to DISCONNECTED
+        // The onDisconnected callback may not be called when disconnect is initiated locally
+        SessionState currentState = state.get();
+        if (currentState != SessionState.DISCONNECTED && currentState != SessionState.CREATED) {
+            setState(SessionState.DISCONNECTED);
         }
     }
 
