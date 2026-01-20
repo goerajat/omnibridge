@@ -4,7 +4,7 @@ import com.fixengine.engine.FixEngine;
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.SessionState;
 import com.fixengine.engine.session.SessionStateListener;
-import com.fixengine.message.OutgoingFixMessage;
+import com.fixengine.message.RingBufferOutgoingMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -173,17 +173,22 @@ public class TestContext {
     }
 
     /**
-     * Send an application message.
+     * Try to claim a ring buffer message for sending.
+     *
+     * @param msgType the message type
+     * @return the ring buffer message, or null if buffer is full
      */
-    public int send(OutgoingFixMessage message) {
-        return session.send(message);
+    public RingBufferOutgoingMessage tryClaimMessage(String msgType) {
+        return session.tryClaimMessage(msgType);
     }
 
     /**
-     * Acquire a pooled message for sending.
+     * Commit a ring buffer message.
+     *
+     * @param message the message to commit
      */
-    public OutgoingFixMessage acquireMessage(String msgType) throws Exception {
-        return session.acquireMessage(msgType);
+    public void commitMessage(RingBufferOutgoingMessage message) {
+        session.commitMessage(message);
     }
 
     /**

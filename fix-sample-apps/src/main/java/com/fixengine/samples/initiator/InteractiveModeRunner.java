@@ -2,7 +2,7 @@ package com.fixengine.samples.initiator;
 
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.message.FixTags;
-import com.fixengine.message.OutgoingFixMessage;
+import com.fixengine.message.RingBufferOutgoingMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -106,7 +106,12 @@ public class InteractiveModeRunner {
         String clOrdId = "ORDER" + clOrdIdCounter.getAndIncrement();
 
         try {
-            OutgoingFixMessage order = session.acquireMessage(FixTags.MsgTypes.NewOrderSingle);
+            RingBufferOutgoingMessage order = session.tryClaimMessage(FixTags.MsgTypes.NewOrderSingle);
+            if (order == null) {
+                log.error("Ring buffer full - could not send order {}", clOrdId);
+                return;
+            }
+
             order.setField(FixTags.ClOrdID, clOrdId);
             order.setField(FixTags.Symbol, symbol);
             order.setField(FixTags.Side, side);
@@ -119,7 +124,8 @@ public class InteractiveModeRunner {
                 order.setField(FixTags.Price, price, 2);
             }
 
-            int seqNum = session.send(order);
+            int seqNum = order.getSeqNum();
+            session.commitMessage(order);
             log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}, SeqNum={}",
                     clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price, seqNum);
         } catch (Exception e) {
@@ -131,14 +137,20 @@ public class InteractiveModeRunner {
         String clOrdId = "CANCEL" + clOrdIdCounter.getAndIncrement();
 
         try {
-            OutgoingFixMessage cancel = session.acquireMessage(FixTags.MsgTypes.OrderCancelRequest);
+            RingBufferOutgoingMessage cancel = session.tryClaimMessage(FixTags.MsgTypes.OrderCancelRequest);
+            if (cancel == null) {
+                log.error("Ring buffer full - could not send cancel request {}", clOrdId);
+                return;
+            }
+
             cancel.setField(FixTags.ClOrdID, clOrdId);
             cancel.setField(41, origClOrdId); // OrigClOrdID
             cancel.setField(FixTags.Symbol, "UNKNOWN"); // In real app, would lookup
             cancel.setField(FixTags.Side, FixTags.SIDE_BUY); // In real app, would lookup
             cancel.setField(FixTags.TransactTime, Instant.now().toString());
 
-            int seqNum = session.send(cancel);
+            int seqNum = cancel.getSeqNum();
+            session.commitMessage(cancel);
             log.info("Sent OrderCancelRequest: ClOrdID={}, OrigClOrdID={}, SeqNum={}",
                     clOrdId, origClOrdId, seqNum);
         } catch (Exception e) {

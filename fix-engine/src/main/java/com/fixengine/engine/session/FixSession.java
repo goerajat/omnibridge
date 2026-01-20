@@ -8,13 +8,13 @@ import com.fixengine.message.FixWriter;
 import com.fixengine.message.IncomingFixMessage;
 import com.fixengine.message.IncomingMessagePool;
 import com.fixengine.message.IncomingMessagePoolConfig;
-import com.fixengine.message.MessagePool;
 import com.fixengine.message.MessagePoolConfig;
-import com.fixengine.message.OutgoingFixMessage;
+import com.fixengine.message.RingBufferOutgoingMessage;
 import com.fixengine.network.NetworkHandler;
 import com.fixengine.network.TcpChannel;
 import com.fixengine.persistence.FixLogEntry;
 import com.fixengine.persistence.FixLogStore;
+import org.agrona.MutableDirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,22 +65,25 @@ public class FixSession implements NetworkHandler {
     private int resendBeginSeqNo = 0;
     private int resendEndSeqNo = 0;
 
-    // Message pool for latency-optimized sending (outgoing)
-    private final MessagePool messagePool;
-
     // Message pool for incoming message parsing
     private final IncomingMessagePool incomingMessagePool;
 
     // Clock for time sources
     private final Clock clock;
 
+    // Ring buffer message wrapper (reusable, single-threaded access on commit)
+    private final RingBufferOutgoingMessage ringBufferMessage;
+
+    // Configuration for ring buffer messages
+    private final MessagePoolConfig poolConfig;
+
     public FixSession(SessionConfig config, FixLogStore logStore) {
         this.config = config;
         this.logStore = logStore;
         this.clock = config.getClock();
 
-        // Initialize outgoing message pool
-        MessagePoolConfig poolConfig = MessagePoolConfig.builder()
+        // Initialize message pool configuration (used by ring buffer message)
+        this.poolConfig = MessagePoolConfig.builder()
                 .poolSize(config.getMessagePoolSize())
                 .maxMessageLength(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber())
@@ -89,9 +92,10 @@ public class FixSession implements NetworkHandler {
                 .targetCompId(config.getTargetCompId())
                 .clock(clock)
                 .build();
-        this.messagePool = new MessagePool(poolConfig);
-        this.messagePool.warmUp();
-        log.info("[{}] Outgoing message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
+
+        // Initialize ring buffer message wrapper
+        this.ringBufferMessage = new RingBufferOutgoingMessage(poolConfig);
+        log.info("[{}] Ring buffer capacity: {}", config.getSessionId(), config.getRingBufferCapacity());
 
         // Initialize incoming message pool
         IncomingMessagePoolConfig incomingConfig = IncomingMessagePoolConfig.builder()
@@ -618,96 +622,92 @@ public class FixSession implements NetworkHandler {
         // Message listener notification is done centrally in processIncomingMessage()
     }
 
-    // ==================== Message Sending ====================
+    // ==================== Ring Buffer API (Message Sending) ====================
 
     /**
-     * Acquire a pre-allocated message from the pool for latency-optimized sending.
+     * Try to claim space in the ring buffer for a new message.
      *
-     * <p>The message is pre-populated with header fields (BeginString, SenderCompID,
-     * TargetCompID) and ready for body fields to be added.</p>
+     * <p>This method is thread-safe and can be called from multiple threads concurrently.
+     * The sequence number is assigned atomically when the claim succeeds.</p>
+     *
+     * <p>Usage:</p>
+     * <pre>{@code
+     * RingBufferOutgoingMessage msg = session.tryClaimMessage("D");
+     * if (msg != null) {
+     *     msg.setField(11, "ORDER-001");
+     *     msg.setField(55, "AAPL");
+     *     session.commitMessage(msg);
+     * } else {
+     *     // Ring buffer full - handle backpressure
+     * }
+     * }</pre>
      *
      * @param msgType the message type (e.g., "D" for NewOrderSingle)
-     * @return a pooled message ready for use
-     * @throws InterruptedException if the thread is interrupted while waiting for a message
-     */
-    public OutgoingFixMessage acquireMessage(String msgType) throws InterruptedException {
-        OutgoingFixMessage msg = messagePool.acquire();
-        msg.setMsgType(msgType);
-        return msg;
-    }
-
-    /**
-     * Try to acquire a pre-allocated message without blocking.
-     *
-     * @param msgType the message type
-     * @return a pooled message, or null if none are available
-     */
-    public OutgoingFixMessage tryAcquireMessage(String msgType) {
-        OutgoingFixMessage msg = messagePool.tryAcquire();
-        if (msg != null) {
-            msg.setMsgType(msgType);
-        }
-        return msg;
-    }
-
-    /**
-     * Send a pre-allocated pooled message.
-     *
-     * <p>This method fills in the sequence number, sending time, body length,
-     * and checksum, then sends the message. The message is automatically
-     * released back to the pool after sending.</p>
-     *
-     * @param message the pooled message to send
-     * @return the sequence number assigned to the message
+     * @return the ring buffer message ready for field encoding, or null if buffer is full
      * @throws IllegalStateException if not in a state that allows sending
      */
-    public int send(OutgoingFixMessage message) {
+    public RingBufferOutgoingMessage tryClaimMessage(String msgType) {
         if (!state.get().canSendAppMessage()) {
             throw new IllegalStateException("Cannot send application message in state: " + state.get());
         }
 
-        return sendPooledInternal(message, true);
+        return tryClaimMessageInternal(msgType);
     }
 
     /**
-     * Send a pre-allocated pooled message without auto-releasing.
-     *
-     * <p>Use this method if you need to reuse the message or control the release timing.</p>
-     *
-     * @param message the pooled message to send
-     * @param autoRelease true to automatically release the message back to the pool
-     * @return the sequence number assigned to the message
+     * Internal method to try claiming a message (used by both app and admin messages).
      */
-    public int send(OutgoingFixMessage message, boolean autoRelease) {
-        if (!state.get().canSendAppMessage()) {
-            throw new IllegalStateException("Cannot send application message in state: " + state.get());
+    private RingBufferOutgoingMessage tryClaimMessageInternal(String msgType) {
+        TcpChannel ch = channel;
+        if (ch == null) {
+            return null;
         }
 
-        return sendPooledInternal(message, autoRelease);
-    }
+        // Calculate claim size: length prefix + max message length
+        int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
 
-    /**
-     * Internal method to send a pooled message.
-     */
-    private int sendPooledInternal(OutgoingFixMessage message, boolean autoRelease) {
+        // Try to claim space in the ring buffer
+        int claimIndex = ch.tryClaim(claimSize);
+        if (claimIndex < 0) {
+            // Ring buffer is full
+            return null;
+        }
+
+        // Assign sequence number atomically
         int seqNum = outgoingSeqNum.getAndIncrement();
-        long sendingTime = clock.currentTimeMillis();
 
-        // Prepare the message (fills in SeqNum, SendingTime, BodyLength, CheckSum)
-        byte[] rawMessage = message.prepareForSend(seqNum, sendingTime);
-        int length = message.getLength();
+        // Get the buffer and wrap the message
+        MutableDirectBuffer buffer = ch.buffer();
+        ringBufferMessage.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
+                config.getBeginString(), config.getSenderCompId(), config.getTargetCompId());
+        ringBufferMessage.setMsgType(msgType);
+
+        return ringBufferMessage;
+    }
+
+    /**
+     * Commit a ring buffer message, making it available for sending.
+     *
+     * <p>This method prepares the message (fills in SendingTime, BodyLength, CheckSum)
+     * and commits it to the ring buffer. The message will be sent to the socket
+     * when the network event loop flushes the channel.</p>
+     *
+     * @param msg the ring buffer message to commit
+     */
+    public void commitMessage(RingBufferOutgoingMessage msg) {
+        // Prepare the message
+        long sendingTime = clock.currentTimeMillis();
+        int messageLength = msg.prepareForSend(sendingTime);
 
         // Log outgoing message
         if (logStore != null && config.isLogMessages()) {
-            byte[] logCopy = new byte[length];
-            System.arraycopy(rawMessage, 0, logCopy, 0, length);
-
+            byte[] logCopy = msg.toByteArray();
             FixLogEntry entry = new FixLogEntry(
                 Instant.now().toEpochMilli(),
-                seqNum,
+                msg.getSeqNum(),
                 FixLogEntry.Direction.OUTBOUND,
                 config.getSessionId(),
-                message.getMsgType(),
+                msg.getMsgType(),
                 0,
                 logCopy,
                 null
@@ -715,40 +715,37 @@ public class FixSession implements NetworkHandler {
             logStore.write(entry);
         }
 
-        // Send on the wire
+        // Commit to ring buffer
         TcpChannel ch = channel;
-        SessionState currentState = state.get();
-        if (ch != null && currentState != SessionState.DISCONNECTED) {
-            try {
-                ch.write(ByteBuffer.wrap(rawMessage, 0, length));
-                lastSentTime = clock.currentTimeMillis();
-                log.debug("[{}] Sent pooled: {} SeqNum={}", config.getSessionId(), message.getMsgType(), seqNum);
-                if (config.isLogMessages()) {
-                    log.info("[{}] OUT <<< {}", config.getSessionId(), formatRawMessage(rawMessage, length));
-                }
-            } catch (java.io.IOException e) {
-                log.error("[{}] Error writing to channel", config.getSessionId(), e);
+        if (ch != null) {
+            ch.commit(msg.getClaimIndex());
+            lastSentTime = clock.currentTimeMillis();
+            log.debug("[{}] Committed to ring buffer: {} SeqNum={}",
+                    config.getSessionId(), msg.getMsgType(), msg.getSeqNum());
+            if (config.isLogMessages()) {
+                log.info("[{}] OUT <<< {}", config.getSessionId(), msg.toString());
             }
-        } else {
-            log.debug("[{}] Skipped sending pooled {} SeqNum={} - channel closed or disconnected",
-                    config.getSessionId(), message.getMsgType(), seqNum);
         }
-
-        // Release back to pool if requested
-        if (autoRelease) {
-            message.release();
-        }
-
-        return seqNum;
     }
 
     /**
-     * Get the message pool (for advanced use).
+     * Abort a ring buffer message, discarding it.
      *
-     * @return the message pool, or null if pooling is not enabled
+     * <p>Use this method to rollback a claim if encoding fails. The sequence
+     * number is also rolled back.</p>
+     *
+     * @param msg the ring buffer message to abort
      */
-    public MessagePool getMessagePool() {
-        return messagePool;
+    public void abortMessage(RingBufferOutgoingMessage msg) {
+        // Rollback sequence number
+        outgoingSeqNum.decrementAndGet();
+
+        // Abort the claim
+        TcpChannel ch = channel;
+        if (ch != null) {
+            ch.abort(msg.getClaimIndex());
+            log.debug("[{}] Aborted ring buffer message: {}", config.getSessionId(), msg.getMsgType());
+        }
     }
 
     /**

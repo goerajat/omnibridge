@@ -393,12 +393,20 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
                 // Process any queued tasks
                 processTasks();
 
+                // Drain ring buffers BEFORE select (for messages from other threads)
+                drainAllChannelRingBuffers();
+
                 // Wait for events
                 int selected = selector.select(selectTimeoutMs);
 
                 if (selected > 0) {
                     processSelectedKeysNormal();
                 }
+
+                // Drain ring buffers AFTER processing (for immediate response sending)
+                // This ensures responses committed during message processing are sent
+                // immediately, not on the next iteration
+                drainAllChannelRingBuffers();
             } catch (IOException e) {
                 if (running.get()) {
                     log.error("Error in event loop: {}", e.getMessage(), e);
@@ -417,12 +425,45 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
                 // Process any queued tasks
                 processTasks();
 
+                // Drain ring buffers to sockets
+                drainAllChannelRingBuffers();
+
                 // Non-blocking select with consumer to avoid garbage
                 selector.selectNow(keyProcessor);
+
+                // Drain again after processing for immediate response sending
+                drainAllChannelRingBuffers();
 
             } catch (IOException e) {
                 if (running.get()) {
                     log.error("Error in event loop: {}", e.getMessage(), e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Drain all channel ring buffers to their sockets.
+     *
+     * <p>This method iterates through all registered channels and drains
+     * any pending messages from their ring buffers to the sockets.</p>
+     */
+    private void drainAllChannelRingBuffers() {
+        for (SelectionKey key : selector.keys()) {
+            if (!key.isValid()) {
+                continue;
+            }
+
+            Object attachment = key.attachment();
+            if (attachment instanceof ChannelContext ctx) {
+                TcpChannel channel = ctx.channel();
+                if (channel.hasRingBufferMessages()) {
+                    try {
+                        channel.drainRingBufferToSocket();
+                    } catch (IOException e) {
+                        log.error("Error draining ring buffer for channel {}: {}",
+                                channel.getId(), e.getMessage());
+                    }
                 }
             }
         }

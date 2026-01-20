@@ -2,7 +2,7 @@ package com.fixengine.samples.initiator;
 
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.message.FixTags;
-import com.fixengine.message.OutgoingFixMessage;
+import com.fixengine.message.RingBufferOutgoingMessage;
 
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
@@ -236,7 +236,11 @@ public class LatencyTestRunner {
 
     int counter = 1;
     private void sendOrder(String clOrdId) throws Exception {
-        OutgoingFixMessage order = session.acquireMessage(FixTags.MsgTypes.NewOrderSingle);
+        RingBufferOutgoingMessage order = session.tryClaimMessage(FixTags.MsgTypes.NewOrderSingle);
+        if (order == null) {
+            throw new IllegalStateException("Ring buffer full - cannot send order " + clOrdId);
+        }
+
         order.setField(FixTags.ClOrdID, clOrdId);
         order.setField(FixTags.Symbol, "TEST");
         order.setField(FixTags.Side, FixTags.SIDE_BUY);
@@ -244,7 +248,7 @@ public class LatencyTestRunner {
         order.setField(FixTags.OrdType, FixTags.ORD_TYPE_LIMIT);
         order.setField(FixTags.Price, 100.00, 2);
         order.setField(FixTags.TimeInForce, FixTags.TIF_DAY);
-        session.send(order);
+        session.commitMessage(order);
     }
 
     private void printWarmupResults(int ordersSent, long elapsedMs, long backpressureMs) {

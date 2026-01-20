@@ -58,6 +58,9 @@ public class SessionConfig {
     private int maxMessageLength = 4096;
     private int maxTagNumber = 1000;
 
+    // Ring buffer capacity for outgoing messages (must be power of 2)
+    private int ringBufferCapacity = 1048576; // 1MB default
+
     // Clock for time sources (allows testing with mock clocks)
     private Clock clock = SystemClock.INSTANCE;
 
@@ -192,6 +195,18 @@ public class SessionConfig {
 
         public Builder maxTagNumber(int maxTag) {
             config.maxTagNumber = maxTag;
+            return this;
+        }
+
+        public Builder ringBufferCapacity(int capacity) {
+            if (capacity <= 0) {
+                throw new IllegalArgumentException("Ring buffer capacity must be positive: " + capacity);
+            }
+            // Validate power of 2
+            if ((capacity & (capacity - 1)) != 0) {
+                throw new IllegalArgumentException("Ring buffer capacity must be power of 2: " + capacity);
+            }
+            config.ringBufferCapacity = capacity;
             return this;
         }
 
@@ -330,6 +345,15 @@ public class SessionConfig {
 
     public int getMaxTagNumber() {
         return maxTagNumber;
+    }
+
+    /**
+     * Get the ring buffer capacity for outgoing messages.
+     *
+     * @return the ring buffer capacity in bytes
+     */
+    public int getRingBufferCapacity() {
+        return ringBufferCapacity;
     }
 
     /**

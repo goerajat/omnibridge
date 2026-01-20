@@ -4,7 +4,7 @@ import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.MessageListener;
 import com.fixengine.message.FixTags;
 import com.fixengine.message.IncomingFixMessage;
-import com.fixengine.message.OutgoingFixMessage;
+import com.fixengine.message.RingBufferOutgoingMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -154,10 +154,15 @@ public class AcceptorMessageListener implements MessageListener {
                                      double orderQty, double cumQty, double leavesQty,
                                      double price, double avgPx, String text) {
         try {
-            OutgoingFixMessage execReport = session.acquireMessage(FixTags.MsgTypes.ExecutionReport);
+            RingBufferOutgoingMessage execReport = session.tryClaimMessage(FixTags.MsgTypes.ExecutionReport);
+            if (execReport == null) {
+                log.error("Ring buffer full - could not send execution report for order {}", orderId);
+                return;
+            }
+
             execReport.setField(FixTags.OrderID, orderId);
             execReport.setField(FixTags.ClOrdID, clOrdId);
-            execReport.setField(FixTags.ExecID,  "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
             execReport.setField(FixTags.ExecType, execType);
             execReport.setField(FixTags.OrdStatus, ordStatus);
             execReport.setField(FixTags.Symbol, symbol);
@@ -179,8 +184,8 @@ public class AcceptorMessageListener implements MessageListener {
             if (text != null) {
                 execReport.setField(FixTags.Text, text);
             }
-            //System.out.println("Sent " + execReport);
-            session.send(execReport);
+
+            session.commitMessage(execReport);
             executionReportsSent.incrementAndGet();
             if (!latencyMode) {
                 log.info("Sent ExecutionReport: OrdID={}, ExecType={}, OrdStatus={}",

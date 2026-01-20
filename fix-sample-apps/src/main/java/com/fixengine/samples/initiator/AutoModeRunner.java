@@ -2,7 +2,7 @@ package com.fixengine.samples.initiator;
 
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.message.FixTags;
-import com.fixengine.message.OutgoingFixMessage;
+import com.fixengine.message.RingBufferOutgoingMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +53,12 @@ public class AutoModeRunner {
         String clOrdId = "AUTO" + clOrdIdCounter.getAndIncrement();
 
         try {
-            OutgoingFixMessage order = session.acquireMessage(FixTags.MsgTypes.NewOrderSingle);
+            RingBufferOutgoingMessage order = session.tryClaimMessage(FixTags.MsgTypes.NewOrderSingle);
+            if (order == null) {
+                log.error("Ring buffer full - could not send order {}", clOrdId);
+                return;
+            }
+
             order.setField(FixTags.ClOrdID, clOrdId);
             order.setField(FixTags.Symbol, symbol);
             order.setField(FixTags.Side, side);
@@ -63,7 +68,8 @@ public class AutoModeRunner {
             order.setField(FixTags.TimeInForce, FixTags.TIF_DAY);
             order.setField(FixTags.TransactTime, Instant.now().toString());
 
-            int seqNum = session.send(order);
+            int seqNum = order.getSeqNum();
+            session.commitMessage(order);
             log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}, SeqNum={}",
                     clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price, seqNum);
         } catch (Exception e) {
