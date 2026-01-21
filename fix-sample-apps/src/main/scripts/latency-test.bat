@@ -38,6 +38,8 @@ if exist "%CONF_DIR%" set CP=%CONF_DIR%;!CP!
 REM JVM options for low latency
 set JVM_OPTS=-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10
 set JVM_OPTS=%JVM_OPTS% -XX:+AlwaysPreTouch
+REM Agrona: disable bounds checking for UnsafeBuffer (improves tail latencies)
+set JVM_OPTS=%JVM_OPTS% -Dagrona.disable.bounds.checks=true
 
 REM Log files
 set ACCEPTOR_LOG=%LOG_DIR%\latency-acceptor.log

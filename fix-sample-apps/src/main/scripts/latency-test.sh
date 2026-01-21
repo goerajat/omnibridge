@@ -52,6 +52,9 @@ JVM_OPTS="$JVM_OPTS -XX:+AlwaysPreTouch"
 JVM_OPTS="$JVM_OPTS -XX:-UseBiasedLocking"
 JVM_OPTS="$JVM_OPTS -XX:+UseNUMA"
 
+# Agrona: disable bounds checking for UnsafeBuffer (improves tail latencies)
+JVM_OPTS="$JVM_OPTS -Dagrona.disable.bounds.checks=true"
+
 # Separate GC logs for acceptor and initiator
 ACCEPTOR_GC_OPTS="-Xlog:gc*,gc+age=trace,gc+heap=debug,safepoint:file=$GC_LOG_DIR/latency-acceptor-gc.log:time,uptime,level,tags:filecount=5,filesize=10m"
 INITIATOR_GC_OPTS="-Xlog:gc*,gc+age=trace,gc+heap=debug,safepoint:file=$GC_LOG_DIR/latency-initiator-gc.log:time,uptime,level,tags:filecount=5,filesize=10m"
