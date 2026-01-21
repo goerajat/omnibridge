@@ -3,8 +3,10 @@
 # Usage: latency-test.sh [initiator-options]
 #
 # Default test configuration:
-#   Acceptor: acceptor.conf with --latency flag, port 9876, 100% fill rate
-#   Initiator: initiator.conf with --latency flag, connects to localhost:9876
+#   Acceptor: latency-acceptor.conf, port 9876, 100% fill rate
+#            busy-spin enabled, CPU affinity = 4
+#   Initiator: latency-initiator.conf, connects to localhost:9876
+#             busy-spin enabled, CPU affinity = 6
 #
 # Example:
 #   ./latency-test.sh
@@ -59,6 +61,12 @@ JVM_OPTS="$JVM_OPTS -Dagrona.disable.bounds.checks=true"
 ACCEPTOR_GC_OPTS="-Xlog:gc*,gc+age=trace,gc+heap=debug,safepoint:file=$GC_LOG_DIR/latency-acceptor-gc.log:time,uptime,level,tags:filecount=5,filesize=10m"
 INITIATOR_GC_OPTS="-Xlog:gc*,gc+age=trace,gc+heap=debug,safepoint:file=$GC_LOG_DIR/latency-initiator-gc.log:time,uptime,level,tags:filecount=5,filesize=10m"
 
+# Low-latency network settings (override config file values)
+# Acceptor: busy-spin mode enabled, CPU affinity = 4
+ACCEPTOR_NET_OPTS="-Dnetwork.busy-spin-mode=true -Dnetwork.cpu-affinity=4"
+# Initiator: busy-spin mode enabled, CPU affinity = 6
+INITIATOR_NET_OPTS="-Dnetwork.busy-spin-mode=true -Dnetwork.cpu-affinity=6"
+
 # Acceptor log file
 ACCEPTOR_LOG="$GC_LOG_DIR/latency-acceptor.log"
 
@@ -75,8 +83,9 @@ trap cleanup EXIT INT TERM
 
 # Start acceptor in background with latency mode, redirecting output to log file
 echo "Starting FIX Acceptor in latency mode (background)..."
+echo "  Busy-spin: enabled, CPU affinity: 4"
 echo "Acceptor log: $ACCEPTOR_LOG"
-java $JVM_OPTS $ACCEPTOR_GC_OPTS -cp "$CP" \
+java $JVM_OPTS $ACCEPTOR_GC_OPTS $ACCEPTOR_NET_OPTS -cp "$CP" \
     com.fixengine.samples.acceptor.SampleAcceptor \
     --latency \
     --fill-rate 1.0 > "$ACCEPTOR_LOG" 2>&1 &
@@ -94,12 +103,13 @@ fi
 
 echo
 echo "Starting FIX Initiator in latency mode..."
+echo "  Busy-spin: enabled, CPU affinity: 6"
 echo "============================================================"
 echo
 
 # Run initiator in foreground with latency mode
 set +e
-java $JVM_OPTS $INITIATOR_GC_OPTS -cp "$CP" \
+java $JVM_OPTS $INITIATOR_GC_OPTS $INITIATOR_NET_OPTS -cp "$CP" \
     com.fixengine.samples.initiator.SampleInitiator \
     --latency \
     "$@"
