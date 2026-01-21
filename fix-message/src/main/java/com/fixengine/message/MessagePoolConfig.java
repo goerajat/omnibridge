@@ -1,11 +1,10 @@
 package com.fixengine.message;
 
 /**
- * Configuration for a {@link MessagePool}.
+ * Configuration for outgoing FIX messages.
  *
- * <p>This class defines the settings for pre-allocated message pooling, including:</p>
+ * <p>This class defines the settings for message encoding, including:</p>
  * <ul>
- *   <li>Pool size - number of pre-allocated messages</li>
  *   <li>Message buffer size - maximum size of each message</li>
  *   <li>Tag tracking - maximum tag number for duplicate detection</li>
  *   <li>Session identifiers - pre-populated CompIDs</li>
@@ -14,7 +13,6 @@ package com.fixengine.message;
  * <p>Example usage:</p>
  * <pre>{@code
  * MessagePoolConfig config = MessagePoolConfig.builder()
- *     .poolSize(64)
  *     .maxMessageLength(4096)
  *     .maxTagNumber(1000)
  *     .beginString("FIX.4.4")
@@ -25,7 +23,6 @@ package com.fixengine.message;
  */
 public class MessagePoolConfig {
 
-    private int poolSize = 64;
     private int maxMessageLength = 4096;
     private int maxTagNumber = 1000;
     private String beginString = "FIX.4.4";
@@ -44,15 +41,6 @@ public class MessagePoolConfig {
      */
     public static Builder builder() {
         return new Builder();
-    }
-
-    /**
-     * Get the pool size (number of pre-allocated messages).
-     *
-     * @return the pool size
-     */
-    public int getPoolSize() {
-        return poolSize;
     }
 
     /**
@@ -150,20 +138,6 @@ public class MessagePoolConfig {
      */
     public static class Builder {
         private final MessagePoolConfig config = new MessagePoolConfig();
-
-        /**
-         * Set the pool size (number of pre-allocated messages).
-         *
-         * @param poolSize the pool size (must be positive)
-         * @return this builder
-         */
-        public Builder poolSize(int poolSize) {
-            if (poolSize <= 0) {
-                throw new IllegalArgumentException("Pool size must be positive: " + poolSize);
-            }
-            config.poolSize = poolSize;
-            return this;
-        }
 
         /**
          * Set the maximum message length in bytes.
@@ -333,8 +307,7 @@ public class MessagePoolConfig {
     @Override
     public String toString() {
         return "MessagePoolConfig{" +
-                "poolSize=" + poolSize +
-                ", maxMessageLength=" + maxMessageLength +
+                "maxMessageLength=" + maxMessageLength +
                 ", maxTagNumber=" + maxTagNumber +
                 ", beginString='" + beginString + '\'' +
                 ", senderCompId='" + senderCompId + '\'' +

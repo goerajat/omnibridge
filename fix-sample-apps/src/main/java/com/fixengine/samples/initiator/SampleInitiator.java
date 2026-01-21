@@ -198,7 +198,6 @@ public class SampleInitiator implements Callable<Integer> {
                         .timeZone(s.getTimeZone())
                         .resetOnEod(s.isResetOnEod())
                         .logMessages(false)
-                        .messagePoolSize(Math.max(s.getMessagePoolSize(), maxPendingOrders * 2))
                         .maxMessageLength(s.getMaxMessageLength())
                         .maxTagNumber(s.getMaxTagNumber())
                         .build())

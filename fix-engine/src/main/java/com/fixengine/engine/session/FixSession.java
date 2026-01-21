@@ -82,7 +82,6 @@ public class FixSession implements NetworkHandler {
 
         // Initialize message pool configuration (used by ring buffer message)
         this.poolConfig = MessagePoolConfig.builder()
-                .poolSize(config.getMessagePoolSize())
                 .maxMessageLength(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber())
                 .beginString(config.getBeginString())
@@ -95,13 +94,13 @@ public class FixSession implements NetworkHandler {
         this.ringBufferMessageThreadLocal = ThreadLocal.withInitial(() -> new RingBufferOutgoingMessage(poolConfig));
         log.info("[{}] Ring buffer capacity: {}", config.getSessionId(), config.getRingBufferCapacity());
 
-        // Initialize incoming message pool
+        // Initialize incoming message pool (for parsing incoming messages)
         IncomingMessagePoolConfig incomingConfig = IncomingMessagePoolConfig.builder()
-                .poolSize(config.getMessagePoolSize())
+                .poolSize(64)
                 .maxTagNumber(config.getMaxTagNumber())
                 .build();
         this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
-        log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), config.getMessagePoolSize());
+        log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), 64);
     }
 
     // ==================== Session Management ====================

@@ -35,7 +35,6 @@ public final class EngineSessionConfig {
     private final LocalTime eodTime;
     private final boolean resetOnEod;
     private final boolean logMessages;
-    private final int messagePoolSize;
     private final int maxMessageLength;
     private final int maxTagNumber;
     private final String persistencePath;
@@ -60,7 +59,6 @@ public final class EngineSessionConfig {
         this.eodTime = builder.eodTime;
         this.resetOnEod = builder.resetOnEod;
         this.logMessages = builder.logMessages;
-        this.messagePoolSize = builder.messagePoolSize;
         this.maxMessageLength = builder.maxMessageLength;
         this.maxTagNumber = builder.maxTagNumber;
         this.persistencePath = builder.persistencePath;
@@ -88,7 +86,6 @@ public final class EngineSessionConfig {
                 .timeZone(config.getString("time-zone"))
                 .resetOnEod(config.getBoolean("reset-on-eod"))
                 .logMessages(config.getBoolean("log-messages"))
-                .messagePoolSize(config.getInt("message-pool-size"))
                 .maxMessageLength(config.getInt("max-message-length"))
                 .maxTagNumber(config.getInt("max-tag-number"));
 
@@ -188,10 +185,6 @@ public final class EngineSessionConfig {
         return logMessages;
     }
 
-    public int getMessagePoolSize() {
-        return messagePoolSize;
-    }
-
     public int getMaxMessageLength() {
         return maxMessageLength;
     }
@@ -235,7 +228,6 @@ public final class EngineSessionConfig {
         private LocalTime eodTime;
         private boolean resetOnEod = false;
         private boolean logMessages = true;
-        private int messagePoolSize = 64;
         private int maxMessageLength = 4096;
         private int maxTagNumber = 1000;
         private String persistencePath;
@@ -334,11 +326,6 @@ public final class EngineSessionConfig {
 
         public Builder logMessages(boolean logMessages) {
             this.logMessages = logMessages;
-            return this;
-        }
-
-        public Builder messagePoolSize(int messagePoolSize) {
-            this.messagePoolSize = messagePoolSize;
             return this;
         }
 

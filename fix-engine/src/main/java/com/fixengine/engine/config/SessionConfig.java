@@ -53,8 +53,7 @@ public class SessionConfig {
     // Logging
     private boolean logMessages = true;
 
-    // Message pooling (latency optimization)
-    private int messagePoolSize = 64;
+    // Message encoding
     private int maxMessageLength = 4096;
     private int maxTagNumber = 1000;
 
@@ -180,11 +179,6 @@ public class SessionConfig {
 
         public Builder logMessages(boolean log) {
             config.logMessages = log;
-            return this;
-        }
-
-        public Builder messagePoolSize(int size) {
-            config.messagePoolSize = size;
             return this;
         }
 
@@ -333,10 +327,6 @@ public class SessionConfig {
 
     public boolean isLogMessages() {
         return logMessages;
-    }
-
-    public int getMessagePoolSize() {
-        return messagePoolSize;
     }
 
     public int getMaxMessageLength() {

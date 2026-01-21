@@ -23,7 +23,6 @@ class RingBufferOutgoingMessageTest {
     @BeforeEach
     void setUp() {
         config = MessagePoolConfig.builder()
-                .poolSize(1)
                 .maxMessageLength(BUFFER_SIZE)
                 .maxTagNumber(1000)
                 .beginString("FIX.4.4")

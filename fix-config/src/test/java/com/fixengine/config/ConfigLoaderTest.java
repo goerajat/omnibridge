@@ -130,7 +130,6 @@ class ConfigLoaderTest {
                   time-zone = "UTC"
                   reset-on-eod = false
                   log-messages = true
-                  message-pool-size = 128
                   max-message-length = 1024
                   max-tag-number = 500
                   start-time = ""
@@ -173,7 +172,6 @@ class ConfigLoaderTest {
         assertEquals(9876, session.getPort());
         assertEquals(30, session.getHeartbeatInterval());
         assertTrue(session.isResetOnLogon());
-        assertEquals(128, session.getMessagePoolSize());
     }
 
     @Test
@@ -214,7 +212,6 @@ class ConfigLoaderTest {
                   time-zone = "UTC"
                   reset-on-eod = false
                   log-messages = true
-                  message-pool-size = 64
                   max-message-length = 4096
                   max-tag-number = 1000
                 },
@@ -234,7 +231,6 @@ class ConfigLoaderTest {
                   time-zone = "UTC"
                   reset-on-eod = false
                   log-messages = true
-                  message-pool-size = 64
                   max-message-length = 4096
                   max-tag-number = 1000
                 }

@@ -332,7 +332,6 @@ public class FixEngine {
                 .timeZone(config.getTimeZone())
                 .resetOnEod(config.isResetOnEod())
                 .logMessages(config.isLogMessages())
-                .messagePoolSize(config.getMessagePoolSize())
                 .maxMessageLength(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber());
 
