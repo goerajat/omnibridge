@@ -1,24 +1,16 @@
 package com.fixengine.samples.initiator;
 
-import com.fixengine.config.FixEngineConfig;
-import com.fixengine.config.NetworkConfig;
-import com.fixengine.config.PersistenceConfig;
-import com.fixengine.config.provider.DefaultComponentProvider;
 import com.fixengine.engine.FixEngine;
 import com.fixengine.engine.session.FixSession;
-import com.fixengine.network.NetworkEventLoop;
-import com.fixengine.persistence.FixLogStore;
-import com.fixengine.persistence.memory.MemoryMappedFixLogStore;
+import com.fixengine.samples.common.FixApplicationBase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import ch.qos.logback.classic.Level;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -28,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  * Supports interactive mode, auto mode, and latency testing mode.
  */
 @Command(name = "sample-initiator", description = "Sample FIX initiator (trading client)")
-public class SampleInitiator implements Callable<Integer> {
+public class SampleInitiator extends FixApplicationBase {
 
     private static final Logger log = LoggerFactory.getLogger(SampleInitiator.class);
 
@@ -41,7 +33,6 @@ public class SampleInitiator implements Callable<Integer> {
     @Option(names = {"--count"}, description = "Number of orders to send in auto mode", defaultValue = "10")
     private int orderCount;
 
-    // Latency tracking options
     @Option(names = {"--latency"}, description = "Enable latency tracking mode", defaultValue = "false")
     private boolean latencyMode;
 
@@ -60,11 +51,19 @@ public class SampleInitiator implements Callable<Integer> {
     @Option(names = {"--backpressure-timeout"}, description = "Seconds to wait in backpressure before aborting", defaultValue = "5")
     private int backpressureTimeoutSeconds;
 
-    private DefaultComponentProvider provider;
-    private volatile boolean running = true;
+    private CountDownLatch logonLatch;
+    private InitiatorMessageListener messageListener;
 
     @Override
-    public Integer call() throws Exception {
+    protected List<String> getConfigFiles() {
+        if (configFiles.isEmpty()) {
+            configFiles.add("initiator.conf");
+        }
+        return configFiles;
+    }
+
+    @Override
+    protected void configure(FixEngine engine, List<FixSession> sessions) {
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency tracking mode enabled - log level set to ERROR");
@@ -73,142 +72,59 @@ public class SampleInitiator implements Callable<Integer> {
             System.out.println("Rate: " + (ordersPerSecond > 0 ? ordersPerSecond + " orders/sec" : "unlimited"));
             System.out.println("Max pending orders: " + maxPendingOrders);
             System.out.println("Backpressure timeout: " + backpressureTimeoutSeconds + " seconds");
-            System.out.println("Message pooling: ENABLED (zero-allocation mode)");
         }
 
-        try {
-            // Load configuration
-            if (configFiles.isEmpty()) {
-                configFiles.add("initiator.conf");
-            }
+        logonLatch = new CountDownLatch(1);
+        InitiatorStateListener stateListener = new InitiatorStateListener(logonLatch, reason -> running = false);
+        messageListener = new InitiatorMessageListener(latencyMode);
 
-            log.info("Loading configuration from: {}", configFiles);
+        addStateListener(engine, stateListener);
+        addMessageListener(engine, messageListener);
+    }
 
-            // Create and initialize provider
-            provider = DefaultComponentProvider.create(configFiles);
+    @Override
+    protected int run(FixEngine engine, List<FixSession> sessions) throws Exception {
+        FixSession session = sessions.get(0);
 
-            // Apply latency mode settings
-            if (latencyMode) {
-                NetworkConfig networkConfig = provider.getNetworkConfig();
-                PersistenceConfig persistenceConfig = provider.getPersistenceConfig();
-                FixEngineConfig engineConfig = applyLatencyModeSettings(provider.getEngineConfig());
-                provider = DefaultComponentProvider.create(networkConfig, persistenceConfig, engineConfig);
-            }
+        // Connect to acceptor
+        engine.connect(session.getConfig().getSessionId());
 
-            log.info("Starting Sample FIX Initiator");
+        // Wait for logon
+        if (latencyMode) {
+            System.out.println("Waiting for logon...");
+        } else {
+            log.info("Waiting for logon...");
+        }
 
-            // Register component factories
-            provider.withNetworkFactory(config -> new NetworkEventLoop(config, provider))
-                    .withPersistenceFactory(config -> new MemoryMappedFixLogStore(config, provider))
-                    .withEngineFactory((config, networkLoop, persistence) ->
-                        new FixEngine(config, (NetworkEventLoop) networkLoop, (FixLogStore) persistence));
-
-            // Initialize components
-            provider.initialize();
-
-            // Get engine and create sessions
-            FixEngine engine = (FixEngine) provider.getEngineProvider().get();
-
-            // Setup listeners
-            CountDownLatch logonLatch = new CountDownLatch(1);
-            InitiatorStateListener stateListener = new InitiatorStateListener(logonLatch, reason -> running = false);
-            InitiatorMessageListener messageListener = new InitiatorMessageListener(latencyMode);
-
-            engine.addStateListener(stateListener);
-            engine.addMessageListener(messageListener);
-
-            List<FixSession> sessions = engine.createSessionsFromConfig();
-            if (sessions.isEmpty()) {
-                log.error("No sessions configured");
-                return 1;
-            }
-
-            FixSession session = sessions.get(0);
-            engine.start();
-
-            // Connect
-            engine.connect(session.getConfig().getSessionId());
-
-            // Wait for logon
-            if (!latencyMode) {
-                log.info("Waiting for logon...");
-            } else {
-                System.out.println("Waiting for logon...");
-            }
-
-            if (!logonLatch.await(30, TimeUnit.SECONDS)) {
-                log.error("Timeout waiting for logon");
-                System.err.println("Timeout waiting for logon");
-                provider.stop();
-                return 1;
-            }
-
-            if (!latencyMode) {
-                log.info("Logged on successfully!");
-            } else {
-                System.out.println("Logged on successfully!");
-            }
-
-            // Run the selected mode
-            if (latencyMode) {
-                LatencyTestRunner runner = new LatencyTestRunner(session, messageListener,
-                        warmupOrders, testOrders, ordersPerSecond, maxPendingOrders, backpressureTimeoutSeconds);
-                runner.run();
-            } else if (autoMode) {
-                AutoModeRunner runner = new AutoModeRunner(session, orderCount);
-                runner.run();
-            } else {
-                InteractiveModeRunner runner = new InteractiveModeRunner(session);
-                runner.run();
-            }
-
-            // Logout and stop
-            session.logout("User requested logout");
-            Thread.sleep(1000);
-            provider.stop();
-
-            return 0;
-
-        } catch (Exception e) {
-            log.error("Error in initiator", e);
-            if (provider != null) {
-                provider.stop();
-            }
+        if (!logonLatch.await(30, TimeUnit.SECONDS)) {
+            System.err.println("Timeout waiting for logon");
             return 1;
         }
-    }
 
-    private FixEngineConfig applyLatencyModeSettings(FixEngineConfig config) {
-        return FixEngineConfig.builder()
-                .sessions(config.getSessions().stream()
-                    .map(s -> com.fixengine.config.EngineSessionConfig.builder()
-                        .sessionName(s.getSessionName())
-                        .beginString(s.getBeginString())
-                        .senderCompId(s.getSenderCompId())
-                        .targetCompId(s.getTargetCompId())
-                        .role(s.getRole())
-                        .host(s.getHost())
-                        .port(s.getPort())
-                        .heartbeatInterval(s.getHeartbeatInterval())
-                        .resetOnLogon(s.isResetOnLogon())
-                        .resetOnLogout(s.isResetOnLogout())
-                        .resetOnDisconnect(s.isResetOnDisconnect())
-                        .reconnectInterval(s.getReconnectInterval())
-                        .maxReconnectAttempts(s.getMaxReconnectAttempts())
-                        .timeZone(s.getTimeZone())
-                        .resetOnEod(s.isResetOnEod())
-                        .logMessages(false)
-                        .maxMessageLength(s.getMaxMessageLength())
-                        .maxTagNumber(s.getMaxTagNumber())
-                        .build())
-                    .toList())
-                .build();
-    }
+        if (latencyMode) {
+            System.out.println("Logged on successfully!");
+        } else {
+            log.info("Logged on successfully!");
+        }
 
-    private void setLogLevel(String level) {
-        ch.qos.logback.classic.Logger rootLogger =
-            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("com.fixengine");
-        rootLogger.setLevel(Level.toLevel(level));
+        // Run the selected mode
+        if (latencyMode) {
+            LatencyTestRunner runner = new LatencyTestRunner(session, messageListener,
+                    warmupOrders, testOrders, ordersPerSecond, maxPendingOrders, backpressureTimeoutSeconds);
+            runner.run();
+        } else if (autoMode) {
+            AutoModeRunner runner = new AutoModeRunner(session, orderCount);
+            runner.run();
+        } else {
+            InteractiveModeRunner runner = new InteractiveModeRunner(session);
+            runner.run();
+        }
+
+        // Logout gracefully
+        session.logout("User requested logout");
+        Thread.sleep(1000);
+
+        return 0;
     }
 
     public static void main(String[] args) {
