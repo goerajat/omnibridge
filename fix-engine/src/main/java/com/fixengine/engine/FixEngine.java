@@ -17,12 +17,12 @@ import com.fixengine.network.TcpAcceptor;
 import com.fixengine.network.TcpChannel;
 import com.fixengine.persistence.FixLogStore;
 import com.fixengine.persistence.memory.MemoryMappedFixLogStore;
+import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -791,11 +791,11 @@ public class FixEngine {
         }
 
         @Override
-        public int onDataReceived(TcpChannel channel, ByteBuffer data) {
+        public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
             if (session != null) {
-                return session.onDataReceived(channel, data);
+                return session.onDataReceived(channel, buffer, offset, length);
             }
-            return data.remaining();
+            return length;
         }
 
         @Override

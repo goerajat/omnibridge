@@ -40,7 +40,8 @@ echo Rate: %RATE% orders/sec
 echo ==========================================================================
 
 REM JVM options for low latency
-set JVM_OPTS=-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch
+REM -Dagrona.disable.bounds.checks=true removes bounds checking from UnsafeBuffer for max performance
+set JVM_OPTS=-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch -Dagrona.disable.bounds.checks=true
 
 REM Start acceptor in background (uber jar default main class is acceptor)
 echo.

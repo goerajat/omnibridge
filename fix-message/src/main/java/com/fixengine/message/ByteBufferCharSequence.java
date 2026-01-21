@@ -1,12 +1,14 @@
 package com.fixengine.message;
 
+import org.agrona.DirectBuffer;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 /**
- * A CharSequence implementation that wraps a portion of a ByteBuffer.
+ * A CharSequence implementation that wraps a portion of a DirectBuffer or ByteBuffer.
  *
- * <p>This class provides zero-allocation access to string data stored in ByteBuffers,
+ * <p>This class provides zero-allocation access to string data stored in buffers,
  * typically used for FIX message field values. The bytes are assumed to be ASCII encoded.</p>
  *
  * <p>Key features:</p>
@@ -15,7 +17,8 @@ import java.nio.charset.StandardCharsets;
  *   <li>Poolable - can be reset and reused</li>
  *   <li>Proper equals/hashCode for use in collections and comparisons</li>
  *   <li>Compatible with String.equals() and other CharSequence comparisons</li>
- *   <li>Direct ByteBuffer access without intermediate byte array copies</li>
+ *   <li>Direct buffer access without intermediate byte array copies</li>
+ *   <li>Supports both DirectBuffer (Agrona) and ByteBuffer (NIO)</li>
  * </ul>
  *
  * <p>Thread Safety: This class is NOT thread-safe. The backing buffer should not be
@@ -23,7 +26,8 @@ import java.nio.charset.StandardCharsets;
  */
 public final class ByteBufferCharSequence implements CharSequence, Comparable<CharSequence> {
 
-    private ByteBuffer buffer;
+    private DirectBuffer directBuffer;
+    private ByteBuffer byteBuffer;
     private int offset;
     private int length;
 
@@ -32,10 +36,11 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
 
     /**
      * Create an empty ByteBufferCharSequence.
-     * Must call {@link #wrap(ByteBuffer, int, int)} before use.
+     * Must call {@link #wrap(DirectBuffer, int, int)} or {@link #wrap(ByteBuffer, int, int)} before use.
      */
     public ByteBufferCharSequence() {
-        this.buffer = null;
+        this.directBuffer = null;
+        this.byteBuffer = null;
         this.offset = 0;
         this.length = 0;
     }
@@ -52,6 +57,34 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
     }
 
     /**
+     * Create a ByteBufferCharSequence wrapping a portion of a DirectBuffer.
+     *
+     * @param buffer the backing DirectBuffer
+     * @param offset the start position in the buffer (absolute position)
+     * @param length the number of bytes to include
+     */
+    public ByteBufferCharSequence(DirectBuffer buffer, int offset, int length) {
+        wrap(buffer, offset, length);
+    }
+
+    /**
+     * Wrap a portion of a DirectBuffer.
+     *
+     * <p>This method allows reuse of the CharSequence object.</p>
+     *
+     * @param buffer the backing DirectBuffer
+     * @param offset the start position in the buffer (absolute position)
+     * @param length the number of bytes to include
+     */
+    public void wrap(DirectBuffer buffer, int offset, int length) {
+        this.directBuffer = buffer;
+        this.byteBuffer = null;
+        this.offset = offset;
+        this.length = length;
+        this.hash = 0; // Reset cached hash
+    }
+
+    /**
      * Wrap a portion of a ByteBuffer.
      *
      * <p>This method allows reuse of the CharSequence object.</p>
@@ -61,7 +94,8 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
      * @param length the number of bytes to include
      */
     public void wrap(ByteBuffer buffer, int offset, int length) {
-        this.buffer = buffer;
+        this.byteBuffer = buffer;
+        this.directBuffer = null;
         this.offset = offset;
         this.length = length;
         this.hash = 0; // Reset cached hash
@@ -72,7 +106,8 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
      * The object can be returned to a pool after reset.
      */
     public void reset() {
-        this.buffer = null;
+        this.directBuffer = null;
+        this.byteBuffer = null;
         this.offset = 0;
         this.length = 0;
         this.hash = 0;
@@ -84,7 +119,7 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
      * @return true if wrapping valid data
      */
     public boolean isValid() {
-        return buffer != null;
+        return directBuffer != null || byteBuffer != null;
     }
 
     @Override
@@ -97,7 +132,18 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         if (index < 0 || index >= length) {
             throw new IndexOutOfBoundsException("Index: " + index + ", Length: " + length);
         }
-        return (char) (buffer.get(offset + index) & 0xFF);
+        return (char) (getByte(offset + index) & 0xFF);
+    }
+
+    /**
+     * Get a byte at the specified absolute position.
+     */
+    private byte getByte(int position) {
+        if (directBuffer != null) {
+            return directBuffer.getByte(position);
+        } else {
+            return byteBuffer.get(position);
+        }
     }
 
     @Override
@@ -105,7 +151,11 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         if (start < 0 || end > length || start > end) {
             throw new IndexOutOfBoundsException("start=" + start + ", end=" + end + ", length=" + length);
         }
-        return new ByteBufferCharSequence(buffer, offset + start, end - start);
+        if (directBuffer != null) {
+            return new ByteBufferCharSequence(directBuffer, offset + start, end - start);
+        } else {
+            return new ByteBufferCharSequence(byteBuffer, offset + start, end - start);
+        }
     }
 
     /**
@@ -116,13 +166,16 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
      */
     @Override
     public String toString() {
-        if (buffer == null || length == 0) {
+        if (length == 0 || (directBuffer == null && byteBuffer == null)) {
             return "";
         }
         byte[] bytes = new byte[length];
-        // Use absolute get to avoid modifying buffer position
-        for (int i = 0; i < length; i++) {
-            bytes[i] = buffer.get(offset + i);
+        if (directBuffer != null) {
+            directBuffer.getBytes(offset, bytes, 0, length);
+        } else {
+            for (int i = 0; i < length; i++) {
+                bytes[i] = byteBuffer.get(offset + i);
+            }
         }
         return new String(bytes, 0, length, StandardCharsets.US_ASCII);
     }
@@ -162,14 +215,10 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         }
 
         // Optimized path for ByteBufferCharSequence
-        if (cs instanceof ByteBufferCharSequence) {
-            ByteBufferCharSequence other = (ByteBufferCharSequence) cs;
-            if (other.buffer == this.buffer && other.offset == this.offset && other.length == this.length) {
-                return true;
-            }
+        if (cs instanceof ByteBufferCharSequence other) {
             // Compare byte by byte
             for (int i = 0; i < length; i++) {
-                if (buffer.get(offset + i) != other.buffer.get(other.offset + i)) {
+                if (getByte(offset + i) != other.getByte(other.offset + i)) {
                     return false;
                 }
             }
@@ -197,7 +246,7 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         if (h == 0 && length > 0) {
             // Use same algorithm as String.hashCode()
             for (int i = 0; i < length; i++) {
-                h = 31 * h + (buffer.get(offset + i) & 0xFF);
+                h = 31 * h + (getByte(offset + i) & 0xFF);
             }
             hash = h;
         }
@@ -273,7 +322,7 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         boolean negative = false;
         int i = 0;
 
-        byte firstByte = buffer.get(offset);
+        byte firstByte = getByte(offset);
         if (firstByte == '-') {
             negative = true;
             i = 1;
@@ -282,7 +331,7 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         }
 
         for (; i < length; i++) {
-            byte b = buffer.get(offset + i);
+            byte b = getByte(offset + i);
             if (b >= '0' && b <= '9') {
                 result = result * 10 + (b - '0');
             } else {
@@ -308,7 +357,7 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         boolean negative = false;
         int i = 0;
 
-        byte firstByte = buffer.get(offset);
+        byte firstByte = getByte(offset);
         if (firstByte == '-') {
             negative = true;
             i = 1;
@@ -317,7 +366,7 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
         }
 
         for (; i < length; i++) {
-            byte b = buffer.get(offset + i);
+            byte b = getByte(offset + i);
             if (b >= '0' && b <= '9') {
                 result = result * 10 + (b - '0');
             } else {
@@ -359,12 +408,21 @@ public final class ByteBufferCharSequence implements CharSequence, Comparable<Ch
     }
 
     /**
-     * Get the backing buffer.
+     * Get the backing ByteBuffer if wrapping a ByteBuffer.
      *
-     * @return the backing ByteBuffer
+     * @return the backing ByteBuffer, or null if wrapping DirectBuffer
      */
     public ByteBuffer getBuffer() {
-        return buffer;
+        return byteBuffer;
+    }
+
+    /**
+     * Get the backing DirectBuffer if wrapping a DirectBuffer.
+     *
+     * @return the backing DirectBuffer, or null if wrapping ByteBuffer
+     */
+    public DirectBuffer getDirectBuffer() {
+        return directBuffer;
     }
 
     /**

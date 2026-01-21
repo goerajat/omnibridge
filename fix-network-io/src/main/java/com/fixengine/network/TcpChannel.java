@@ -37,7 +37,7 @@ public class TcpChannel {
     private final SocketChannel socketChannel;
     private final String remoteAddress;
     private final String localAddress;
-    private final ByteBuffer readBuffer;
+    private final DirectByteBuffer readBuffer;
     private final ByteBuffer writeBuffer;
 
     // Ring buffer for outgoing messages (many producers, single consumer)
@@ -81,7 +81,7 @@ public class TcpChannel {
                       int ringBufferCapacity) throws IOException {
         this.id = ID_GENERATOR.incrementAndGet();
         this.socketChannel = socketChannel;
-        this.readBuffer = ByteBuffer.allocateDirect(readBufferSize);
+        this.readBuffer = new DirectByteBuffer(readBufferSize);
         this.writeBuffer = ByteBuffer.allocateDirect(writeBufferSize);
         this.ringBufferCapacity = ringBufferCapacity;
 
@@ -146,9 +146,18 @@ public class TcpChannel {
 
     /**
      * Get the read buffer for this channel.
+     * Use this for accessing data via DirectBuffer interface.
      */
-    ByteBuffer getReadBuffer() {
+    DirectByteBuffer getReadBuffer() {
         return readBuffer;
+    }
+
+    /**
+     * Get the underlying ByteBuffer for socket I/O operations.
+     * Use this for SocketChannel.read() operations.
+     */
+    ByteBuffer getReadByteBuffer() {
+        return readBuffer.byteBuffer();
     }
 
     /**

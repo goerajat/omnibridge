@@ -566,26 +566,27 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
     private void handleRead(SelectionKey key) throws IOException {
         ChannelContext ctx = (ChannelContext) key.attachment();
         TcpChannel channel = ctx.channel;
-        ByteBuffer buffer = channel.getReadBuffer();
+        DirectByteBuffer directBuffer = channel.getReadBuffer();
+        ByteBuffer byteBuffer = directBuffer.byteBuffer();
 
         // Ask handler how many bytes it needs
         int bytesToRead = ctx.handler.getNumBytesToRead(channel);
 
         // Limit buffer to read only the requested number of bytes
-        int originalLimit = buffer.limit();
-        int newLimit = Math.min(buffer.position() + bytesToRead, buffer.capacity());
-        buffer.limit(newLimit);
+        int originalLimit = byteBuffer.limit();
+        int newLimit = Math.min(byteBuffer.position() + bytesToRead, byteBuffer.capacity());
+        byteBuffer.limit(newLimit);
 
         int bytesRead;
         try {
-            bytesRead = channel.getSocketChannel().read(buffer);
+            bytesRead = channel.getSocketChannel().read(byteBuffer);
         } catch (IOException e) {
-            buffer.limit(originalLimit); // Restore limit before closing
+            byteBuffer.limit(originalLimit); // Restore limit before closing
             closeChannel(channel, ctx.handler, e);
             return;
         } finally {
             // Restore original limit
-            buffer.limit(originalLimit);
+            byteBuffer.limit(originalLimit);
         }
 
         if (bytesRead == -1) {
@@ -595,17 +596,21 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
         }
 
         if (bytesRead > 0) {
-            buffer.flip();
+            // Data available: pass DirectBuffer with offset and length to handler
+            int dataLength = byteBuffer.position();
             try {
-                int consumed = ctx.handler.onDataReceived(channel, buffer);
-                if (consumed > 0 && buffer.hasRemaining()) {
-                    buffer.compact();
+                // Pass DirectBuffer interface for efficient access
+                int consumed = ctx.handler.onDataReceived(channel, directBuffer, 0, dataLength);
+                if (consumed > 0 && consumed < dataLength) {
+                    // Compact: move unconsumed data to start
+                    directBuffer.putBytes(0, directBuffer, consumed, dataLength - consumed);
+                    byteBuffer.position(dataLength - consumed);
                 } else {
-                    buffer.clear();
+                    byteBuffer.clear();
                 }
             } catch (Exception e) {
                 log.error("Error in onDataReceived: {}", e.getMessage(), e);
-                buffer.clear();
+                byteBuffer.clear();
             }
         }
     }

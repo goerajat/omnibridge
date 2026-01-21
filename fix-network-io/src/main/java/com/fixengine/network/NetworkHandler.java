@@ -1,6 +1,6 @@
 package com.fixengine.network;
 
-import java.nio.ByteBuffer;
+import org.agrona.DirectBuffer;
 
 /**
  * Callback interface for network events.
@@ -44,14 +44,17 @@ public interface NetworkHandler {
 
     /**
      * Called when data is received on a channel.
-     * The buffer is positioned at the start of received data and limited to the end.
-     * The handler should consume the data it processes and compact/clear as needed.
+     *
+     * <p>The buffer contains received data starting at the given offset with the given length.
+     * The handler should process the data and return the number of bytes consumed.</p>
      *
      * @param channel the channel that received data
-     * @param buffer the buffer containing received data
+     * @param buffer the DirectBuffer containing received data
+     * @param offset the offset in the buffer where data starts
+     * @param length the number of bytes of data available
      * @return the number of bytes consumed from the buffer
      */
-    int onDataReceived(TcpChannel channel, ByteBuffer buffer);
+    int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length);
 
     /**
      * Called when a channel is disconnected.

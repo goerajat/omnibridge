@@ -1,6 +1,8 @@
 package com.fixengine.message;
 
+import org.agrona.DirectBuffer;
 import org.agrona.collections.Int2IntHashMap;
+import org.agrona.concurrent.UnsafeBuffer;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -44,8 +46,8 @@ public final class IncomingFixMessage {
     private static final int CHAR_SEQ_POOL_SIZE = 32;
     private static final int MISSING_VALUE = -1;
 
-    // Message buffer - direct reference to the provided ByteBuffer
-    private ByteBuffer buffer;
+    // Message buffer - direct reference to the provided DirectBuffer
+    private DirectBuffer buffer;
     private int startOffset;  // Starting offset in the buffer
     private int length;
 
@@ -109,7 +111,7 @@ public final class IncomingFixMessage {
     /**
      * Wrap message bytes for parsing.
      *
-     * <p>The bytes are wrapped in a ByteBuffer for internal use.</p>
+     * <p>The bytes are wrapped in an UnsafeBuffer for internal use.</p>
      *
      * @param data the message bytes
      * @param offset the offset in the array
@@ -117,7 +119,24 @@ public final class IncomingFixMessage {
      */
     public void wrap(byte[] data, int offset, int len) {
         reset();
-        this.buffer = ByteBuffer.wrap(data, offset, len);
+        this.buffer = new UnsafeBuffer(data, offset, len);
+        this.startOffset = 0;  // UnsafeBuffer wraps from offset, so internal offset is 0
+        this.length = len;
+        parseFields();
+    }
+
+    /**
+     * Wrap message bytes from a DirectBuffer with explicit offset and length.
+     *
+     * <p>This is the preferred method for zero-allocation parsing with Agrona buffers.</p>
+     *
+     * @param data the DirectBuffer containing the message
+     * @param offset the offset in the buffer where the message starts
+     * @param len the length of the message in bytes
+     */
+    public void wrap(DirectBuffer data, int offset, int len) {
+        reset();
+        this.buffer = data;
         this.startOffset = offset;
         this.length = len;
         parseFields();
@@ -126,15 +145,17 @@ public final class IncomingFixMessage {
     /**
      * Wrap message bytes from a ByteBuffer.
      *
-     * <p>The ByteBuffer is used directly without copying. The buffer's position
+     * <p>The ByteBuffer is wrapped in an UnsafeBuffer. The buffer's position
      * and limit define the message boundaries.</p>
      *
      * @param data the ByteBuffer containing the message (position to limit)
+     * @deprecated Use {@link #wrap(DirectBuffer, int, int)} instead
      */
+    @Deprecated
     public void wrap(ByteBuffer data) {
         reset();
-        this.buffer = data;
-        this.startOffset = data.position();
+        this.buffer = new UnsafeBuffer(data, data.position(), data.remaining());
+        this.startOffset = 0;
         this.length = data.remaining();
         parseFields();
     }
@@ -142,16 +163,17 @@ public final class IncomingFixMessage {
     /**
      * Wrap message bytes from a ByteBuffer with explicit length.
      *
-     * <p>The ByteBuffer is used directly without copying. This is the preferred
-     * method for zero-allocation parsing.</p>
+     * <p>The ByteBuffer is wrapped in an UnsafeBuffer.</p>
      *
      * @param data the ByteBuffer positioned at the start of the message
      * @param len the length of the message in bytes
+     * @deprecated Use {@link #wrap(DirectBuffer, int, int)} instead
      */
+    @Deprecated
     public void wrap(ByteBuffer data, int len) {
         reset();
-        this.buffer = data;
-        this.startOffset = data.position();
+        this.buffer = new UnsafeBuffer(data, data.position(), len);
+        this.startOffset = 0;
         this.length = len;
         parseFields();
     }
@@ -289,7 +311,7 @@ public final class IncomingFixMessage {
         if (valueStart >= startOffset + length) {
             return '\0';
         }
-        return (char) (buffer.get(valueStart) & 0xFF);
+        return (char) (buffer.getByte(valueStart) & 0xFF);
     }
 
     /**
@@ -415,19 +437,26 @@ public final class IncomingFixMessage {
             return new byte[0];
         }
         byte[] result = new byte[length];
-        for (int i = 0; i < length; i++) {
-            result[i] = buffer.get(startOffset + i);
-        }
+        buffer.getBytes(startOffset, result, 0, length);
         return result;
     }
 
     /**
      * Get the internal buffer.
      *
-     * @return the internal ByteBuffer
+     * @return the internal DirectBuffer
      */
-    public ByteBuffer getBuffer() {
+    public DirectBuffer getDirectBuffer() {
         return buffer;
+    }
+
+    /**
+     * Get the start offset within the buffer.
+     *
+     * @return the start offset
+     */
+    public int getStartOffset() {
+        return startOffset;
     }
 
     /**
@@ -495,7 +524,7 @@ public final class IncomingFixMessage {
             int tagStart = pos;
 
             // Find '='
-            while (pos < endPos && buffer.get(pos) != EQUALS) {
+            while (pos < endPos && buffer.getByte(pos) != EQUALS) {
                 pos++;
             }
             if (pos >= endPos) break;
@@ -507,7 +536,7 @@ public final class IncomingFixMessage {
             int valueStart = pos;
 
             // Find SOH
-            while (pos < endPos && buffer.get(pos) != SOH) {
+            while (pos < endPos && buffer.getByte(pos) != SOH) {
                 pos++;
             }
 
@@ -535,7 +564,7 @@ public final class IncomingFixMessage {
     private int parseTagNumber(int start, int end) {
         int tag = 0;
         for (int i = start; i < end; i++) {
-            byte b = buffer.get(i);
+            byte b = buffer.getByte(i);
             if (b >= '0' && b <= '9') {
                 tag = tag * 10 + (b - '0');
             } else {
@@ -547,18 +576,10 @@ public final class IncomingFixMessage {
 
     private void cacheField(int tag, int valueStart, int valueEnd) {
         switch (tag) {
-            case FixTags.MsgType:
-                cachedMsgType.wrap(buffer, valueStart, valueEnd - valueStart);
-                break;
-            case FixTags.MsgSeqNum:
-                cachedMsgSeqNum = parseIntValue(valueStart, valueEnd);
-                break;
-            case FixTags.SenderCompID:
-                cachedSenderCompId.wrap(buffer, valueStart, valueEnd - valueStart);
-                break;
-            case FixTags.TargetCompID:
-                cachedTargetCompId.wrap(buffer, valueStart, valueEnd - valueStart);
-                break;
+            case FixTags.MsgType -> cachedMsgType.wrap(buffer, valueStart, valueEnd - valueStart);
+            case FixTags.MsgSeqNum -> cachedMsgSeqNum = parseIntValue(valueStart, valueEnd);
+            case FixTags.SenderCompID -> cachedSenderCompId.wrap(buffer, valueStart, valueEnd - valueStart);
+            case FixTags.TargetCompID -> cachedTargetCompId.wrap(buffer, valueStart, valueEnd - valueStart);
         }
     }
 
@@ -567,13 +588,13 @@ public final class IncomingFixMessage {
         boolean negative = false;
         int i = start;
 
-        if (i < end && buffer.get(i) == '-') {
+        if (i < end && buffer.getByte(i) == '-') {
             negative = true;
             i++;
         }
 
         while (i < end) {
-            byte b = buffer.get(i++);
+            byte b = buffer.getByte(i++);
             if (b >= '0' && b <= '9') {
                 value = value * 10 + (b - '0');
             }
@@ -587,13 +608,13 @@ public final class IncomingFixMessage {
         boolean negative = false;
         int i = start;
 
-        if (i < end && buffer.get(i) == '-') {
+        if (i < end && buffer.getByte(i) == '-') {
             negative = true;
             i++;
         }
 
         while (i < end) {
-            byte b = buffer.get(i++);
+            byte b = buffer.getByte(i++);
             if (b >= '0' && b <= '9') {
                 value = value * 10 + (b - '0');
             }
@@ -606,9 +627,7 @@ public final class IncomingFixMessage {
     public String toString() {
         if (buffer == null || length == 0) return "";
         byte[] bytes = new byte[length];
-        for (int i = 0; i < length; i++) {
-            bytes[i] = buffer.get(startOffset + i);
-        }
+        buffer.getBytes(startOffset, bytes, 0, length);
         return new String(bytes, 0, length, StandardCharsets.US_ASCII)
                 .replace((char) SOH, '|');
     }

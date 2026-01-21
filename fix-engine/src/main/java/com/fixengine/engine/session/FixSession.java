@@ -13,11 +13,10 @@ import com.fixengine.network.NetworkHandler;
 import com.fixengine.network.TcpChannel;
 import com.fixengine.persistence.FixLogEntry;
 import com.fixengine.persistence.FixLogStore;
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -213,17 +212,16 @@ public class FixSession implements NetworkHandler {
     }
 
     @Override
-    public int onDataReceived(TcpChannel channel, ByteBuffer data) {
+    public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
         lastReceivedTime = clock.currentTimeMillis();
-        int bytesConsumed = data.remaining();
 
         // Feed data to reader
-        reader.addData(data);
+        reader.addData(buffer, offset, length);
 
         // Process complete messages
         processIncomingMessages();
 
-        return bytesConsumed;
+        return length;
     }
 
     /**

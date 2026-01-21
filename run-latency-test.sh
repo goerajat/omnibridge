@@ -34,7 +34,8 @@ echo "Rate: $RATE orders/sec"
 echo "=========================================================================="
 
 # JVM options for low latency
-JVM_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch"
+# -Dagrona.disable.bounds.checks=true removes bounds checking from UnsafeBuffer for max performance
+JVM_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch -Dagrona.disable.bounds.checks=true"
 
 ACCEPTOR_PID=""
 
