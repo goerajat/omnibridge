@@ -1,0 +1,2672 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<fix-dictionary version="FIX.4.2">
+  <fields>
+    <field name="Account" tag="1" type="String"/>
+    <field name="AdvId" tag="2" type="String"/>
+    <field name="AdvRefID" tag="3" type="String"/>
+    <field name="AdvSide" tag="4" type="char">
+      <enum desc="Buy" value="B"/>
+      <enum desc="Sell" value="S"/>
+      <enum desc="Trade" value="T"/>
+      <enum desc="Cross" value="X"/>
+    </field>
+    <field name="AdvTransType" tag="5" type="String">
+      <enum desc="Cancel" value="C"/>
+      <enum desc="New" value="N"/>
+      <enum desc="Replace" value="R"/>
+    </field>
+    <field name="AvgPx" tag="6" type="Price"/>
+    <field name="BeginSeqNo" tag="7" type="int"/>
+    <field name="BeginString" tag="8" type="String"/>
+    <field name="BodyLength" tag="9" type="int"/>
+    <field name="CheckSum" tag="10" type="String"/>
+    <field name="ClOrdID" tag="11" type="String"/>
+    <field name="Commission" tag="12" type="Amt"/>
+    <field name="CommType" tag="13" type="char">
+      <enum desc="PerUnit" value="1"/>
+      <enum desc="Percent" value="2"/>
+      <enum desc="Absolute" value="3"/>
+    </field>
+    <field name="CumQty" tag="14" type="Qty"/>
+    <field name="Currency" tag="15" type="Currency"/>
+    <field name="EndSeqNo" tag="16" type="int"/>
+    <field name="ExecID" tag="17" type="String"/>
+    <field name="ExecInst" tag="18" type="MultipleValueString">
+      <enum desc="StayOnOfferSide" value="0"/>
+      <enum desc="NotHeld" value="1"/>
+      <enum desc="Work" value="2"/>
+      <enum desc="GoAlong" value="3"/>
+      <enum desc="OverTheDay" value="4"/>
+      <enum desc="Held" value="5"/>
+      <enum desc="ParticipateDoNotInitiate" value="6"/>
+      <enum desc="StrictScale" value="7"/>
+      <enum desc="TryToScale" value="8"/>
+      <enum desc="StayOnBidSide" value="9"/>
+      <enum desc="NoCross" value="A"/>
+      <enum desc="OKToCross" value="B"/>
+      <enum desc="CallFirst" value="C"/>
+      <enum desc="PercentOfVolume" value="D"/>
+      <enum desc="DoNotIncrease" value="E"/>
+      <enum desc="DoNotReduce" value="F"/>
+      <enum desc="AllOrNone" value="G"/>
+      <enum desc="InstitutionsOnly" value="I"/>
+      <enum desc="LastPeg" value="L"/>
+      <enum desc="MidPricePeg" value="M"/>
+      <enum desc="NonNegotiable" value="N"/>
+      <enum desc="OpeningPeg" value="O"/>
+      <enum desc="MarketPeg" value="P"/>
+      <enum desc="PrimaryPeg" value="R"/>
+      <enum desc="Suspend" value="S"/>
+      <enum desc="FixedPegToLocalBestBidOrOfferAtTimeOfOrder" value="T"/>
+      <enum desc="CustomerDisplayInstruction" value="U"/>
+      <enum desc="Netting" value="V"/>
+      <enum desc="PegToVWAP" value="W"/>
+    </field>
+    <field name="ExecRefID" tag="19" type="String"/>
+    <field name="ExecTransType" tag="20" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Cancel" value="1"/>
+      <enum desc="Correct" value="2"/>
+      <enum desc="Status" value="3"/>
+    </field>
+    <field name="HandlInst" tag="21" type="char">
+      <enum desc="AutomatedExecutionNoIntervention" value="1"/>
+      <enum desc="AutomatedExecutionInterventionOK" value="2"/>
+      <enum desc="ManualOrder" value="3"/>
+    </field>
+    <field name="IDSource" tag="22" type="String">
+      <enum desc="CUSIP" value="1"/>
+      <enum desc="SEDOL" value="2"/>
+      <enum desc="QUIK" value="3"/>
+      <enum desc="ISINNumber" value="4"/>
+      <enum desc="RICCode" value="5"/>
+      <enum desc="ISOCurrencyCode" value="6"/>
+      <enum desc="ISOCountryCode" value="7"/>
+      <enum desc="ExchangeSymbol" value="8"/>
+      <enum desc="ConsolidatedTapeAssociation" value="9"/>
+    </field>
+    <field name="IOIid" tag="23" type="String"/>
+    <field name="IOIOthSvc" tag="24" type="char"/>
+    <field name="IOIQltyInd" tag="25" type="char">
+      <enum desc="High" value="H"/>
+      <enum desc="Low" value="L"/>
+      <enum desc="Medium" value="M"/>
+    </field>
+    <field name="IOIRefID" tag="26" type="String"/>
+    <field name="IOIShares" tag="27" type="String">
+      <enum desc="Large" value="L"/>
+      <enum desc="Medium" value="M"/>
+      <enum desc="Small" value="S"/>
+    </field>
+    <field name="IOITransType" tag="28" type="char">
+      <enum desc="Cancel" value="C"/>
+      <enum desc="New" value="N"/>
+      <enum desc="Replace" value="R"/>
+    </field>
+    <field name="LastCapacity" tag="29" type="char">
+      <enum desc="Agent" value="1"/>
+      <enum desc="CrossAsAgent" value="2"/>
+      <enum desc="CrossAsPrincipal" value="3"/>
+      <enum desc="Principal" value="4"/>
+    </field>
+    <field name="LastMkt" tag="30" type="Exchange"/>
+    <field name="LastPx" tag="31" type="Price"/>
+    <field name="LastShares" tag="32" type="Qty"/>
+    <field name="LinesOfText" tag="33" type="int"/>
+    <field name="MsgSeqNum" tag="34" type="int"/>
+    <field name="MsgType" tag="35" type="String">
+      <enum desc="Heartbeat" value="0"/>
+      <enum desc="TestRequest" value="1"/>
+      <enum desc="ResendRequest" value="2"/>
+      <enum desc="Reject" value="3"/>
+      <enum desc="SequenceReset" value="4"/>
+      <enum desc="Logout" value="5"/>
+      <enum desc="IOI" value="6"/>
+      <enum desc="Advertisement" value="7"/>
+      <enum desc="ExecutionReport" value="8"/>
+      <enum desc="OrderCancelReject" value="9"/>
+      <enum desc="QuoteStatusRequest" value="a"/>
+      <enum desc="Logon" value="A"/>
+      <enum desc="News" value="B"/>
+      <enum desc="MassQuoteAcknowledgement" value="b"/>
+      <enum desc="Email" value="C"/>
+      <enum desc="SecurityDefinitionRequest" value="c"/>
+      <enum desc="NewOrderSingle" value="D"/>
+      <enum desc="SecurityDefinition" value="d"/>
+      <enum desc="NewOrderList" value="E"/>
+      <enum desc="SecurityStatusRequest" value="e"/>
+      <enum desc="SecurityStatus" value="f"/>
+      <enum desc="OrderCancelRequest" value="F"/>
+      <enum desc="OrderCancelReplaceRequest" value="G"/>
+      <enum desc="TradingSessionStatusRequest" value="g"/>
+      <enum desc="OrderStatusRequest" value="H"/>
+      <enum desc="TradingSessionStatus" value="h"/>
+      <enum desc="MassQuote" value="i"/>
+      <enum desc="BusinessMessageReject" value="j"/>
+      <enum desc="AllocationInstruction" value="J"/>
+      <enum desc="ListCancelRequest" value="K"/>
+      <enum desc="BidRequest" value="k"/>
+      <enum desc="BidResponse" value="l"/>
+      <enum desc="ListExecute" value="L"/>
+      <enum desc="ListStrikePrice" value="m"/>
+      <enum desc="ListStatusRequest" value="M"/>
+      <enum desc="ListStatus" value="N"/>
+      <enum desc="AllocationInstructionAck" value="P"/>
+      <enum desc="DontKnowTrade" value="Q"/>
+      <enum desc="QuoteRequest" value="R"/>
+      <enum desc="Quote" value="S"/>
+      <enum desc="SettlementInstructions" value="T"/>
+      <enum desc="MarketDataRequest" value="V"/>
+      <enum desc="MarketDataSnapshotFullRefresh" value="W"/>
+      <enum desc="MarketDataIncrementalRefresh" value="X"/>
+      <enum desc="MarketDataRequestReject" value="Y"/>
+      <enum desc="QuoteCancel" value="Z"/>
+    </field>
+    <field name="NewSeqNo" tag="36" type="int"/>
+    <field name="OrderID" tag="37" type="String"/>
+    <field name="OrderQty" tag="38" type="Qty"/>
+    <field name="OrdStatus" tag="39" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="PartiallyFilled" value="1"/>
+      <enum desc="Filled" value="2"/>
+      <enum desc="DoneForDay" value="3"/>
+      <enum desc="Canceled" value="4"/>
+      <enum desc="Replaced" value="5"/>
+      <enum desc="PendingCancel" value="6"/>
+      <enum desc="Stopped" value="7"/>
+      <enum desc="Rejected" value="8"/>
+      <enum desc="Suspended" value="9"/>
+      <enum desc="PendingNew" value="A"/>
+      <enum desc="Calculated" value="B"/>
+      <enum desc="Expired" value="C"/>
+      <enum desc="AcceptedForBidding" value="D"/>
+      <enum desc="PendingReplace" value="E"/>
+    </field>
+    <field name="OrdType" tag="40" type="char">
+      <enum desc="Market" value="1"/>
+      <enum desc="Limit" value="2"/>
+      <enum desc="Stop" value="3"/>
+      <enum desc="StopLimit" value="4"/>
+      <enum desc="MarketOnClose" value="5"/>
+      <enum desc="WithOrWithout" value="6"/>
+      <enum desc="LimitOrBetter" value="7"/>
+      <enum desc="LimitWithOrWithout" value="8"/>
+      <enum desc="OnBasis" value="9"/>
+      <enum desc="OnClose" value="A"/>
+      <enum desc="LimitOnClose" value="B"/>
+      <enum desc="ForexMarket" value="C"/>
+      <enum desc="PreviouslyQuoted" value="D"/>
+      <enum desc="PreviouslyIndicated" value="E"/>
+      <enum desc="ForexLimit" value="F"/>
+      <enum desc="ForexSwap" value="G"/>
+      <enum desc="ForexPreviouslyQuoted" value="H"/>
+      <enum desc="Funari" value="I"/>
+      <enum desc="Pegged" value="P"/>
+    </field>
+    <field name="OrigClOrdID" tag="41" type="String"/>
+    <field name="OrigTime" tag="42" type="UTCTimestamp"/>
+    <field name="PossDupFlag" tag="43" type="Boolean">
+      <enum desc="OriginalTransmission" value="N"/>
+      <enum desc="PossibleDuplicate" value="Y"/>
+    </field>
+    <field name="Price" tag="44" type="Price"/>
+    <field name="RefSeqNum" tag="45" type="int"/>
+    <field name="RelatdSym" tag="46" type="String"/>
+    <field name="Rule80A" tag="47" type="char">
+      <enum desc="AgencySingleOrder" value="A"/>
+      <enum desc="ShortExemptTransactionAType" value="B"/>
+      <enum desc="ProprietaryNonAlgo" value="C"/>
+      <enum desc="ProgramOrderMember" value="D"/>
+      <enum desc="ShortExemptTransactionForPrincipal" value="E"/>
+      <enum desc="ShortExemptTransactionWType" value="F"/>
+      <enum desc="ShortExemptTransactionIType" value="H"/>
+      <enum desc="IndividualInvestor" value="I"/>
+      <enum desc="ProprietaryAlgo" value="J"/>
+      <enum desc="AgencyAlgo" value="K"/>
+      <enum desc="ShortExemptTransactionMemberAffliated" value="L"/>
+      <enum desc="ProgramOrderOtherMember" value="M"/>
+      <enum desc="AgentForOtherMember" value="N"/>
+      <enum desc="ProprietaryTransactionAffiliated" value="O"/>
+      <enum desc="Principal" value="P"/>
+      <enum desc="TransactionNonMember" value="R"/>
+      <enum desc="SpecialistTrades" value="S"/>
+      <enum desc="TransactionUnaffiliatedMember" value="T"/>
+      <enum desc="AgencyIndexArb" value="U"/>
+      <enum desc="AllOtherOrdersAsAgentForOtherMember" value="W"/>
+      <enum desc="ShortExemptTransactionMemberNotAffliated" value="X"/>
+      <enum desc="AgencyNonAlgo" value="Y"/>
+      <enum desc="ShortExemptTransactionNonMember" value="Z"/>
+    </field>
+    <field name="SecurityID" tag="48" type="String"/>
+    <field name="SenderCompID" tag="49" type="String"/>
+    <field name="SenderSubID" tag="50" type="String"/>
+    <field name="SendingDate" tag="51" type="LocalMktDate"/>
+    <field name="SendingTime" tag="52" type="UTCTimestamp"/>
+    <field name="Shares" tag="53" type="Qty"/>
+    <field name="Side" tag="54" type="char">
+      <enum desc="Buy" value="1"/>
+      <enum desc="Sell" value="2"/>
+      <enum desc="BuyMinus" value="3"/>
+      <enum desc="SellPlus" value="4"/>
+      <enum desc="SellShort" value="5"/>
+      <enum desc="SellShortExempt" value="6"/>
+      <enum desc="Undisclosed" value="7"/>
+      <enum desc="Cross" value="8"/>
+      <enum desc="CrossShort" value="9"/>
+    </field>
+    <field name="Symbol" tag="55" type="String"/>
+    <field name="TargetCompID" tag="56" type="String"/>
+    <field name="TargetSubID" tag="57" type="String"/>
+    <field name="Text" tag="58" type="String"/>
+    <field name="TimeInForce" tag="59" type="char">
+      <enum desc="Day" value="0"/>
+      <enum desc="GoodTillCancel" value="1"/>
+      <enum desc="AtTheOpening" value="2"/>
+      <enum desc="ImmediateOrCancel" value="3"/>
+      <enum desc="FillOrKill" value="4"/>
+      <enum desc="GoodTillCrossing" value="5"/>
+      <enum desc="GoodTillDate" value="6"/>
+    </field>
+    <field name="TransactTime" tag="60" type="UTCTimestamp"/>
+    <field name="Urgency" tag="61" type="char">
+      <enum desc="Normal" value="0"/>
+      <enum desc="Flash" value="1"/>
+      <enum desc="Background" value="2"/>
+    </field>
+    <field name="ValidUntilTime" tag="62" type="UTCTimestamp"/>
+    <field name="SettlmntTyp" tag="63" type="char">
+      <enum desc="Regular" value="0"/>
+      <enum desc="Cash" value="1"/>
+      <enum desc="NextDay" value="2"/>
+      <enum desc="TPlus2" value="3"/>
+      <enum desc="TPlus3" value="4"/>
+      <enum desc="TPlus4" value="5"/>
+      <enum desc="Future" value="6"/>
+      <enum desc="WhenAndIfIssued" value="7"/>
+      <enum desc="SellersOption" value="8"/>
+      <enum desc="TPlus5" value="9"/>
+    </field>
+    <field name="FutSettDate" tag="64" type="LocalMktDate"/>
+    <field name="SymbolSfx" tag="65" type="String"/>
+    <field name="ListID" tag="66" type="String"/>
+    <field name="ListSeqNo" tag="67" type="int"/>
+    <field name="TotNoOrders" tag="68" type="int"/>
+    <field name="ListExecInst" tag="69" type="String"/>
+    <field name="AllocID" tag="70" type="String"/>
+    <field name="AllocTransType" tag="71" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Replace" value="1"/>
+      <enum desc="Cancel" value="2"/>
+      <enum desc="Preliminary" value="3"/>
+      <enum desc="Calculated" value="4"/>
+      <enum desc="CalculatedWithoutPreliminary" value="5"/>
+    </field>
+    <field name="RefAllocID" tag="72" type="String"/>
+    <field name="NoOrders" tag="73" type="int"/>
+    <field name="AvgPrxPrecision" tag="74" type="int"/>
+    <field name="TradeDate" tag="75" type="LocalMktDate"/>
+    <field name="ExecBroker" tag="76" type="String"/>
+    <field name="OpenClose" tag="77" type="char">
+      <enum desc="Close" value="C"/>
+      <enum desc="Open" value="O"/>
+    </field>
+    <field name="NoAllocs" tag="78" type="int"/>
+    <field name="AllocAccount" tag="79" type="String"/>
+    <field name="AllocShares" tag="80" type="Qty"/>
+    <field name="ProcessCode" tag="81" type="char">
+      <enum desc="Regular" value="0"/>
+      <enum desc="SoftDollar" value="1"/>
+      <enum desc="StepIn" value="2"/>
+      <enum desc="StepOut" value="3"/>
+      <enum desc="SoftDollarStepIn" value="4"/>
+      <enum desc="SoftDollarStepOut" value="5"/>
+      <enum desc="PlanSponsor" value="6"/>
+    </field>
+    <field name="NoRpts" tag="82" type="int"/>
+    <field name="RptSeq" tag="83" type="int"/>
+    <field name="CxlQty" tag="84" type="Qty"/>
+    <field name="NoDlvyInst" tag="85" type="int"/>
+    <field name="DlvyInst" tag="86" type="String"/>
+    <field name="AllocStatus" tag="87" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="BlockLevelReject" value="1"/>
+      <enum desc="AccountLevelReject" value="2"/>
+      <enum desc="Received" value="3"/>
+    </field>
+    <field name="AllocRejCode" tag="88" type="int">
+      <enum desc="UnknownAccount" value="0"/>
+      <enum desc="IncorrectQuantity" value="1"/>
+      <enum desc="IncorrectAveragegPrice" value="2"/>
+      <enum desc="UnknownExecutingBrokerMnemonic" value="3"/>
+      <enum desc="CommissionDifference" value="4"/>
+      <enum desc="UnknownOrderID" value="5"/>
+      <enum desc="UnknownListID" value="6"/>
+      <enum desc="OtherSeeText" value="7"/>
+    </field>
+    <field name="Signature" tag="89" type="data"/>
+    <field name="SecureDataLen" tag="90" type="Length"/>
+    <field name="SecureData" tag="91" type="data"/>
+    <field name="BrokerOfCredit" tag="92" type="String"/>
+    <field name="SignatureLength" tag="93" type="Length"/>
+    <field name="EmailType" tag="94" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Reply" value="1"/>
+      <enum desc="AdminReply" value="2"/>
+    </field>
+    <field name="RawDataLength" tag="95" type="Length"/>
+    <field name="RawData" tag="96" type="data"/>
+    <field name="PossResend" tag="97" type="Boolean">
+      <enum desc="OriginalTransmission" value="N"/>
+      <enum desc="PossibleResend" value="Y"/>
+    </field>
+    <field name="EncryptMethod" tag="98" type="int">
+      <enum desc="None" value="0"/>
+      <enum desc="PKCS" value="1"/>
+      <enum desc="DES" value="2"/>
+      <enum desc="PKCSDES" value="3"/>
+      <enum desc="PGPDES" value="4"/>
+      <enum desc="PGPDESMD5" value="5"/>
+      <enum desc="PEM" value="6"/>
+    </field>
+    <field name="StopPx" tag="99" type="Price"/>
+    <field name="ExDestination" tag="100" type="Exchange"/>
+    <field name="CxlRejReason" tag="102" type="int">
+      <enum desc="TooLateToCancel" value="0"/>
+      <enum desc="UnknownOrder" value="1"/>
+      <enum desc="BrokerCredit" value="2"/>
+      <enum desc="OrderAlreadyInPendingStatus" value="3"/>
+    </field>
+    <field name="OrdRejReason" tag="103" type="int">
+      <enum desc="BrokerCredit" value="0"/>
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="ExchangeClosed" value="2"/>
+      <enum desc="OrderExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="UnknownOrder" value="5"/>
+      <enum desc="DuplicateOrder" value="6"/>
+      <enum desc="DuplicateOfAVerballyCommunicatedOrder" value="7"/>
+      <enum desc="StaleOrder" value="8"/>
+    </field>
+    <field name="IOIQualifier" tag="104" type="char">
+      <enum desc="AllOrNone" value="A"/>
+      <enum desc="AtTheClose" value="C"/>
+      <enum desc="InTouchWith" value="I"/>
+      <enum desc="Limit" value="L"/>
+      <enum desc="MoreBehind" value="M"/>
+      <enum desc="AtTheOpen" value="O"/>
+      <enum desc="TakingAPosition" value="P"/>
+      <enum desc="AtTheMarket" value="Q"/>
+      <enum desc="ReadyToTrade" value="R"/>
+      <enum desc="PortfolioShown" value="S"/>
+      <enum desc="ThroughTheDay" value="T"/>
+      <enum desc="Versus" value="V"/>
+      <enum desc="Indication" value="W"/>
+      <enum desc="CrossingOpportunity" value="X"/>
+      <enum desc="AtTheMidpoint" value="Y"/>
+      <enum desc="PreOpen" value="Z"/>
+    </field>
+    <field name="WaveNo" tag="105" type="String"/>
+    <field name="Issuer" tag="106" type="String"/>
+    <field name="SecurityDesc" tag="107" type="String"/>
+    <field name="HeartBtInt" tag="108" type="int"/>
+    <field name="ClientID" tag="109" type="String"/>
+    <field name="MinQty" tag="110" type="Qty"/>
+    <field name="MaxFloor" tag="111" type="Qty"/>
+    <field name="TestReqID" tag="112" type="String"/>
+    <field name="ReportToExch" tag="113" type="Boolean">
+      <enum desc="SenderReports" value="N"/>
+      <enum desc="ReceiverReports" value="Y"/>
+    </field>
+    <field name="LocateReqd" tag="114" type="Boolean">
+      <enum desc="No" value="N"/>
+      <enum desc="Yes" value="Y"/>
+    </field>
+    <field name="OnBehalfOfCompID" tag="115" type="String"/>
+    <field name="OnBehalfOfSubID" tag="116" type="String"/>
+    <field name="QuoteID" tag="117" type="String"/>
+    <field name="NetMoney" tag="118" type="Amt"/>
+    <field name="SettlCurrAmt" tag="119" type="Amt"/>
+    <field name="SettlCurrency" tag="120" type="Currency"/>
+    <field name="ForexReq" tag="121" type="Boolean">
+      <enum desc="DoNotExecuteForexAfterSecurityTrade" value="N"/>
+      <enum desc="ExecuteForexAfterSecurityTrade" value="Y"/>
+    </field>
+    <field name="OrigSendingTime" tag="122" type="UTCTimestamp"/>
+    <field name="GapFillFlag" tag="123" type="Boolean">
+      <enum desc="SequenceReset" value="N"/>
+      <enum desc="GapFillMessage" value="Y"/>
+    </field>
+    <field name="NoExecs" tag="124" type="int"/>
+    <field name="CxlType" tag="125" type="char"/>
+    <field name="ExpireTime" tag="126" type="UTCTimestamp"/>
+    <field name="DKReason" tag="127" type="char">
+      <enum desc="UnknownSymbol" value="A"/>
+      <enum desc="WrongSide" value="B"/>
+      <enum desc="QuantityExceedsOrder" value="C"/>
+      <enum desc="NoMatchingOrder" value="D"/>
+      <enum desc="PriceExceedsLimit" value="E"/>
+      <enum desc="Other" value="Z"/>
+    </field>
+    <field name="DeliverToCompID" tag="128" type="String"/>
+    <field name="DeliverToSubID" tag="129" type="String"/>
+    <field name="IOINaturalFlag" tag="130" type="Boolean">
+      <enum desc="NotNatural" value="N"/>
+      <enum desc="Natural" value="Y"/>
+    </field>
+    <field name="QuoteReqID" tag="131" type="String"/>
+    <field name="BidPx" tag="132" type="Price"/>
+    <field name="OfferPx" tag="133" type="Price"/>
+    <field name="BidSize" tag="134" type="Qty"/>
+    <field name="OfferSize" tag="135" type="Qty"/>
+    <field name="NoMiscFees" tag="136" type="int"/>
+    <field name="MiscFeeAmt" tag="137" type="Amt"/>
+    <field name="MiscFeeCurr" tag="138" type="Currency"/>
+    <field name="MiscFeeType" tag="139" type="char">
+      <enum desc="Regulatory" value="1"/>
+      <enum desc="Tax" value="2"/>
+      <enum desc="LocalCommission" value="3"/>
+      <enum desc="ExchangeFees" value="4"/>
+      <enum desc="Stamp" value="5"/>
+      <enum desc="Levy" value="6"/>
+      <enum desc="Other" value="7"/>
+      <enum desc="Markup" value="8"/>
+      <enum desc="ConsumptionTax" value="9"/>
+    </field>
+    <field name="PrevClosePx" tag="140" type="Price"/>
+    <field name="ResetSeqNumFlag" tag="141" type="Boolean">
+      <enum desc="No" value="N"/>
+      <enum desc="Yes" value="Y"/>
+    </field>
+    <field name="SenderLocationID" tag="142" type="String"/>
+    <field name="TargetLocationID" tag="143" type="String"/>
+    <field name="OnBehalfOfLocationID" tag="144" type="String"/>
+    <field name="DeliverToLocationID" tag="145" type="String"/>
+    <field name="NoRelatedSym" tag="146" type="int"/>
+    <field name="Subject" tag="147" type="String"/>
+    <field name="Headline" tag="148" type="String"/>
+    <field name="URLLink" tag="149" type="String"/>
+    <field name="ExecType" tag="150" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="PartialFill" value="1"/>
+      <enum desc="Fill" value="2"/>
+      <enum desc="DoneForDay" value="3"/>
+      <enum desc="Canceled" value="4"/>
+      <enum desc="Replaced" value="5"/>
+      <enum desc="PendingCancel" value="6"/>
+      <enum desc="Stopped" value="7"/>
+      <enum desc="Rejected" value="8"/>
+      <enum desc="Suspended" value="9"/>
+      <enum desc="PendingNew" value="A"/>
+      <enum desc="Calculated" value="B"/>
+      <enum desc="Expired" value="C"/>
+      <enum desc="Restated" value="D"/>
+      <enum desc="PendingReplace" value="E"/>
+    </field>
+    <field name="LeavesQty" tag="151" type="Qty"/>
+    <field name="CashOrderQty" tag="152" type="Qty"/>
+    <field name="AllocAvgPx" tag="153" type="Price"/>
+    <field name="AllocNetMoney" tag="154" type="Amt"/>
+    <field name="SettlCurrFxRate" tag="155" type="float"/>
+    <field name="SettlCurrFxRateCalc" tag="156" type="char"/>
+    <field name="NumDaysInterest" tag="157" type="int"/>
+    <field name="AccruedInterestRate" tag="158" type="float"/>
+    <field name="AccruedInterestAmt" tag="159" type="Amt"/>
+    <field name="SettlInstMode" tag="160" type="char">
+      <enum desc="Default" value="0"/>
+      <enum desc="StandingInstructionsProvided" value="1"/>
+      <enum desc="SpecificAllocationAccountOverriding" value="2"/>
+      <enum desc="SpecificAllocationAccountStanding" value="3"/>
+    </field>
+    <field name="AllocText" tag="161" type="String"/>
+    <field name="SettlInstID" tag="162" type="String"/>
+    <field name="SettlInstTransType" tag="163" type="char">
+      <enum desc="Cancel" value="C"/>
+      <enum desc="New" value="N"/>
+      <enum desc="Replace" value="R"/>
+    </field>
+    <field name="EmailThreadID" tag="164" type="String"/>
+    <field name="SettlInstSource" tag="165" type="char">
+      <enum desc="BrokerCredit" value="1"/>
+      <enum desc="Institution" value="2"/>
+    </field>
+    <field name="SettlLocation" tag="166" type="String">
+      <enum desc="CEDEL" value="CED"/>
+      <enum desc="DepositoryTrustCompany" value="DTC"/>
+      <enum desc="EuroClear" value="EUR"/>
+      <enum desc="FederalBookEntry" value="FED"/>
+      <enum desc="LocalMarketSettleLocation" value="ISO Country Code"/>
+      <enum desc="Physical" value="PNY"/>
+      <enum desc="ParticipantTrustCompany" value="PTC"/>
+    </field>
+    <field name="SecurityType" tag="167" type="String">
+      <enum desc="Wildcard" value="?"/>
+      <enum desc="BankersAcceptance" value="BA"/>
+      <enum desc="ConvertibleBond" value="CB"/>
+      <enum desc="CertificateOfDeposit" value="CD"/>
+      <enum desc="CollateralizedMortgageObligation" value="CMO"/>
+      <enum desc="CorporateBond" value="CORP"/>
+      <enum desc="CommercialPaper" value="CP"/>
+      <enum desc="CorporatePrivatePlacement" value="CPP"/>
+      <enum desc="CommonStock" value="CS"/>
+      <enum desc="FederalHousingAuthority" value="FHA"/>
+      <enum desc="FederalHomeLoan" value="FHL"/>
+      <enum desc="FederalNationalMortgageAssociation" value="FN"/>
+      <enum desc="ForeignExchangeContract" value="FOR"/>
+      <enum desc="Future" value="FUT"/>
+      <enum desc="GovernmentNationalMortgageAssociation" value="GN"/>
+      <enum desc="TreasuriesAgencyDebenture" value="GOVT"/>
+      <enum desc="IOETTEMortgage" value="IET"/>
+      <enum desc="MutualFund" value="MF"/>
+      <enum desc="MortgageInterestOnly" value="MIO"/>
+      <enum desc="MortgagePrincipalOnly" value="MPO"/>
+      <enum desc="MortgagePrivatePlacement" value="MPP"/>
+      <enum desc="MiscellaneousPassThrough" value="MPT"/>
+      <enum desc="MunicipalBond" value="MUNI"/>
+      <enum desc="NoSecurityType" value="NONE"/>
+      <enum desc="Option" value="OPT"/>
+      <enum desc="PreferredStock" value="PS"/>
+      <enum desc="RepurchaseAgreement" value="RP"/>
+      <enum desc="ReverseRepurchaseAgreement" value="RVRP"/>
+      <enum desc="StudentLoanMarketingAssociation" value="SL"/>
+      <enum desc="TimeDeposit" value="TD"/>
+      <enum desc="USTreasuryBillOld" value="USTB"/>
+      <enum desc="Warrant" value="WAR"/>
+      <enum desc="CatsTigersAndLions" value="ZOO"/>
+    </field>
+    <field name="EffectiveTime" tag="168" type="UTCTimestamp"/>
+    <field name="StandInstDbType" tag="169" type="int">
+      <enum desc="Other" value="0"/>
+      <enum desc="DTCSID" value="1"/>
+      <enum desc="ThomsonALERT" value="2"/>
+      <enum desc="AGlobalCustodian" value="3"/>
+    </field>
+    <field name="StandInstDbName" tag="170" type="String"/>
+    <field name="StandInstDbID" tag="171" type="String"/>
+    <field name="SettlDeliveryType" tag="172" type="int"/>
+    <field name="SettlDepositoryCode" tag="173" type="String"/>
+    <field name="SettlBrkrCode" tag="174" type="String"/>
+    <field name="SettlInstCode" tag="175" type="String"/>
+    <field name="SecuritySettlAgentName" tag="176" type="String"/>
+    <field name="SecuritySettlAgentCode" tag="177" type="String"/>
+    <field name="SecuritySettlAgentAcctNum" tag="178" type="String"/>
+    <field name="SecuritySettlAgentAcctName" tag="179" type="String"/>
+    <field name="SecuritySettlAgentContactName" tag="180" type="String"/>
+    <field name="SecuritySettlAgentContactPhone" tag="181" type="String"/>
+    <field name="CashSettlAgentName" tag="182" type="String"/>
+    <field name="CashSettlAgentCode" tag="183" type="String"/>
+    <field name="CashSettlAgentAcctNum" tag="184" type="String"/>
+    <field name="CashSettlAgentAcctName" tag="185" type="String"/>
+    <field name="CashSettlAgentContactName" tag="186" type="String"/>
+    <field name="CashSettlAgentContactPhone" tag="187" type="String"/>
+    <field name="BidSpotRate" tag="188" type="Price"/>
+    <field name="BidForwardPoints" tag="189" type="PriceOffset"/>
+    <field name="OfferSpotRate" tag="190" type="Price"/>
+    <field name="OfferForwardPoints" tag="191" type="PriceOffset"/>
+    <field name="OrderQty2" tag="192" type="Qty"/>
+    <field name="FutSettDate2" tag="193" type="LocalMktDate"/>
+    <field name="LastSpotRate" tag="194" type="Price"/>
+    <field name="LastForwardPoints" tag="195" type="PriceOffset"/>
+    <field name="AllocLinkID" tag="196" type="String"/>
+    <field name="AllocLinkType" tag="197" type="int">
+      <enum desc="FXNetting" value="0"/>
+      <enum desc="FXSwap" value="1"/>
+    </field>
+    <field name="SecondaryOrderID" tag="198" type="String"/>
+    <field name="NoIOIQualifiers" tag="199" type="int"/>
+    <field name="MaturityMonthYear" tag="200" type="MonthYear"/>
+    <field name="PutOrCall" tag="201" type="int">
+      <enum desc="Put" value="0"/>
+      <enum desc="Call" value="1"/>
+    </field>
+    <field name="StrikePrice" tag="202" type="Price"/>
+    <field name="CoveredOrUncovered" tag="203" type="int">
+      <enum desc="Covered" value="0"/>
+      <enum desc="Uncovered" value="1"/>
+    </field>
+    <field name="CustomerOrFirm" tag="204" type="int">
+      <enum desc="Customer" value="0"/>
+      <enum desc="Firm" value="1"/>
+    </field>
+    <field name="MaturityDay" tag="205" type="DayOfMonth"/>
+    <field name="OptAttribute" tag="206" type="char"/>
+    <field name="SecurityExchange" tag="207" type="Exchange"/>
+    <field name="NotifyBrokerOfCredit" tag="208" type="Boolean">
+      <enum desc="DetailsShouldNotBeCommunicated" value="N"/>
+      <enum desc="DetailsShouldBeCommunicated" value="Y"/>
+    </field>
+    <field name="AllocHandlInst" tag="209" type="int">
+      <enum desc="Match" value="1"/>
+      <enum desc="Forward" value="2"/>
+      <enum desc="ForwardAndMatch" value="3"/>
+    </field>
+    <field name="MaxShow" tag="210" type="Qty"/>
+    <field name="PegDifference" tag="211" type="PriceOffset"/>
+    <field name="XmlDataLen" tag="212" type="Length"/>
+    <field name="XmlData" tag="213" type="data"/>
+    <field name="SettlInstRefID" tag="214" type="String"/>
+    <field name="NoRoutingIDs" tag="215" type="int"/>
+    <field name="RoutingType" tag="216" type="int">
+      <enum desc="TargetFirm" value="1"/>
+      <enum desc="TargetList" value="2"/>
+      <enum desc="BlockFirm" value="3"/>
+      <enum desc="BlockList" value="4"/>
+    </field>
+    <field name="RoutingID" tag="217" type="String"/>
+    <field name="SpreadToBenchmark" tag="218" type="PriceOffset"/>
+    <field name="Benchmark" tag="219" type="char">
+      <enum desc="CURVE" value="1"/>
+      <enum desc="FiveYR" value="2"/>
+      <enum desc="OLD5" value="3"/>
+      <enum desc="TenYR" value="4"/>
+      <enum desc="OLD10" value="5"/>
+      <enum desc="ThirtyYR" value="6"/>
+      <enum desc="OLD30" value="7"/>
+      <enum desc="ThreeMOLIBOR" value="8"/>
+      <enum desc="SixMOLIBOR" value="9"/>
+    </field>
+    <field name="CouponRate" tag="223" type="float"/>
+    <field name="ContractMultiplier" tag="231" type="float"/>
+    <field name="MDReqID" tag="262" type="String"/>
+    <field name="SubscriptionRequestType" tag="263" type="char">
+      <enum desc="Snapshot" value="0"/>
+      <enum desc="SnapshotAndUpdates" value="1"/>
+      <enum desc="DisablePreviousSnapshot" value="2"/>
+    </field>
+    <field name="MarketDepth" tag="264" type="int"/>
+    <field name="MDUpdateType" tag="265" type="int">
+      <enum desc="FullRefresh" value="0"/>
+      <enum desc="IncrementalRefresh" value="1"/>
+    </field>
+    <field name="AggregatedBook" tag="266" type="Boolean">
+      <enum desc="BookEntriesShouldNotBeAggregated" value="N"/>
+      <enum desc="BookEntriesToBeAggregated" value="Y"/>
+    </field>
+    <field name="NoMDEntryTypes" tag="267" type="int"/>
+    <field name="NoMDEntries" tag="268" type="int"/>
+    <field name="MDEntryType" tag="269" type="char">
+      <enum desc="Bid" value="0"/>
+      <enum desc="Offer" value="1"/>
+      <enum desc="Trade" value="2"/>
+      <enum desc="IndexValue" value="3"/>
+      <enum desc="OpeningPrice" value="4"/>
+      <enum desc="ClosingPrice" value="5"/>
+      <enum desc="SettlementPrice" value="6"/>
+      <enum desc="TradingSessionHighPrice" value="7"/>
+      <enum desc="TradingSessionLowPrice" value="8"/>
+      <enum desc="TradingSessionVWAPPrice" value="9"/>
+    </field>
+    <field name="MDEntryPx" tag="270" type="Price"/>
+    <field name="MDEntrySize" tag="271" type="Qty"/>
+    <field name="MDEntryDate" tag="272" type="UTCDate"/>
+    <field name="MDEntryTime" tag="273" type="UTCTimeOnly"/>
+    <field name="TickDirection" tag="274" type="char">
+      <enum desc="PlusTick" value="0"/>
+      <enum desc="ZeroPlusTick" value="1"/>
+      <enum desc="MinusTick" value="2"/>
+      <enum desc="ZeroMinusTick" value="3"/>
+    </field>
+    <field name="MDMkt" tag="275" type="Exchange"/>
+    <field name="QuoteCondition" tag="276" type="MultipleValueString">
+      <enum desc="Open" value="A"/>
+      <enum desc="Closed" value="B"/>
+      <enum desc="ExchangeBest" value="C"/>
+      <enum desc="ConsolidatedBest" value="D"/>
+      <enum desc="Locked" value="E"/>
+      <enum desc="Crossed" value="F"/>
+      <enum desc="Depth" value="G"/>
+      <enum desc="FastTrading" value="H"/>
+      <enum desc="NonFirm" value="I"/>
+    </field>
+    <field name="TradeCondition" tag="277" type="MultipleValueString">
+      <enum desc="Cash" value="A"/>
+      <enum desc="AveragePriceTrade" value="B"/>
+      <enum desc="CashTrade" value="C"/>
+      <enum desc="NextDay" value="D"/>
+      <enum desc="Opening" value="E"/>
+      <enum desc="IntradayTradeDetail" value="F"/>
+      <enum desc="Rule127Trade" value="G"/>
+      <enum desc="Rule155Trade" value="H"/>
+      <enum desc="SoldLast" value="I"/>
+      <enum desc="NextDayTrade" value="J"/>
+      <enum desc="Opened" value="K"/>
+      <enum desc="Seller" value="L"/>
+      <enum desc="Sold" value="M"/>
+      <enum desc="StoppedStock" value="N"/>
+    </field>
+    <field name="MDEntryID" tag="278" type="String"/>
+    <field name="MDUpdateAction" tag="279" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Change" value="1"/>
+      <enum desc="Delete" value="2"/>
+    </field>
+    <field name="MDEntryRefID" tag="280" type="String"/>
+    <field name="MDReqRejReason" tag="281" type="char">
+      <enum desc="UnknownSymbol" value="0"/>
+      <enum desc="DuplicateMDReqID" value="1"/>
+      <enum desc="InsufficientBandwidth" value="2"/>
+      <enum desc="InsufficientPermissions" value="3"/>
+      <enum desc="UnsupportedSubscriptionRequestType" value="4"/>
+      <enum desc="UnsupportedMarketDepth" value="5"/>
+      <enum desc="UnsupportedMDUpdateType" value="6"/>
+      <enum desc="UnsupportedAggregatedBook" value="7"/>
+      <enum desc="UnsupportedMDEntryType" value="8"/>
+    </field>
+    <field name="MDEntryOriginator" tag="282" type="String"/>
+    <field name="LocationID" tag="283" type="String"/>
+    <field name="DeskID" tag="284" type="String"/>
+    <field name="DeleteReason" tag="285" type="char">
+      <enum desc="Cancellation" value="0"/>
+      <enum desc="Error" value="1"/>
+    </field>
+    <field name="OpenCloseSettleFlag" tag="286" type="char">
+      <enum desc="DailyOpen" value="0"/>
+      <enum desc="SessionOpen" value="1"/>
+      <enum desc="DeliverySettlementEntry" value="2"/>
+    </field>
+    <field name="SellerDays" tag="287" type="int"/>
+    <field name="MDEntryBuyer" tag="288" type="String"/>
+    <field name="MDEntrySeller" tag="289" type="String"/>
+    <field name="MDEntryPositionNo" tag="290" type="int"/>
+    <field name="FinancialStatus" tag="291" type="char">
+      <enum desc="Bankrupt" value="1"/>
+    </field>
+    <field name="CorporateAction" tag="292" type="char">
+      <enum desc="ExDividend" value="A"/>
+      <enum desc="ExDistribution" value="B"/>
+      <enum desc="ExRights" value="C"/>
+      <enum desc="New" value="D"/>
+      <enum desc="ExInterest" value="E"/>
+    </field>
+    <field name="DefBidSize" tag="293" type="Qty"/>
+    <field name="DefOfferSize" tag="294" type="Qty"/>
+    <field name="NoQuoteEntries" tag="295" type="int"/>
+    <field name="NoQuoteSets" tag="296" type="int"/>
+    <field name="QuoteAckStatus" tag="297" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="CancelForSymbol" value="1"/>
+      <enum desc="CanceledForSecurityType" value="2"/>
+      <enum desc="CanceledForUnderlying" value="3"/>
+      <enum desc="CanceledAll" value="4"/>
+      <enum desc="Rejected" value="5"/>
+    </field>
+    <field name="QuoteCancelType" tag="298" type="int">
+      <enum desc="CancelForOneOrMoreSecurities" value="1"/>
+      <enum desc="CancelForSecurityType" value="2"/>
+      <enum desc="CancelForUnderlyingSecurity" value="3"/>
+      <enum desc="CancelAllQuotes" value="4"/>
+    </field>
+    <field name="QuoteEntryID" tag="299" type="String"/>
+    <field name="QuoteRejectReason" tag="300" type="int">
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="Exchange" value="2"/>
+      <enum desc="QuoteRequestExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="UnknownQuote" value="5"/>
+      <enum desc="DuplicateQuote" value="6"/>
+      <enum desc="InvalidBid" value="7"/>
+      <enum desc="InvalidPrice" value="8"/>
+      <enum desc="NotAuthorizedToQuoteSecurity" value="9"/>
+    </field>
+    <field name="QuoteResponseLevel" tag="301" type="int">
+      <enum desc="NoAcknowledgement" value="0"/>
+      <enum desc="AcknowledgeOnlyNegativeOrErroneousQuotes" value="1"/>
+      <enum desc="AcknowledgeEachQuoteMessage" value="2"/>
+    </field>
+    <field name="QuoteSetID" tag="302" type="String"/>
+    <field name="QuoteRequestType" tag="303" type="int">
+      <enum desc="Manual" value="1"/>
+      <enum desc="Automatic" value="2"/>
+    </field>
+    <field name="TotQuoteEntries" tag="304" type="int"/>
+    <field name="UnderlyingIDSource" tag="305" type="String"/>
+    <field name="UnderlyingIssuer" tag="306" type="String"/>
+    <field name="UnderlyingSecurityDesc" tag="307" type="String"/>
+    <field name="UnderlyingSecurityExchange" tag="308" type="Exchange"/>
+    <field name="UnderlyingSecurityID" tag="309" type="String"/>
+    <field name="UnderlyingSecurityType" tag="310" type="String"/>
+    <field name="UnderlyingSymbol" tag="311" type="String"/>
+    <field name="UnderlyingSymbolSfx" tag="312" type="String"/>
+    <field name="UnderlyingMaturityMonthYear" tag="313" type="MonthYear"/>
+    <field name="UnderlyingMaturityDay" tag="314" type="DayOfMonth"/>
+    <field name="UnderlyingPutOrCall" tag="315" type="int"/>
+    <field name="UnderlyingStrikePrice" tag="316" type="Price"/>
+    <field name="UnderlyingOptAttribute" tag="317" type="char"/>
+    <field name="UnderlyingCurrency" tag="318" type="Currency"/>
+    <field name="RatioQty" tag="319" type="Qty"/>
+    <field name="SecurityReqID" tag="320" type="String"/>
+    <field name="SecurityRequestType" tag="321" type="int">
+      <enum desc="RequestSecurityIdentityAndSpecifications" value="0"/>
+      <enum desc="RequestSecurityIdentityForSpecifications" value="1"/>
+      <enum desc="RequestListSecurityTypes" value="2"/>
+      <enum desc="RequestListSecurities" value="3"/>
+    </field>
+    <field name="SecurityResponseID" tag="322" type="String"/>
+    <field name="SecurityResponseType" tag="323" type="int">
+      <enum desc="AcceptAsIs" value="1"/>
+      <enum desc="AcceptWithRevisions" value="2"/>
+      <enum desc="ListOfSecurityTypesReturnedPerRequest" value="3"/>
+      <enum desc="ListOfSecuritiesReturnedPerRequest" value="4"/>
+      <enum desc="RejectSecurityProposal" value="5"/>
+      <enum desc="CannotMatchSelectionCriteria" value="6"/>
+    </field>
+    <field name="SecurityStatusReqID" tag="324" type="String"/>
+    <field name="UnsolicitedIndicator" tag="325" type="Boolean">
+      <enum desc="MessageIsBeingSentAsAResultOfAPriorRequest" value="N"/>
+      <enum desc="MessageIsBeingSentUnsolicited" value="Y"/>
+    </field>
+    <field name="SecurityTradingStatus" tag="326" type="int">
+      <enum desc="OpeningDelay" value="1"/>
+      <enum desc="MarketOnCloseImbalanceSell" value="10"/>
+      <enum desc="NoMarketImbalance" value="12"/>
+      <enum desc="NoMarketOnCloseImbalance" value="13"/>
+      <enum desc="ITSPreOpening" value="14"/>
+      <enum desc="NewPriceIndication" value="15"/>
+      <enum desc="TradeDisseminationTime" value="16"/>
+      <enum desc="ReadyToTrade" value="17"/>
+      <enum desc="NotAvailableForTrading" value="18"/>
+      <enum desc="NotTradedOnThisMarket" value="19"/>
+      <enum desc="TradingHalt" value="2"/>
+      <enum desc="UnknownOrInvalid" value="20"/>
+      <enum desc="Resume" value="3"/>
+      <enum desc="NoOpen" value="4"/>
+      <enum desc="PriceIndication" value="5"/>
+      <enum desc="TradingRangeIndication" value="6"/>
+      <enum desc="MarketImbalanceBuy" value="7"/>
+      <enum desc="MarketImbalanceSell" value="8"/>
+      <enum desc="MarketOnCloseImbalanceBuy" value="9"/>
+    </field>
+    <field name="HaltReason" tag="327" type="char">
+      <enum desc="NewsDissemination" value="D"/>
+      <enum desc="OrderInflux" value="E"/>
+      <enum desc="OrderImbalance" value="I"/>
+      <enum desc="AdditionalInformation" value="M"/>
+      <enum desc="NewsPending" value="P"/>
+      <enum desc="EquipmentChangeover" value="X"/>
+    </field>
+    <field name="InViewOfCommon" tag="328" type="Boolean">
+      <enum desc="HaltWasNotRelatedToAHaltOfTheCommonStock" value="N"/>
+      <enum desc="HaltWasDueToCommonStockBeingHalted" value="Y"/>
+    </field>
+    <field name="DueToRelated" tag="329" type="Boolean">
+      <enum desc="NotRelatedToSecurityHalt" value="N"/>
+      <enum desc="RelatedToSecurityHalt" value="Y"/>
+    </field>
+    <field name="BuyVolume" tag="330" type="Qty"/>
+    <field name="SellVolume" tag="331" type="Qty"/>
+    <field name="HighPx" tag="332" type="Price"/>
+    <field name="LowPx" tag="333" type="Price"/>
+    <field name="Adjustment" tag="334" type="int">
+      <enum desc="Cancel" value="1"/>
+      <enum desc="Error" value="2"/>
+      <enum desc="Correction" value="3"/>
+    </field>
+    <field name="TradSesReqID" tag="335" type="String"/>
+    <field name="TradingSessionID" tag="336" type="String"/>
+    <field name="ContraTrader" tag="337" type="String"/>
+    <field name="TradSesMethod" tag="338" type="int">
+      <enum desc="Electronic" value="1"/>
+      <enum desc="OpenOutcry" value="2"/>
+      <enum desc="TwoParty" value="3"/>
+    </field>
+    <field name="TradSesMode" tag="339" type="int">
+      <enum desc="Testing" value="1"/>
+      <enum desc="Simulated" value="2"/>
+      <enum desc="Production" value="3"/>
+    </field>
+    <field name="TradSesStatus" tag="340" type="int">
+      <enum desc="Halted" value="1"/>
+      <enum desc="Open" value="2"/>
+      <enum desc="Closed" value="3"/>
+      <enum desc="PreOpen" value="4"/>
+      <enum desc="PreClose" value="5"/>
+    </field>
+    <field name="TradSesStartTime" tag="341" type="UTCTimestamp"/>
+    <field name="TradSesOpenTime" tag="342" type="UTCTimestamp"/>
+    <field name="TradSesPreCloseTime" tag="343" type="UTCTimestamp"/>
+    <field name="TradSesCloseTime" tag="344" type="UTCTimestamp"/>
+    <field name="TradSesEndTime" tag="345" type="UTCTimestamp"/>
+    <field name="NumberOfOrders" tag="346" type="int"/>
+    <field name="MessageEncoding" tag="347" type="String">
+      <enum desc="EUCJP" value="EUC-JP"/>
+      <enum desc="ISO2022JP" value="ISO-2022-JP"/>
+      <enum desc="ShiftJIS" value="Shift_JIS"/>
+      <enum desc="UTF8" value="UTF-8"/>
+    </field>
+    <field name="EncodedIssuerLen" tag="348" type="Length"/>
+    <field name="EncodedIssuer" tag="349" type="data"/>
+    <field name="EncodedSecurityDescLen" tag="350" type="Length"/>
+    <field name="EncodedSecurityDesc" tag="351" type="data"/>
+    <field name="EncodedListExecInstLen" tag="352" type="Length"/>
+    <field name="EncodedListExecInst" tag="353" type="data"/>
+    <field name="EncodedTextLen" tag="354" type="Length"/>
+    <field name="EncodedText" tag="355" type="data"/>
+    <field name="EncodedSubjectLen" tag="356" type="Length"/>
+    <field name="EncodedSubject" tag="357" type="data"/>
+    <field name="EncodedHeadlineLen" tag="358" type="Length"/>
+    <field name="EncodedHeadline" tag="359" type="data"/>
+    <field name="EncodedAllocTextLen" tag="360" type="Length"/>
+    <field name="EncodedAllocText" tag="361" type="data"/>
+    <field name="EncodedUnderlyingIssuerLen" tag="362" type="Length"/>
+    <field name="EncodedUnderlyingIssuer" tag="363" type="data"/>
+    <field name="EncodedUnderlyingSecurityDescLen" tag="364" type="Length"/>
+    <field name="EncodedUnderlyingSecurityDesc" tag="365" type="data"/>
+    <field name="AllocPrice" tag="366" type="Price"/>
+    <field name="QuoteSetValidUntilTime" tag="367" type="UTCTimestamp"/>
+    <field name="QuoteEntryRejectReason" tag="368" type="int">
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="Exchange" value="2"/>
+      <enum desc="QuoteExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="UnknownQuote" value="5"/>
+      <enum desc="DuplicateQuote" value="6"/>
+      <enum desc="InvalidBidAskSpread" value="7"/>
+      <enum desc="InvalidPrice" value="8"/>
+      <enum desc="NotAuthorizedToQuoteSecurity" value="9"/>
+    </field>
+    <field name="LastMsgSeqNumProcessed" tag="369" type="int"/>
+    <field name="OnBehalfOfSendingTime" tag="370" type="UTCTimestamp"/>
+    <field name="RefTagID" tag="371" type="int"/>
+    <field name="RefMsgType" tag="372" type="String"/>
+    <field name="SessionRejectReason" tag="373" type="int">
+      <enum desc="InvalidTagNumber" value="0"/>
+      <enum desc="RequiredTagMissing" value="1"/>
+      <enum desc="SendingTimeAccuracyProblem" value="10"/>
+      <enum desc="InvalidMsgType" value="11"/>
+      <enum desc="TagNotDefinedForThisMessageType" value="2"/>
+      <enum desc="UndefinedTag" value="3"/>
+      <enum desc="TagSpecifiedWithoutAValue" value="4"/>
+      <enum desc="ValueIsIncorrect" value="5"/>
+      <enum desc="IncorrectDataFormatForValue" value="6"/>
+      <enum desc="DecryptionProblem" value="7"/>
+      <enum desc="SignatureProblem" value="8"/>
+      <enum desc="CompIDProblem" value="9"/>
+    </field>
+    <field name="BidRequestTransType" tag="374" type="char">
+      <enum desc="Cancel" value="C"/>
+      <enum desc="New" value="N"/>
+    </field>
+    <field name="ContraBroker" tag="375" type="String"/>
+    <field name="ComplianceID" tag="376" type="String"/>
+    <field name="SolicitedFlag" tag="377" type="Boolean">
+      <enum desc="WasNotSolicited" value="N"/>
+      <enum desc="WasSolicited" value="Y"/>
+    </field>
+    <field name="ExecRestatementReason" tag="378" type="int">
+      <enum desc="GTCorporateAction" value="0"/>
+      <enum desc="GTRenewal" value="1"/>
+      <enum desc="VerbalChange" value="2"/>
+      <enum desc="RepricingOfOrder" value="3"/>
+      <enum desc="BrokerOption" value="4"/>
+      <enum desc="PartialDeclineOfOrderQty" value="5"/>
+    </field>
+    <field name="BusinessRejectRefID" tag="379" type="String"/>
+    <field name="BusinessRejectReason" tag="380" type="int">
+      <enum desc="Other" value="0"/>
+      <enum desc="UnknownID" value="1"/>
+      <enum desc="UnknownSecurity" value="2"/>
+      <enum desc="UnsupportedMessageType" value="3"/>
+      <enum desc="ApplicationNotAvailable" value="4"/>
+      <enum desc="ConditionallyRequiredFieldMissing" value="5"/>
+    </field>
+    <field name="GrossTradeAmt" tag="381" type="Amt"/>
+    <field name="NoContraBrokers" tag="382" type="int"/>
+    <field name="MaxMessageSize" tag="383" type="int"/>
+    <field name="NoMsgTypes" tag="384" type="int"/>
+    <field name="MsgDirection" tag="385" type="char">
+      <enum desc="Receive" value="R"/>
+      <enum desc="Send" value="S"/>
+    </field>
+    <field name="NoTradingSessions" tag="386" type="int"/>
+    <field name="TotalVolumeTraded" tag="387" type="Qty"/>
+    <field name="DiscretionInst" tag="388" type="char">
+      <enum desc="RelatedToDisplayedPrice" value="0"/>
+      <enum desc="RelatedToMarketPrice" value="1"/>
+      <enum desc="RelatedToPrimaryPrice" value="2"/>
+      <enum desc="RelatedToLocalPrimaryPrice" value="3"/>
+      <enum desc="RelatedToMidpointPrice" value="4"/>
+      <enum desc="RelatedToLastTradePrice" value="5"/>
+    </field>
+    <field name="DiscretionOffset" tag="389" type="PriceOffset"/>
+    <field name="BidID" tag="390" type="String"/>
+    <field name="ClientBidID" tag="391" type="String"/>
+    <field name="ListName" tag="392" type="String"/>
+    <field name="TotalNumSecurities" tag="393" type="int"/>
+    <field name="BidType" tag="394" type="int"/>
+    <field name="NumTickets" tag="395" type="int"/>
+    <field name="SideValue1" tag="396" type="Amt"/>
+    <field name="SideValue2" tag="397" type="Amt"/>
+    <field name="NoBidDescriptors" tag="398" type="int"/>
+    <field name="BidDescriptorType" tag="399" type="int"/>
+    <field name="BidDescriptor" tag="400" type="String"/>
+    <field name="SideValueInd" tag="401" type="int"/>
+    <field name="LiquidityPctLow" tag="402" type="float"/>
+    <field name="LiquidityPctHigh" tag="403" type="float"/>
+    <field name="LiquidityValue" tag="404" type="Amt"/>
+    <field name="EFPTrackingError" tag="405" type="float"/>
+    <field name="FairValue" tag="406" type="Amt"/>
+    <field name="OutsideIndexPct" tag="407" type="float"/>
+    <field name="ValueOfFutures" tag="408" type="Amt"/>
+    <field name="LiquidityIndType" tag="409" type="int">
+      <enum desc="FiveDayMovingAverage" value="1"/>
+      <enum desc="TwentyDayMovingAverage" value="2"/>
+      <enum desc="NormalMarketSize" value="3"/>
+      <enum desc="Other" value="4"/>
+    </field>
+    <field name="WtAverageLiquidity" tag="410" type="float"/>
+    <field name="ExchangeForPhysical" tag="411" type="Boolean">
+      <enum desc="False" value="N"/>
+      <enum desc="True" value="Y"/>
+    </field>
+    <field name="OutMainCntryUIndex" tag="412" type="Amt"/>
+    <field name="CrossPercent" tag="413" type="float"/>
+    <field name="ProgRptReqs" tag="414" type="int">
+      <enum desc="BuySideRequests" value="1"/>
+      <enum desc="SellSideSends" value="2"/>
+      <enum desc="RealTimeExecutionReports" value="3"/>
+    </field>
+    <field name="ProgPeriodInterval" tag="415" type="int"/>
+    <field name="IncTaxInd" tag="416" type="int">
+      <enum desc="Net" value="1"/>
+      <enum desc="Gross" value="2"/>
+    </field>
+    <field name="NumBidders" tag="417" type="int"/>
+    <field name="TradeType" tag="418" type="char">
+      <enum desc="Agency" value="A"/>
+      <enum desc="VWAPGuarantee" value="G"/>
+      <enum desc="GuaranteedClose" value="J"/>
+      <enum desc="RiskTrade" value="R"/>
+    </field>
+    <field name="BasisPxType" tag="419" type="char">
+      <enum desc="ClosingPriceAtMorningSession" value="2"/>
+      <enum desc="ClosingPrice" value="3"/>
+      <enum desc="CurrentPrice" value="4"/>
+      <enum desc="SQ" value="5"/>
+      <enum desc="VWAPThroughADay" value="6"/>
+      <enum desc="VWAPThroughAMorningSession" value="7"/>
+      <enum desc="VWAPThroughAnAfternoonSession" value="8"/>
+      <enum desc="VWAPThroughADayExcept" value="9"/>
+      <enum desc="VWAPThroughAMorningSessionExcept" value="A"/>
+      <enum desc="VWAPThroughAnAfternoonSessionExcept" value="B"/>
+      <enum desc="Strike" value="C"/>
+      <enum desc="Open" value="D"/>
+      <enum desc="Others" value="Z"/>
+    </field>
+    <field name="NoBidComponents" tag="420" type="int"/>
+    <field name="Country" tag="421" type="String"/>
+    <field name="TotNoStrikes" tag="422" type="int"/>
+    <field name="PriceType" tag="423" type="int">
+      <enum desc="Percentage" value="1"/>
+      <enum desc="PerUnit" value="2"/>
+      <enum desc="FixedAmount" value="3"/>
+    </field>
+    <field name="DayOrderQty" tag="424" type="Qty"/>
+    <field name="DayCumQty" tag="425" type="Qty"/>
+    <field name="DayAvgPx" tag="426" type="Price"/>
+    <field name="GTBookingInst" tag="427" type="int">
+      <enum desc="BookOutAllTradesOnDayOfExecution" value="0"/>
+      <enum desc="AccumulateUntilFilledOrExpired" value="1"/>
+      <enum desc="AccumulateUntilVerballlyNotifiedOtherwise" value="2"/>
+    </field>
+    <field name="NoStrikes" tag="428" type="int"/>
+    <field name="ListStatusType" tag="429" type="int"/>
+    <field name="NetGrossInd" tag="430" type="int">
+      <enum desc="Net" value="1"/>
+      <enum desc="Gross" value="2"/>
+    </field>
+    <field name="ListOrderStatus" tag="431" type="int"/>
+    <field name="ExpireDate" tag="432" type="LocalMktDate"/>
+    <field name="ListExecInstType" tag="433" type="char">
+      <enum desc="Immediate" value="1"/>
+      <enum desc="WaitForInstruction" value="2"/>
+    </field>
+    <field name="CxlRejResponseTo" tag="434" type="char">
+      <enum desc="OrderCancelRequest" value="1"/>
+      <enum desc="OrderCancel" value="2"/>
+    </field>
+    <field name="UnderlyingCouponRate" tag="435" type="float"/>
+    <field name="UnderlyingContractMultiplier" tag="436" type="float"/>
+    <field name="ContraTradeQty" tag="437" type="Qty"/>
+    <field name="ContraTradeTime" tag="438" type="UTCTimestamp"/>
+    <field name="ClearingFirm" tag="439" type="String"/>
+    <field name="ClearingAccount" tag="440" type="String"/>
+    <field name="LiquidityNumSecurities" tag="441" type="int"/>
+    <field name="MultiLegReportingType" tag="442" type="char">
+      <enum desc="SingleSecurity" value="1"/>
+      <enum desc="IndividualLegOfAMultiLegSecurity" value="2"/>
+      <enum desc="MultiLegSecurity" value="3"/>
+    </field>
+    <field name="StrikeTime" tag="443" type="UTCTimestamp"/>
+    <field name="ListStatusText" tag="444" type="String"/>
+    <field name="EncodedListStatusTextLen" tag="445" type="Length"/>
+    <field name="EncodedListStatusText" tag="446" type="data"/>
+  </fields>
+  <groups/>
+  <messages>
+    <message msgType="0" name="Heartbeat">
+      <tag id="112"/>
+    </message>
+    <message msgType="1" name="TestRequest">
+      <tag id="112"/>
+    </message>
+    <message msgType="2" name="ResendRequest">
+      <tag id="7"/>
+      <tag id="16"/>
+    </message>
+    <message msgType="3" name="Reject">
+      <tag id="45"/>
+      <tag id="371"/>
+      <tag id="372"/>
+      <tag id="373"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="4" name="SequenceReset">
+      <tag id="123"/>
+      <tag id="36"/>
+    </message>
+    <message msgType="5" name="Logout">
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="6" name="IOI">
+      <tag id="23"/>
+      <tag id="28"/>
+      <tag id="26"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+      <tag id="27"/>
+      <tag id="44"/>
+      <tag id="15"/>
+      <tag id="62"/>
+      <tag id="25"/>
+      <tag id="130"/>
+      <tag id="199"/>
+      <tag id="104"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="60"/>
+      <tag id="149"/>
+      <tag id="215"/>
+      <tag id="216"/>
+      <tag id="217"/>
+      <tag id="218"/>
+      <tag id="219"/>
+    </message>
+    <message msgType="7" name="Advertisement">
+      <tag id="2"/>
+      <tag id="5"/>
+      <tag id="3"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="4"/>
+      <tag id="53"/>
+      <tag id="44"/>
+      <tag id="15"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="149"/>
+      <tag id="30"/>
+      <tag id="336"/>
+    </message>
+    <message msgType="8" name="ExecutionReport">
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="11"/>
+      <tag id="41"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="382"/>
+      <tag id="375"/>
+      <tag id="337"/>
+      <tag id="437"/>
+      <tag id="438"/>
+      <tag id="66"/>
+      <tag id="17"/>
+      <tag id="20"/>
+      <tag id="19"/>
+      <tag id="150"/>
+      <tag id="39"/>
+      <tag id="103"/>
+      <tag id="378"/>
+      <tag id="1"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+      <tag id="38"/>
+      <tag id="152"/>
+      <tag id="40"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="211"/>
+      <tag id="388"/>
+      <tag id="389"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="18"/>
+      <tag id="47"/>
+      <tag id="32"/>
+      <tag id="31"/>
+      <tag id="194"/>
+      <tag id="195"/>
+      <tag id="30"/>
+      <tag id="336"/>
+      <tag id="29"/>
+      <tag id="151"/>
+      <tag id="14"/>
+      <tag id="6"/>
+      <tag id="424"/>
+      <tag id="425"/>
+      <tag id="426"/>
+      <tag id="427"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="113"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="381"/>
+      <tag id="119"/>
+      <tag id="120"/>
+      <tag id="155"/>
+      <tag id="156"/>
+      <tag id="21"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="77"/>
+      <tag id="210"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="439"/>
+      <tag id="440"/>
+      <tag id="442"/>
+    </message>
+    <message msgType="9" name="OrderCancelReject">
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="11"/>
+      <tag id="41"/>
+      <tag id="39"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="66"/>
+      <tag id="1"/>
+      <tag id="60"/>
+      <tag id="434"/>
+      <tag id="102"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="A" name="Logon">
+      <tag id="98"/>
+      <tag id="108"/>
+      <tag id="95"/>
+      <tag id="96"/>
+      <tag id="141"/>
+      <tag id="383"/>
+      <tag id="384"/>
+      <tag id="372"/>
+      <tag id="385"/>
+    </message>
+    <message msgType="B" name="News">
+      <tag id="42"/>
+      <tag id="61"/>
+      <tag id="148"/>
+      <tag id="358"/>
+      <tag id="359"/>
+      <tag id="215"/>
+      <tag id="216"/>
+      <tag id="217"/>
+      <tag id="146"/>
+      <tag id="46"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="33"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="149"/>
+      <tag id="95"/>
+      <tag id="96"/>
+    </message>
+    <message msgType="C" name="Email">
+      <tag id="164"/>
+      <tag id="94"/>
+      <tag id="42"/>
+      <tag id="147"/>
+      <tag id="356"/>
+      <tag id="357"/>
+      <tag id="215"/>
+      <tag id="216"/>
+      <tag id="217"/>
+      <tag id="146"/>
+      <tag id="46"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="33"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="95"/>
+      <tag id="96"/>
+    </message>
+    <message msgType="D" name="OrderSingle">
+      <tag id="11"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="1"/>
+      <tag id="78"/>
+      <tag id="79"/>
+      <tag id="80"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="386"/>
+      <tag id="336"/>
+      <tag id="81"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="140"/>
+      <tag id="54"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="38"/>
+      <tag id="152"/>
+      <tag id="40"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="47"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="204"/>
+      <tag id="210"/>
+      <tag id="211"/>
+      <tag id="388"/>
+      <tag id="389"/>
+      <tag id="439"/>
+      <tag id="440"/>
+    </message>
+    <message msgType="E" name="OrderList">
+      <tag id="66"/>
+      <tag id="390"/>
+      <tag id="391"/>
+      <tag id="414"/>
+      <tag id="394"/>
+      <tag id="415"/>
+      <tag id="433"/>
+      <tag id="69"/>
+      <tag id="352"/>
+      <tag id="353"/>
+      <tag id="68"/>
+      <tag id="73"/>
+      <tag id="11"/>
+      <tag id="67"/>
+      <tag id="160"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="1"/>
+      <tag id="78"/>
+      <tag id="79"/>
+      <tag id="80"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="386"/>
+      <tag id="336"/>
+      <tag id="81"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="140"/>
+      <tag id="54"/>
+      <tag id="401"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="38"/>
+      <tag id="152"/>
+      <tag id="40"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="47"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="204"/>
+      <tag id="210"/>
+      <tag id="211"/>
+      <tag id="388"/>
+      <tag id="389"/>
+      <tag id="439"/>
+      <tag id="440"/>
+    </message>
+    <message msgType="F" name="OrderCancelRequest">
+      <tag id="41"/>
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="66"/>
+      <tag id="1"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+      <tag id="60"/>
+      <tag id="38"/>
+      <tag id="152"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="G" name="OrderCancelReplaceRequest">
+      <tag id="37"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="41"/>
+      <tag id="11"/>
+      <tag id="66"/>
+      <tag id="1"/>
+      <tag id="78"/>
+      <tag id="79"/>
+      <tag id="80"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="386"/>
+      <tag id="336"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+      <tag id="60"/>
+      <tag id="38"/>
+      <tag id="152"/>
+      <tag id="40"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="211"/>
+      <tag id="388"/>
+      <tag id="389"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="15"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="47"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="204"/>
+      <tag id="210"/>
+      <tag id="114"/>
+      <tag id="439"/>
+      <tag id="440"/>
+    </message>
+    <message msgType="H" name="OrderStatusRequest">
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="109"/>
+      <tag id="1"/>
+      <tag id="76"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+    </message>
+    <message msgType="J" name="Allocation">
+      <tag id="70"/>
+      <tag id="71"/>
+      <tag id="72"/>
+      <tag id="196"/>
+      <tag id="197"/>
+      <tag id="73"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="66"/>
+      <tag id="105"/>
+      <tag id="124"/>
+      <tag id="32"/>
+      <tag id="17"/>
+      <tag id="31"/>
+      <tag id="29"/>
+      <tag id="54"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="53"/>
+      <tag id="30"/>
+      <tag id="336"/>
+      <tag id="6"/>
+      <tag id="15"/>
+      <tag id="74"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="381"/>
+      <tag id="118"/>
+      <tag id="77"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="157"/>
+      <tag id="158"/>
+      <tag id="78"/>
+      <tag id="79"/>
+      <tag id="366"/>
+      <tag id="80"/>
+      <tag id="81"/>
+      <tag id="92"/>
+      <tag id="208"/>
+      <tag id="209"/>
+      <tag id="161"/>
+      <tag id="360"/>
+      <tag id="361"/>
+      <tag id="76"/>
+      <tag id="109"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="153"/>
+      <tag id="154"/>
+      <tag id="119"/>
+      <tag id="120"/>
+      <tag id="155"/>
+      <tag id="156"/>
+      <tag id="159"/>
+      <tag id="160"/>
+      <tag id="136"/>
+      <tag id="137"/>
+      <tag id="138"/>
+      <tag id="139"/>
+    </message>
+    <message msgType="K" name="ListCancelRequest">
+      <tag id="66"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="L" name="ListExecute">
+      <tag id="66"/>
+      <tag id="391"/>
+      <tag id="390"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="M" name="ListStatusRequest">
+      <tag id="66"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="N" name="ListStatus">
+      <tag id="66"/>
+      <tag id="429"/>
+      <tag id="82"/>
+      <tag id="431"/>
+      <tag id="83"/>
+      <tag id="444"/>
+      <tag id="445"/>
+      <tag id="446"/>
+      <tag id="60"/>
+      <tag id="68"/>
+      <tag id="73"/>
+      <tag id="11"/>
+      <tag id="14"/>
+      <tag id="39"/>
+      <tag id="151"/>
+      <tag id="84"/>
+      <tag id="6"/>
+      <tag id="103"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="P" name="AllocationInstructionAck">
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="70"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="87"/>
+      <tag id="88"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="Q" name="DontKnowTrade">
+      <tag id="37"/>
+      <tag id="17"/>
+      <tag id="127"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+      <tag id="38"/>
+      <tag id="152"/>
+      <tag id="32"/>
+      <tag id="31"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="R" name="QuoteRequest">
+      <tag id="131"/>
+      <tag id="146"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="140"/>
+      <tag id="303"/>
+      <tag id="336"/>
+      <tag id="54"/>
+      <tag id="38"/>
+      <tag id="64"/>
+      <tag id="40"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="126"/>
+      <tag id="60"/>
+      <tag id="15"/>
+    </message>
+    <message msgType="S" name="Quote">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="301"/>
+      <tag id="336"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="132"/>
+      <tag id="133"/>
+      <tag id="134"/>
+      <tag id="135"/>
+      <tag id="62"/>
+      <tag id="188"/>
+      <tag id="190"/>
+      <tag id="189"/>
+      <tag id="191"/>
+      <tag id="60"/>
+      <tag id="64"/>
+      <tag id="40"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="15"/>
+    </message>
+    <message msgType="T" name="SettlementInstructions">
+      <tag id="162"/>
+      <tag id="163"/>
+      <tag id="214"/>
+      <tag id="160"/>
+      <tag id="165"/>
+      <tag id="79"/>
+      <tag id="166"/>
+      <tag id="75"/>
+      <tag id="70"/>
+      <tag id="30"/>
+      <tag id="336"/>
+      <tag id="54"/>
+      <tag id="167"/>
+      <tag id="168"/>
+      <tag id="60"/>
+      <tag id="109"/>
+      <tag id="76"/>
+      <tag id="169"/>
+      <tag id="170"/>
+      <tag id="171"/>
+      <tag id="172"/>
+      <tag id="173"/>
+      <tag id="174"/>
+      <tag id="175"/>
+      <tag id="176"/>
+      <tag id="177"/>
+      <tag id="178"/>
+      <tag id="179"/>
+      <tag id="180"/>
+      <tag id="181"/>
+      <tag id="182"/>
+      <tag id="183"/>
+      <tag id="184"/>
+      <tag id="185"/>
+      <tag id="186"/>
+      <tag id="187"/>
+    </message>
+    <message msgType="V" name="MarketDataRequest">
+      <tag id="262"/>
+      <tag id="263"/>
+      <tag id="264"/>
+      <tag id="265"/>
+      <tag id="266"/>
+      <tag id="267"/>
+      <tag id="269"/>
+      <tag id="146"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="336"/>
+    </message>
+    <message msgType="W" name="MarketDataSnapshotFullRefresh">
+      <tag id="262"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="291"/>
+      <tag id="292"/>
+      <tag id="387"/>
+      <tag id="268"/>
+      <tag id="269"/>
+      <tag id="270"/>
+      <tag id="15"/>
+      <tag id="271"/>
+      <tag id="272"/>
+      <tag id="273"/>
+      <tag id="274"/>
+      <tag id="275"/>
+      <tag id="336"/>
+      <tag id="276"/>
+      <tag id="277"/>
+      <tag id="282"/>
+      <tag id="283"/>
+      <tag id="284"/>
+      <tag id="286"/>
+      <tag id="59"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="110"/>
+      <tag id="18"/>
+      <tag id="287"/>
+      <tag id="37"/>
+      <tag id="299"/>
+      <tag id="288"/>
+      <tag id="289"/>
+      <tag id="346"/>
+      <tag id="290"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="X" name="MarketDataIncrementalRefresh">
+      <tag id="262"/>
+      <tag id="268"/>
+      <tag id="279"/>
+      <tag id="285"/>
+      <tag id="269"/>
+      <tag id="278"/>
+      <tag id="280"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="291"/>
+      <tag id="292"/>
+      <tag id="270"/>
+      <tag id="15"/>
+      <tag id="271"/>
+      <tag id="272"/>
+      <tag id="273"/>
+      <tag id="274"/>
+      <tag id="275"/>
+      <tag id="336"/>
+      <tag id="276"/>
+      <tag id="277"/>
+      <tag id="282"/>
+      <tag id="283"/>
+      <tag id="284"/>
+      <tag id="286"/>
+      <tag id="59"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="110"/>
+      <tag id="18"/>
+      <tag id="287"/>
+      <tag id="37"/>
+      <tag id="299"/>
+      <tag id="288"/>
+      <tag id="289"/>
+      <tag id="346"/>
+      <tag id="290"/>
+      <tag id="387"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="Y" name="MarketDataRequestReject">
+      <tag id="262"/>
+      <tag id="281"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="Z" name="QuoteCancel">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="298"/>
+      <tag id="301"/>
+      <tag id="336"/>
+      <tag id="295"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="311"/>
+    </message>
+    <message msgType="a" name="QuoteStatusRequest">
+      <tag id="117"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="54"/>
+      <tag id="336"/>
+    </message>
+    <message msgType="b" name="QuoteAcknowledgement">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="297"/>
+      <tag id="300"/>
+      <tag id="301"/>
+      <tag id="336"/>
+      <tag id="58"/>
+      <tag id="296"/>
+      <tag id="302"/>
+      <tag id="311"/>
+      <tag id="312"/>
+      <tag id="309"/>
+      <tag id="305"/>
+      <tag id="310"/>
+      <tag id="313"/>
+      <tag id="314"/>
+      <tag id="315"/>
+      <tag id="316"/>
+      <tag id="317"/>
+      <tag id="436"/>
+      <tag id="435"/>
+      <tag id="308"/>
+      <tag id="306"/>
+      <tag id="362"/>
+      <tag id="363"/>
+      <tag id="307"/>
+      <tag id="364"/>
+      <tag id="365"/>
+      <tag id="304"/>
+      <tag id="295"/>
+      <tag id="299"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="368"/>
+    </message>
+    <message msgType="c" name="SecurityDefinitionRequest">
+      <tag id="320"/>
+      <tag id="321"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="15"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="336"/>
+      <tag id="146"/>
+      <tag id="311"/>
+      <tag id="312"/>
+      <tag id="309"/>
+      <tag id="305"/>
+      <tag id="310"/>
+      <tag id="313"/>
+      <tag id="314"/>
+      <tag id="315"/>
+      <tag id="316"/>
+      <tag id="317"/>
+      <tag id="436"/>
+      <tag id="435"/>
+      <tag id="308"/>
+      <tag id="306"/>
+      <tag id="362"/>
+      <tag id="363"/>
+      <tag id="307"/>
+      <tag id="364"/>
+      <tag id="365"/>
+      <tag id="319"/>
+      <tag id="54"/>
+      <tag id="318"/>
+    </message>
+    <message msgType="d" name="SecurityDefinition">
+      <tag id="320"/>
+      <tag id="322"/>
+      <tag id="323"/>
+      <tag id="393"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="15"/>
+      <tag id="336"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="146"/>
+      <tag id="311"/>
+      <tag id="312"/>
+      <tag id="309"/>
+      <tag id="305"/>
+      <tag id="310"/>
+      <tag id="313"/>
+      <tag id="314"/>
+      <tag id="315"/>
+      <tag id="316"/>
+      <tag id="317"/>
+      <tag id="436"/>
+      <tag id="435"/>
+      <tag id="308"/>
+      <tag id="306"/>
+      <tag id="362"/>
+      <tag id="363"/>
+      <tag id="307"/>
+      <tag id="364"/>
+      <tag id="365"/>
+      <tag id="319"/>
+      <tag id="54"/>
+      <tag id="318"/>
+    </message>
+    <message msgType="e" name="SecurityStatusRequest">
+      <tag id="324"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="15"/>
+      <tag id="263"/>
+      <tag id="336"/>
+    </message>
+    <message msgType="f" name="SecurityStatus">
+      <tag id="324"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="15"/>
+      <tag id="336"/>
+      <tag id="325"/>
+      <tag id="326"/>
+      <tag id="291"/>
+      <tag id="292"/>
+      <tag id="327"/>
+      <tag id="328"/>
+      <tag id="329"/>
+      <tag id="330"/>
+      <tag id="331"/>
+      <tag id="332"/>
+      <tag id="333"/>
+      <tag id="31"/>
+      <tag id="60"/>
+      <tag id="334"/>
+    </message>
+    <message msgType="g" name="TradingSessionStatusRequest">
+      <tag id="335"/>
+      <tag id="336"/>
+      <tag id="338"/>
+      <tag id="339"/>
+      <tag id="263"/>
+    </message>
+    <message msgType="h" name="TradingSessionStatus">
+      <tag id="335"/>
+      <tag id="336"/>
+      <tag id="338"/>
+      <tag id="339"/>
+      <tag id="325"/>
+      <tag id="340"/>
+      <tag id="341"/>
+      <tag id="342"/>
+      <tag id="343"/>
+      <tag id="344"/>
+      <tag id="345"/>
+      <tag id="387"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="i" name="MassQuote">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="301"/>
+      <tag id="293"/>
+      <tag id="294"/>
+      <tag id="296"/>
+      <tag id="302"/>
+      <tag id="311"/>
+      <tag id="312"/>
+      <tag id="309"/>
+      <tag id="305"/>
+      <tag id="310"/>
+      <tag id="313"/>
+      <tag id="314"/>
+      <tag id="315"/>
+      <tag id="316"/>
+      <tag id="317"/>
+      <tag id="436"/>
+      <tag id="435"/>
+      <tag id="308"/>
+      <tag id="306"/>
+      <tag id="362"/>
+      <tag id="363"/>
+      <tag id="307"/>
+      <tag id="364"/>
+      <tag id="365"/>
+      <tag id="367"/>
+      <tag id="304"/>
+      <tag id="295"/>
+      <tag id="299"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="132"/>
+      <tag id="133"/>
+      <tag id="134"/>
+      <tag id="135"/>
+      <tag id="62"/>
+      <tag id="188"/>
+      <tag id="190"/>
+      <tag id="189"/>
+      <tag id="191"/>
+      <tag id="60"/>
+      <tag id="336"/>
+      <tag id="64"/>
+      <tag id="40"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="15"/>
+    </message>
+    <message msgType="j" name="BusinessMessageReject">
+      <tag id="45"/>
+      <tag id="372"/>
+      <tag id="379"/>
+      <tag id="380"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="k" name="BidRequest">
+      <tag id="390"/>
+      <tag id="391"/>
+      <tag id="374"/>
+      <tag id="392"/>
+      <tag id="393"/>
+      <tag id="394"/>
+      <tag id="395"/>
+      <tag id="15"/>
+      <tag id="396"/>
+      <tag id="397"/>
+      <tag id="398"/>
+      <tag id="399"/>
+      <tag id="400"/>
+      <tag id="401"/>
+      <tag id="404"/>
+      <tag id="441"/>
+      <tag id="402"/>
+      <tag id="403"/>
+      <tag id="405"/>
+      <tag id="406"/>
+      <tag id="407"/>
+      <tag id="408"/>
+      <tag id="420"/>
+      <tag id="66"/>
+      <tag id="54"/>
+      <tag id="336"/>
+      <tag id="430"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="1"/>
+      <tag id="409"/>
+      <tag id="410"/>
+      <tag id="411"/>
+      <tag id="412"/>
+      <tag id="413"/>
+      <tag id="414"/>
+      <tag id="415"/>
+      <tag id="416"/>
+      <tag id="121"/>
+      <tag id="417"/>
+      <tag id="75"/>
+      <tag id="418"/>
+      <tag id="419"/>
+      <tag id="443"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="l" name="BidResponse">
+      <tag id="390"/>
+      <tag id="391"/>
+      <tag id="420"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="66"/>
+      <tag id="421"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="406"/>
+      <tag id="430"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="336"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="m" name="ListStrikePrice">
+      <tag id="66"/>
+      <tag id="422"/>
+      <tag id="428"/>
+      <tag id="55"/>
+      <tag id="65"/>
+      <tag id="48"/>
+      <tag id="22"/>
+      <tag id="167"/>
+      <tag id="200"/>
+      <tag id="205"/>
+      <tag id="201"/>
+      <tag id="202"/>
+      <tag id="206"/>
+      <tag id="231"/>
+      <tag id="223"/>
+      <tag id="207"/>
+      <tag id="106"/>
+      <tag id="348"/>
+      <tag id="349"/>
+      <tag id="107"/>
+      <tag id="350"/>
+      <tag id="351"/>
+      <tag id="140"/>
+      <tag id="11"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="15"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+  </messages>
+</fix-dictionary>

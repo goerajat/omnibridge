@@ -1,10 +1,12 @@
 package com.fixengine.persistence.memory;
 
-import com.fixengine.config.PersistenceConfig;
+import com.fixengine.config.Component;
+import com.fixengine.config.ComponentState;
 import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.persistence.FixLogCallback;
 import com.fixengine.persistence.FixLogEntry;
 import com.fixengine.persistence.FixLogStore;
+import com.fixengine.persistence.config.PersistenceConfig;
 import org.agrona.IoUtil;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.slf4j.Logger;
@@ -39,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * +----------+----------+----------+----------+----------+----------+----------+
  * </pre>
  */
-public class MemoryMappedFixLogStore implements FixLogStore {
+public class MemoryMappedFixLogStore implements FixLogStore, Component {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryMappedFixLogStore.class);
 
@@ -52,7 +54,8 @@ public class MemoryMappedFixLogStore implements FixLogStore {
     private final boolean syncOnWrite;
     private final Map<String, StreamStore> streams = new ConcurrentHashMap<>();
     private final AtomicLong totalEntries = new AtomicLong(0);
-    private ComponentProvider<?, ?, ?> componentProvider;
+    private ComponentProvider componentProvider;
+    private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
     /**
      * Create a new memory-mapped log store.
@@ -107,7 +110,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
      * @param config the persistence configuration
      * @param provider the component provider (may be null)
      */
-    public MemoryMappedFixLogStore(PersistenceConfig config, ComponentProvider<?, ?, ?> provider) {
+    public MemoryMappedFixLogStore(PersistenceConfig config, ComponentProvider provider) {
         this(new File(config.getBasePath()), config.getMaxFileSize(), config.isSyncOnWrite());
         this.componentProvider = provider;
     }
@@ -138,7 +141,7 @@ public class MemoryMappedFixLogStore implements FixLogStore {
     /**
      * Get the component provider.
      */
-    public ComponentProvider<?, ?, ?> getComponentProvider() {
+    public ComponentProvider getComponentProvider() {
         return componentProvider;
     }
 
@@ -274,7 +277,74 @@ public class MemoryMappedFixLogStore implements FixLogStore {
             store.close();
         }
         streams.clear();
+        componentState = ComponentState.STOPPED;
         log.info("MemoryMappedFixLogStore closed");
+    }
+
+    // ==================== Component Interface ====================
+
+    @Override
+    public void initialize() throws Exception {
+        if (componentState != ComponentState.UNINITIALIZED) {
+            throw new IllegalStateException("Cannot initialize from state: " + componentState);
+        }
+        componentState = ComponentState.INITIALIZED;
+        log.debug("MemoryMappedFixLogStore component initialized");
+    }
+
+    @Override
+    public void startActive() throws Exception {
+        if (componentState != ComponentState.INITIALIZED) {
+            throw new IllegalStateException("Cannot start active from state: " + componentState);
+        }
+        componentState = ComponentState.ACTIVE;
+        log.info("MemoryMappedFixLogStore started in ACTIVE mode");
+    }
+
+    @Override
+    public void startStandby() throws Exception {
+        if (componentState != ComponentState.INITIALIZED) {
+            throw new IllegalStateException("Cannot start standby from state: " + componentState);
+        }
+        componentState = ComponentState.STANDBY;
+        log.info("MemoryMappedFixLogStore started in STANDBY mode");
+    }
+
+    @Override
+    public void becomeActive() throws Exception {
+        if (componentState != ComponentState.STANDBY) {
+            throw new IllegalStateException("Cannot become active from state: " + componentState);
+        }
+        componentState = ComponentState.ACTIVE;
+        log.info("MemoryMappedFixLogStore transitioned to ACTIVE mode");
+    }
+
+    @Override
+    public void becomeStandby() throws Exception {
+        if (componentState != ComponentState.ACTIVE) {
+            throw new IllegalStateException("Cannot become standby from state: " + componentState);
+        }
+        componentState = ComponentState.STANDBY;
+        log.info("MemoryMappedFixLogStore transitioned to STANDBY mode");
+    }
+
+    @Override
+    public void stop() {
+        try {
+            close();
+        } catch (IOException e) {
+            log.error("Error closing persistence store", e);
+        }
+    }
+
+    @Override
+    public String getName() {
+        return "persistence-store";
+    }
+
+    @Override
+    public ComponentState getState() {
+        return componentState;
     }
 
     /**

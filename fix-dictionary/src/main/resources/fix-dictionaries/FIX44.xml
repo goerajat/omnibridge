@@ -1,0 +1,4919 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<fix-dictionary version="FIX.4.4">
+  <fields>
+    <field name="Account" tag="1" type="String"/>
+    <field name="AdvId" tag="2" type="String"/>
+    <field name="AdvRefID" tag="3" type="String"/>
+    <field name="AdvSide" tag="4" type="char">
+      <enum desc="Buy" value="B"/>
+      <enum desc="Sell" value="S"/>
+      <enum desc="Cross" value="X"/>
+      <enum desc="Trade" value="T"/>
+    </field>
+    <field name="AdvTransType" tag="5" type="String">
+      <enum desc="New" value="N"/>
+      <enum desc="Cancel" value="C"/>
+      <enum desc="Replace" value="R"/>
+    </field>
+    <field name="AvgPx" tag="6" type="Price"/>
+    <field name="BeginSeqNo" tag="7" type="SeqNum"/>
+    <field name="BeginString" tag="8" type="String"/>
+    <field name="BodyLength" tag="9" type="Length"/>
+    <field name="CheckSum" tag="10" type="String"/>
+    <field name="ClOrdID" tag="11" type="String"/>
+    <field name="Commission" tag="12" type="Amt"/>
+    <field name="CommType" tag="13" type="char">
+      <enum desc="PerUnit" value="1"/>
+      <enum desc="Percent" value="2"/>
+      <enum desc="Absolute" value="3"/>
+      <enum desc="PercentageWaivedCashDiscount" value="4"/>
+      <enum desc="PercentageWaivedEnhancedUnits" value="5"/>
+      <enum desc="PointsPerBondOrContract" value="6"/>
+    </field>
+    <field name="CumQty" tag="14" type="Qty"/>
+    <field name="Currency" tag="15" type="Currency"/>
+    <field name="EndSeqNo" tag="16" type="SeqNum"/>
+    <field name="ExecID" tag="17" type="String"/>
+    <field name="ExecInst" tag="18" type="MultipleValueString">
+      <enum desc="NotHeld" value="1"/>
+      <enum desc="Work" value="2"/>
+      <enum desc="GoAlong" value="3"/>
+      <enum desc="OverTheDay" value="4"/>
+      <enum desc="Held" value="5"/>
+      <enum desc="ParticipateDoNotInitiate" value="6"/>
+      <enum desc="StrictScale" value="7"/>
+      <enum desc="TryToScale" value="8"/>
+      <enum desc="StayOnBidSide" value="9"/>
+      <enum desc="StayOnOfferSide" value="0"/>
+      <enum desc="NoCross" value="A"/>
+      <enum desc="OKToCross" value="B"/>
+      <enum desc="CallFirst" value="C"/>
+      <enum desc="PercentOfVolume" value="D"/>
+      <enum desc="DoNotIncrease" value="E"/>
+      <enum desc="DoNotReduce" value="F"/>
+      <enum desc="AllOrNone" value="G"/>
+      <enum desc="ReinstateOnSystemFailure" value="H"/>
+      <enum desc="InstitutionsOnly" value="I"/>
+      <enum desc="ReinstateOnTradingHalt" value="J"/>
+      <enum desc="CancelOnTradingHalt" value="K"/>
+      <enum desc="LastPeg" value="L"/>
+      <enum desc="MidPricePeg" value="M"/>
+      <enum desc="NonNegotiable" value="N"/>
+      <enum desc="OpeningPeg" value="O"/>
+      <enum desc="MarketPeg" value="P"/>
+      <enum desc="CancelOnSystemFailure" value="Q"/>
+      <enum desc="PrimaryPeg" value="R"/>
+      <enum desc="Suspend" value="S"/>
+      <enum desc="CustomerDisplayInstruction" value="U"/>
+      <enum desc="Netting" value="V"/>
+      <enum desc="PegToVWAP" value="W"/>
+      <enum desc="TradeAlong" value="X"/>
+      <enum desc="TryToStop" value="Y"/>
+      <enum desc="CancelIfNotBest" value="Z"/>
+      <enum desc="TrailingStopPeg" value="a"/>
+      <enum desc="StrictLimit" value="b"/>
+      <enum desc="IgnorePriceValidityChecks" value="c"/>
+      <enum desc="PegToLimitPrice" value="d"/>
+      <enum desc="WorkToTargetStrategy" value="e"/>
+    </field>
+    <field name="ExecRefID" tag="19" type="String"/>
+    <field name="HandlInst" tag="21" type="char">
+      <enum desc="AutomatedExecutionNoIntervention" value="1"/>
+      <enum desc="AutomatedExecutionInterventionOK" value="2"/>
+      <enum desc="ManualOrder" value="3"/>
+    </field>
+    <field name="SecurityIDSource" tag="22" type="String">
+      <enum desc="CUSIP" value="1"/>
+      <enum desc="SEDOL" value="2"/>
+      <enum desc="QUIK" value="3"/>
+      <enum desc="ISINNumber" value="4"/>
+      <enum desc="RICCode" value="5"/>
+      <enum desc="ISOCurrencyCode" value="6"/>
+      <enum desc="ISOCountryCode" value="7"/>
+      <enum desc="ExchangeSymbol" value="8"/>
+      <enum desc="ConsolidatedTapeAssociation" value="9"/>
+      <enum desc="BloombergSymbol" value="A"/>
+      <enum desc="Wertpapier" value="B"/>
+      <enum desc="Dutch" value="C"/>
+      <enum desc="Valoren" value="D"/>
+      <enum desc="Sicovam" value="E"/>
+      <enum desc="Belgian" value="F"/>
+      <enum desc="Common" value="G"/>
+      <enum desc="ClearingHouse" value="H"/>
+      <enum desc="ISDAFpMLSpecification" value="I"/>
+      <enum desc="OptionPriceReportingAuthority" value="J"/>
+    </field>
+    <field name="IOIID" tag="23" type="String"/>
+    <field name="IOIQltyInd" tag="25" type="char">
+      <enum desc="Low" value="L"/>
+      <enum desc="Medium" value="M"/>
+      <enum desc="High" value="H"/>
+    </field>
+    <field name="IOIRefID" tag="26" type="String"/>
+    <field name="IOIQty" tag="27" type="String">
+      <enum desc="Small" value="S"/>
+      <enum desc="Medium" value="M"/>
+      <enum desc="Large" value="L"/>
+    </field>
+    <field name="IOITransType" tag="28" type="char">
+      <enum desc="New" value="N"/>
+      <enum desc="Cancel" value="C"/>
+      <enum desc="Replace" value="R"/>
+    </field>
+    <field name="LastCapacity" tag="29" type="char">
+      <enum desc="Agent" value="1"/>
+      <enum desc="CrossAsAgent" value="2"/>
+      <enum desc="CrossAsPrincipal" value="3"/>
+      <enum desc="Principal" value="4"/>
+    </field>
+    <field name="LastMkt" tag="30" type="Exchange"/>
+    <field name="LastPx" tag="31" type="Price"/>
+    <field name="LastQty" tag="32" type="Qty"/>
+    <field name="NoLinesOfText" tag="33" type="NumInGroup"/>
+    <field name="MsgSeqNum" tag="34" type="SeqNum"/>
+    <field name="MsgType" tag="35" type="String">
+      <enum desc="Heartbeat" value="0"/>
+      <enum desc="TestRequest" value="1"/>
+      <enum desc="ResendRequest" value="2"/>
+      <enum desc="Reject" value="3"/>
+      <enum desc="SequenceReset" value="4"/>
+      <enum desc="Logout" value="5"/>
+      <enum desc="IOI" value="6"/>
+      <enum desc="Advertisement" value="7"/>
+      <enum desc="ExecutionReport" value="8"/>
+      <enum desc="OrderCancelReject" value="9"/>
+      <enum desc="Logon" value="A"/>
+      <enum desc="News" value="B"/>
+      <enum desc="Email" value="C"/>
+      <enum desc="NewOrderSingle" value="D"/>
+      <enum desc="NewOrderList" value="E"/>
+      <enum desc="OrderCancelRequest" value="F"/>
+      <enum desc="OrderCancelReplaceRequest" value="G"/>
+      <enum desc="OrderStatusRequest" value="H"/>
+      <enum desc="AllocationInstruction" value="J"/>
+      <enum desc="ListCancelRequest" value="K"/>
+      <enum desc="ListExecute" value="L"/>
+      <enum desc="ListStatusRequest" value="M"/>
+      <enum desc="ListStatus" value="N"/>
+      <enum desc="AllocationInstructionAck" value="P"/>
+      <enum desc="DontKnowTrade" value="Q"/>
+      <enum desc="QuoteRequest" value="R"/>
+      <enum desc="Quote" value="S"/>
+      <enum desc="SettlementInstructions" value="T"/>
+      <enum desc="MarketDataRequest" value="V"/>
+      <enum desc="MarketDataSnapshotFullRefresh" value="W"/>
+      <enum desc="MarketDataIncrementalRefresh" value="X"/>
+      <enum desc="MarketDataRequestReject" value="Y"/>
+      <enum desc="QuoteCancel" value="Z"/>
+      <enum desc="QuoteStatusRequest" value="a"/>
+      <enum desc="MassQuoteAcknowledgement" value="b"/>
+      <enum desc="SecurityDefinitionRequest" value="c"/>
+      <enum desc="SecurityDefinition" value="d"/>
+      <enum desc="SecurityStatusRequest" value="e"/>
+      <enum desc="SecurityStatus" value="f"/>
+      <enum desc="TradingSessionStatusRequest" value="g"/>
+      <enum desc="TradingSessionStatus" value="h"/>
+      <enum desc="MassQuote" value="i"/>
+      <enum desc="BusinessMessageReject" value="j"/>
+      <enum desc="BidRequest" value="k"/>
+      <enum desc="BidResponse" value="l"/>
+      <enum desc="ListStrikePrice" value="m"/>
+      <enum desc="XMLNonFIX" value="n"/>
+      <enum desc="RegistrationInstructions" value="o"/>
+      <enum desc="RegistrationInstructionsResponse" value="p"/>
+      <enum desc="OrderMassCancelRequest" value="q"/>
+      <enum desc="OrderMassCancelReport" value="r"/>
+      <enum desc="NewOrderCross" value="s"/>
+      <enum desc="CrossOrderCancelReplaceRequest" value="t"/>
+      <enum desc="CrossOrderCancelRequest" value="u"/>
+      <enum desc="SecurityTypeRequest" value="v"/>
+      <enum desc="SecurityTypes" value="w"/>
+      <enum desc="SecurityListRequest" value="x"/>
+      <enum desc="SecurityList" value="y"/>
+      <enum desc="DerivativeSecurityListRequest" value="z"/>
+      <enum desc="DerivativeSecurityList" value="AA"/>
+      <enum desc="NewOrderMultileg" value="AB"/>
+      <enum desc="MultilegOrderCancelReplace" value="AC"/>
+      <enum desc="TradeCaptureReportRequest" value="AD"/>
+      <enum desc="TradeCaptureReport" value="AE"/>
+      <enum desc="OrderMassStatusRequest" value="AF"/>
+      <enum desc="QuoteRequestReject" value="AG"/>
+      <enum desc="RFQRequest" value="AH"/>
+      <enum desc="QuoteStatusReport" value="AI"/>
+      <enum desc="QuoteResponse" value="AJ"/>
+      <enum desc="Confirmation" value="AK"/>
+      <enum desc="PositionMaintenanceRequest" value="AL"/>
+      <enum desc="PositionMaintenanceReport" value="AM"/>
+      <enum desc="RequestForPositions" value="AN"/>
+      <enum desc="RequestForPositionsAck" value="AO"/>
+      <enum desc="PositionReport" value="AP"/>
+      <enum desc="TradeCaptureReportRequestAck" value="AQ"/>
+      <enum desc="TradeCaptureReportAck" value="AR"/>
+      <enum desc="AllocationReport" value="AS"/>
+      <enum desc="AllocationReportAck" value="AT"/>
+      <enum desc="ConfirmationAck" value="AU"/>
+      <enum desc="SettlementInstructionRequest" value="AV"/>
+      <enum desc="AssignmentReport" value="AW"/>
+      <enum desc="CollateralRequest" value="AX"/>
+      <enum desc="CollateralAssignment" value="AY"/>
+      <enum desc="CollateralResponse" value="AZ"/>
+      <enum desc="CollateralReport" value="BA"/>
+      <enum desc="CollateralInquiry" value="BB"/>
+      <enum desc="NetworkCounterpartySystemStatusRequest" value="BC"/>
+      <enum desc="NetworkCounterpartySystemStatusResponse" value="BD"/>
+      <enum desc="UserRequest" value="BE"/>
+      <enum desc="UserResponse" value="BF"/>
+      <enum desc="CollateralInquiryAck" value="BG"/>
+      <enum desc="ConfirmationRequest" value="BH"/>
+    </field>
+    <field name="NewSeqNo" tag="36" type="SeqNum"/>
+    <field name="OrderID" tag="37" type="String"/>
+    <field name="OrderQty" tag="38" type="Qty"/>
+    <field name="OrdStatus" tag="39" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="PartiallyFilled" value="1"/>
+      <enum desc="Filled" value="2"/>
+      <enum desc="DoneForDay" value="3"/>
+      <enum desc="Canceled" value="4"/>
+      <enum desc="PendingCancel" value="6"/>
+      <enum desc="Stopped" value="7"/>
+      <enum desc="Rejected" value="8"/>
+      <enum desc="Suspended" value="9"/>
+      <enum desc="PendingNew" value="A"/>
+      <enum desc="Calculated" value="B"/>
+      <enum desc="Expired" value="C"/>
+      <enum desc="AcceptedForBidding" value="D"/>
+      <enum desc="PendingReplace" value="E"/>
+    </field>
+    <field name="OrdType" tag="40" type="char">
+      <enum desc="Market" value="1"/>
+      <enum desc="Limit" value="2"/>
+      <enum desc="Stop" value="3"/>
+      <enum desc="StopLimit" value="4"/>
+      <enum desc="WithOrWithout" value="6"/>
+      <enum desc="LimitOrBetter" value="7"/>
+      <enum desc="LimitWithOrWithout" value="8"/>
+      <enum desc="OnBasis" value="9"/>
+      <enum desc="PreviouslyQuoted" value="D"/>
+      <enum desc="PreviouslyIndicated" value="E"/>
+      <enum desc="ForexSwap" value="G"/>
+      <enum desc="Funari" value="I"/>
+      <enum desc="MarketIfTouched" value="J"/>
+      <enum desc="MarketWithLeftOverAsLimit" value="K"/>
+      <enum desc="PreviousFundValuationPoint" value="L"/>
+      <enum desc="NextFundValuationPoint" value="M"/>
+      <enum desc="Pegged" value="P"/>
+    </field>
+    <field name="OrigClOrdID" tag="41" type="String"/>
+    <field name="OrigTime" tag="42" type="UTCTimestamp"/>
+    <field name="PossDupFlag" tag="43" type="Boolean">
+      <enum desc="PossibleDuplicate" value="Y"/>
+      <enum desc="OriginalTransmission" value="N"/>
+    </field>
+    <field name="Price" tag="44" type="Price"/>
+    <field name="RefSeqNum" tag="45" type="SeqNum"/>
+    <field name="SecurityID" tag="48" type="String"/>
+    <field name="SenderCompID" tag="49" type="String"/>
+    <field name="SenderSubID" tag="50" type="String"/>
+    <field name="SendingTime" tag="52" type="UTCTimestamp"/>
+    <field name="Quantity" tag="53" type="Qty"/>
+    <field name="Side" tag="54" type="char">
+      <enum desc="Buy" value="1"/>
+      <enum desc="Sell" value="2"/>
+      <enum desc="BuyMinus" value="3"/>
+      <enum desc="SellPlus" value="4"/>
+      <enum desc="SellShort" value="5"/>
+      <enum desc="SellShortExempt" value="6"/>
+      <enum desc="Undisclosed" value="7"/>
+      <enum desc="Cross" value="8"/>
+      <enum desc="CrossShort" value="9"/>
+      <enum desc="CrossShortExempt" value="A"/>
+      <enum desc="AsDefined" value="B"/>
+      <enum desc="Opposite" value="C"/>
+      <enum desc="Subscribe" value="D"/>
+      <enum desc="Redeem" value="E"/>
+      <enum desc="Lend" value="F"/>
+      <enum desc="Borrow" value="G"/>
+    </field>
+    <field name="Symbol" tag="55" type="String"/>
+    <field name="TargetCompID" tag="56" type="String"/>
+    <field name="TargetSubID" tag="57" type="String"/>
+    <field name="Text" tag="58" type="String"/>
+    <field name="TimeInForce" tag="59" type="char">
+      <enum desc="Day" value="0"/>
+      <enum desc="GoodTillCancel" value="1"/>
+      <enum desc="AtTheOpening" value="2"/>
+      <enum desc="ImmediateOrCancel" value="3"/>
+      <enum desc="FillOrKill" value="4"/>
+      <enum desc="GoodTillCrossing" value="5"/>
+      <enum desc="GoodTillDate" value="6"/>
+      <enum desc="AtTheClose" value="7"/>
+    </field>
+    <field name="TransactTime" tag="60" type="UTCTimestamp"/>
+    <field name="Urgency" tag="61" type="char">
+      <enum desc="Normal" value="0"/>
+      <enum desc="Flash" value="1"/>
+      <enum desc="Background" value="2"/>
+    </field>
+    <field name="ValidUntilTime" tag="62" type="UTCTimestamp"/>
+    <field name="SettlType" tag="63" type="char">
+      <enum desc="Regular" value="0"/>
+      <enum desc="Cash" value="1"/>
+      <enum desc="NextDay" value="2"/>
+      <enum desc="TPlus2" value="3"/>
+      <enum desc="TPlus3" value="4"/>
+      <enum desc="TPlus4" value="5"/>
+      <enum desc="Future" value="6"/>
+      <enum desc="WhenAndIfIssued" value="7"/>
+      <enum desc="SellersOption" value="8"/>
+      <enum desc="TPlus5" value="9"/>
+    </field>
+    <field name="SettlDate" tag="64" type="LocalMktDate"/>
+    <field name="SymbolSfx" tag="65" type="String"/>
+    <field name="ListID" tag="66" type="String"/>
+    <field name="ListSeqNo" tag="67" type="int"/>
+    <field name="TotNoOrders" tag="68" type="int"/>
+    <field name="ListExecInst" tag="69" type="String"/>
+    <field name="AllocID" tag="70" type="String"/>
+    <field name="AllocTransType" tag="71" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Replace" value="1"/>
+      <enum desc="Cancel" value="2"/>
+    </field>
+    <field name="RefAllocID" tag="72" type="String"/>
+    <field name="NoOrders" tag="73" type="NumInGroup"/>
+    <field name="AvgPxPrecision" tag="74" type="int"/>
+    <field name="TradeDate" tag="75" type="LocalMktDate"/>
+    <field name="PositionEffect" tag="77" type="char">
+      <enum desc="Open" value="O"/>
+      <enum desc="Close" value="C"/>
+      <enum desc="Rolled" value="R"/>
+      <enum desc="FIFO" value="F"/>
+    </field>
+    <field name="NoAllocs" tag="78" type="NumInGroup"/>
+    <field name="AllocAccount" tag="79" type="String"/>
+    <field name="AllocQty" tag="80" type="Qty"/>
+    <field name="ProcessCode" tag="81" type="char">
+      <enum desc="Regular" value="0"/>
+      <enum desc="SoftDollar" value="1"/>
+      <enum desc="StepIn" value="2"/>
+      <enum desc="StepOut" value="3"/>
+      <enum desc="SoftDollarStepIn" value="4"/>
+      <enum desc="SoftDollarStepOut" value="5"/>
+      <enum desc="PlanSponsor" value="6"/>
+    </field>
+    <field name="NoRpts" tag="82" type="int"/>
+    <field name="RptSeq" tag="83" type="int"/>
+    <field name="CxlQty" tag="84" type="Qty"/>
+    <field name="NoDlvyInst" tag="85" type="NumInGroup"/>
+    <field name="AllocStatus" tag="87" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="BlockLevelReject" value="1"/>
+      <enum desc="AccountLevelReject" value="2"/>
+      <enum desc="Received" value="3"/>
+      <enum desc="Incomplete" value="4"/>
+      <enum desc="RejectedByIntermediary" value="5"/>
+    </field>
+    <field name="AllocRejCode" tag="88" type="int">
+      <enum desc="UnknownAccount" value="0"/>
+      <enum desc="IncorrectQuantity" value="1"/>
+      <enum desc="IncorrectAveragegPrice" value="2"/>
+      <enum desc="UnknownExecutingBrokerMnemonic" value="3"/>
+      <enum desc="CommissionDifference" value="4"/>
+      <enum desc="UnknownOrderID" value="5"/>
+      <enum desc="UnknownListID" value="6"/>
+      <enum desc="OtherSeeText" value="7"/>
+      <enum desc="IncorrectAllocatedQuantity" value="8"/>
+      <enum desc="CalculationDifference" value="9"/>
+      <enum desc="UnknownOrStaleExecID" value="10"/>
+      <enum desc="MismatchedData" value="11"/>
+      <enum desc="UnknownClOrdID" value="12"/>
+      <enum desc="WarehouseRequestRejected" value="13"/>
+    </field>
+    <field name="Signature" tag="89" type="data"/>
+    <field name="SecureDataLen" tag="90" type="Length"/>
+    <field name="SecureData" tag="91" type="data"/>
+    <field name="SignatureLength" tag="93" type="Length"/>
+    <field name="EmailType" tag="94" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Reply" value="1"/>
+      <enum desc="AdminReply" value="2"/>
+    </field>
+    <field name="RawDataLength" tag="95" type="Length"/>
+    <field name="RawData" tag="96" type="data"/>
+    <field name="PossResend" tag="97" type="Boolean">
+      <enum desc="PossibleResend" value="Y"/>
+      <enum desc="OriginalTransmission" value="N"/>
+    </field>
+    <field name="EncryptMethod" tag="98" type="int">
+      <enum desc="None" value="0"/>
+      <enum desc="PKCS" value="1"/>
+      <enum desc="DES" value="2"/>
+      <enum desc="PKCSDES" value="3"/>
+      <enum desc="PGPDES" value="4"/>
+      <enum desc="PGPDESMD5" value="5"/>
+      <enum desc="PEM" value="6"/>
+    </field>
+    <field name="StopPx" tag="99" type="Price"/>
+    <field name="ExDestination" tag="100" type="Exchange"/>
+    <field name="CxlRejReason" tag="102" type="int">
+      <enum desc="TooLateToCancel" value="0"/>
+      <enum desc="UnknownOrder" value="1"/>
+      <enum desc="BrokerCredit" value="2"/>
+      <enum desc="OrderAlreadyInPendingStatus" value="3"/>
+      <enum desc="UnableToProcessOrderMassCancelRequest" value="4"/>
+      <enum desc="OrigOrdModTime" value="5"/>
+      <enum desc="DuplicateClOrdID" value="6"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="OrdRejReason" tag="103" type="int">
+      <enum desc="BrokerCredit" value="0"/>
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="ExchangeClosed" value="2"/>
+      <enum desc="OrderExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="UnknownOrder" value="5"/>
+      <enum desc="DuplicateOrder" value="6"/>
+      <enum desc="DuplicateOfAVerballyCommunicatedOrder" value="7"/>
+      <enum desc="StaleOrder" value="8"/>
+      <enum desc="TradeAlongRequired" value="9"/>
+      <enum desc="InvalidInvestorID" value="10"/>
+      <enum desc="UnsupportedOrderCharacteristic" value="11"/>
+      <enum desc="IncorrectQuantity" value="13"/>
+      <enum desc="IncorrectAllocatedQuantity" value="14"/>
+      <enum desc="UnknownAccount" value="15"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="IOIQualifier" tag="104" type="char">
+      <enum desc="AllOrNone" value="A"/>
+      <enum desc="MarketOnClose" value="B"/>
+      <enum desc="AtTheClose" value="C"/>
+      <enum desc="VWAP" value="D"/>
+      <enum desc="InTouchWith" value="I"/>
+      <enum desc="Limit" value="L"/>
+      <enum desc="MoreBehind" value="M"/>
+      <enum desc="AtTheOpen" value="O"/>
+      <enum desc="TakingAPosition" value="P"/>
+      <enum desc="AtTheMarket" value="Q"/>
+      <enum desc="ReadyToTrade" value="R"/>
+      <enum desc="PortfolioShown" value="S"/>
+      <enum desc="ThroughTheDay" value="T"/>
+      <enum desc="Versus" value="V"/>
+      <enum desc="Indication" value="W"/>
+      <enum desc="CrossingOpportunity" value="X"/>
+      <enum desc="AtTheMidpoint" value="Y"/>
+      <enum desc="PreOpen" value="Z"/>
+    </field>
+    <field name="Issuer" tag="106" type="String"/>
+    <field name="SecurityDesc" tag="107" type="String"/>
+    <field name="HeartBtInt" tag="108" type="int"/>
+    <field name="MinQty" tag="110" type="Qty"/>
+    <field name="MaxFloor" tag="111" type="Qty"/>
+    <field name="TestReqID" tag="112" type="String"/>
+    <field name="ReportToExch" tag="113" type="Boolean">
+      <enum desc="ReceiverReports" value="Y"/>
+      <enum desc="SenderReports" value="N"/>
+    </field>
+    <field name="LocateReqd" tag="114" type="Boolean">
+      <enum desc="Yes" value="Y"/>
+      <enum desc="No" value="N"/>
+    </field>
+    <field name="OnBehalfOfCompID" tag="115" type="String"/>
+    <field name="OnBehalfOfSubID" tag="116" type="String"/>
+    <field name="QuoteID" tag="117" type="String"/>
+    <field name="NetMoney" tag="118" type="Amt"/>
+    <field name="SettlCurrAmt" tag="119" type="Amt"/>
+    <field name="SettlCurrency" tag="120" type="Currency"/>
+    <field name="ForexReq" tag="121" type="Boolean">
+      <enum desc="ExecuteForexAfterSecurityTrade" value="Y"/>
+      <enum desc="DoNotExecuteForexAfterSecurityTrade" value="N"/>
+    </field>
+    <field name="OrigSendingTime" tag="122" type="UTCTimestamp"/>
+    <field name="GapFillFlag" tag="123" type="Boolean">
+      <enum desc="GapFillMessage" value="Y"/>
+      <enum desc="SequenceReset" value="N"/>
+    </field>
+    <field name="NoExecs" tag="124" type="NumInGroup"/>
+    <field name="ExpireTime" tag="126" type="UTCTimestamp"/>
+    <field name="DKReason" tag="127" type="char">
+      <enum desc="UnknownSymbol" value="A"/>
+      <enum desc="WrongSide" value="B"/>
+      <enum desc="QuantityExceedsOrder" value="C"/>
+      <enum desc="NoMatchingOrder" value="D"/>
+      <enum desc="PriceExceedsLimit" value="E"/>
+      <enum desc="CalculationDifference" value="F"/>
+      <enum desc="Other" value="Z"/>
+    </field>
+    <field name="DeliverToCompID" tag="128" type="String"/>
+    <field name="DeliverToSubID" tag="129" type="String"/>
+    <field name="IOINaturalFlag" tag="130" type="Boolean">
+      <enum desc="Natural" value="Y"/>
+      <enum desc="NotNatural" value="N"/>
+    </field>
+    <field name="QuoteReqID" tag="131" type="String"/>
+    <field name="BidPx" tag="132" type="Price"/>
+    <field name="OfferPx" tag="133" type="Price"/>
+    <field name="BidSize" tag="134" type="Qty"/>
+    <field name="OfferSize" tag="135" type="Qty"/>
+    <field name="NoMiscFees" tag="136" type="NumInGroup"/>
+    <field name="MiscFeeAmt" tag="137" type="Amt"/>
+    <field name="MiscFeeCurr" tag="138" type="Currency"/>
+    <field name="MiscFeeType" tag="139" type="char">
+      <enum desc="Regulatory" value="1"/>
+      <enum desc="Tax" value="2"/>
+      <enum desc="LocalCommission" value="3"/>
+      <enum desc="ExchangeFees" value="4"/>
+      <enum desc="Stamp" value="5"/>
+      <enum desc="Levy" value="6"/>
+      <enum desc="Other" value="7"/>
+      <enum desc="Markup" value="8"/>
+      <enum desc="ConsumptionTax" value="9"/>
+      <enum desc="PerTransaction" value="10"/>
+      <enum desc="Conversion" value="11"/>
+      <enum desc="Agent" value="12"/>
+    </field>
+    <field name="PrevClosePx" tag="140" type="Price"/>
+    <field name="ResetSeqNumFlag" tag="141" type="Boolean">
+      <enum desc="Yes" value="Y"/>
+      <enum desc="No" value="N"/>
+    </field>
+    <field name="SenderLocationID" tag="142" type="String"/>
+    <field name="TargetLocationID" tag="143" type="String"/>
+    <field name="OnBehalfOfLocationID" tag="144" type="String"/>
+    <field name="DeliverToLocationID" tag="145" type="String"/>
+    <field name="NoRelatedSym" tag="146" type="NumInGroup"/>
+    <field name="Subject" tag="147" type="String"/>
+    <field name="Headline" tag="148" type="String"/>
+    <field name="URLLink" tag="149" type="String"/>
+    <field name="ExecType" tag="150" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="DoneForDay" value="3"/>
+      <enum desc="Canceled" value="4"/>
+      <enum desc="Replaced" value="5"/>
+      <enum desc="PendingCancel" value="6"/>
+      <enum desc="Stopped" value="7"/>
+      <enum desc="Rejected" value="8"/>
+      <enum desc="Suspended" value="9"/>
+      <enum desc="PendingNew" value="A"/>
+      <enum desc="Calculated" value="B"/>
+      <enum desc="Expired" value="C"/>
+      <enum desc="Restated" value="D"/>
+      <enum desc="PendingReplace" value="E"/>
+      <enum desc="Trade" value="F"/>
+      <enum desc="TradeCorrect" value="G"/>
+      <enum desc="TradeCancel" value="H"/>
+      <enum desc="OrderStatus" value="I"/>
+    </field>
+    <field name="LeavesQty" tag="151" type="Qty"/>
+    <field name="CashOrderQty" tag="152" type="Qty"/>
+    <field name="AllocAvgPx" tag="153" type="Price"/>
+    <field name="AllocNetMoney" tag="154" type="Amt"/>
+    <field name="SettlCurrFxRate" tag="155" type="float"/>
+    <field name="SettlCurrFxRateCalc" tag="156" type="char">
+      <enum desc="Multiply" value="M"/>
+      <enum desc="Divide" value="D"/>
+    </field>
+    <field name="NumDaysInterest" tag="157" type="int"/>
+    <field name="AccruedInterestRate" tag="158" type="Percentage"/>
+    <field name="AccruedInterestAmt" tag="159" type="Amt"/>
+    <field name="SettlInstMode" tag="160" type="char">
+      <enum desc="StandingInstructionsProvided" value="1"/>
+      <enum desc="SpecificOrderForASingleAccount" value="4"/>
+      <enum desc="RequestReject" value="5"/>
+    </field>
+    <field name="AllocText" tag="161" type="String"/>
+    <field name="SettlInstID" tag="162" type="String"/>
+    <field name="SettlInstTransType" tag="163" type="char">
+      <enum desc="New" value="N"/>
+      <enum desc="Cancel" value="C"/>
+      <enum desc="Replace" value="R"/>
+      <enum desc="Restate" value="T"/>
+    </field>
+    <field name="EmailThreadID" tag="164" type="String"/>
+    <field name="SettlInstSource" tag="165" type="char">
+      <enum desc="BrokerCredit" value="1"/>
+      <enum desc="Institution" value="2"/>
+      <enum desc="Investor" value="3"/>
+    </field>
+    <field name="SecurityType" tag="167" type="String">
+      <enum desc="Future" value="FUT"/>
+      <enum desc="Option" value="OPT"/>
+      <enum desc="EuroSupranationalCoupons" value="EUSUPRA"/>
+      <enum desc="FederalAgencyCoupon" value="FAC"/>
+      <enum desc="FederalAgencyDiscountNote" value="FADN"/>
+      <enum desc="PrivateExportFunding" value="PEF"/>
+      <enum desc="USDSupranationalCoupons" value="SUPRA"/>
+      <enum desc="CorporateBond" value="CORP"/>
+      <enum desc="CorporatePrivatePlacement" value="CPP"/>
+      <enum desc="ConvertibleBond" value="CB"/>
+      <enum desc="DualCurrency" value="DUAL"/>
+      <enum desc="EuroCorporateBond" value="EUCORP"/>
+      <enum desc="IndexedLinked" value="XLINKD"/>
+      <enum desc="StructuredNotes" value="STRUCT"/>
+      <enum desc="YankeeCorporateBond" value="YANK"/>
+      <enum desc="ForeignExchangeContract" value="FOR"/>
+      <enum desc="CommonStock" value="CS"/>
+      <enum desc="PreferredStock" value="PS"/>
+      <enum desc="BradyBond" value="BRADY"/>
+      <enum desc="EuroSovereigns" value="EUSOV"/>
+      <enum desc="USTreasuryBond" value="TBOND"/>
+      <enum desc="InterestStripFromAnyBondOrNote" value="TINT"/>
+      <enum desc="TreasuryInflationProtectedSecurities" value="TIPS"/>
+      <enum desc="PrincipalStripOfACallableBondOrNote" value="TCAL"/>
+      <enum desc="PrincipalStripFromANonCallableBondOrNote" value="TPRN"/>
+      <enum desc="USTreasuryNoteOld" value="UST"/>
+      <enum desc="USTreasuryBillOld" value="USTB"/>
+      <enum desc="USTreasuryNote" value="TNOTE"/>
+      <enum desc="USTreasuryBill" value="TBILL"/>
+      <enum desc="Repurchase" value="REPO"/>
+      <enum desc="Forward" value="FORWARD"/>
+      <enum desc="BuySellback" value="BUYSELL"/>
+      <enum desc="SecuritiesLoan" value="SECLOAN"/>
+      <enum desc="SecuritiesPledge" value="SECPLEDGE"/>
+      <enum desc="TermLoan" value="TERM"/>
+      <enum desc="RevolverLoan" value="RVLV"/>
+      <enum desc="Revolver" value="RVLVTRM"/>
+      <enum desc="BridgeLoan" value="BRIDGE"/>
+      <enum desc="LetterOfCredit" value="LOFC"/>
+      <enum desc="SwingLineFacility" value="SWING"/>
+      <enum desc="DebtorInPossession" value="DINP"/>
+      <enum desc="Defaulted" value="DEFLTED"/>
+      <enum desc="Withdrawn" value="WITHDRN"/>
+      <enum desc="Replaced" value="REPLACD"/>
+      <enum desc="Matured" value="MATURED"/>
+      <enum desc="Amended" value="AMENDED"/>
+      <enum desc="Retired" value="RETIRED"/>
+      <enum desc="BankersAcceptance" value="BA"/>
+      <enum desc="BankNotes" value="BN"/>
+      <enum desc="BillOfExchanges" value="BOX"/>
+      <enum desc="CertificateOfDeposit" value="CD"/>
+      <enum desc="CallLoans" value="CL"/>
+      <enum desc="CommercialPaper" value="CP"/>
+      <enum desc="DepositNotes" value="DN"/>
+      <enum desc="EuroCertificateOfDeposit" value="EUCD"/>
+      <enum desc="EuroCommercialPaper" value="EUCP"/>
+      <enum desc="LiquidityNote" value="LQN"/>
+      <enum desc="MediumTermNotes" value="MTN"/>
+      <enum desc="Overnight" value="ONITE"/>
+      <enum desc="PromissoryNote" value="PN"/>
+      <enum desc="PlazosFijos" value="PZFJ"/>
+      <enum desc="ShortTermLoanNote" value="STN"/>
+      <enum desc="TimeDeposit" value="TD"/>
+      <enum desc="ExtendedCommNote" value="XCN"/>
+      <enum desc="YankeeCertificateOfDeposit" value="YCD"/>
+      <enum desc="AssetBackedSecurities" value="ABS"/>
+      <enum desc="Corp" value="CMBS"/>
+      <enum desc="CollateralizedMortgageObligation" value="CMO"/>
+      <enum desc="IOETTEMortgage" value="IET"/>
+      <enum desc="MortgageBackedSecurities" value="MBS"/>
+      <enum desc="MortgageInterestOnly" value="MIO"/>
+      <enum desc="MortgagePrincipalOnly" value="MPO"/>
+      <enum desc="MortgagePrivatePlacement" value="MPP"/>
+      <enum desc="MiscellaneousPassThrough" value="MPT"/>
+      <enum desc="Pfandbriefe" value="PFAND"/>
+      <enum desc="ToBeAnnounced" value="TBA"/>
+      <enum desc="OtherAnticipationNotes" value="AN"/>
+      <enum desc="CertificateOfObligation" value="COFO"/>
+      <enum desc="CertificateOfParticipation" value="COFP"/>
+      <enum desc="GeneralObligationBonds" value="GO"/>
+      <enum desc="MandatoryTender" value="MT"/>
+      <enum desc="RevenueAnticipationNote" value="RAN"/>
+      <enum desc="RevenueBonds" value="REV"/>
+      <enum desc="SpecialAssessment" value="SPCLA"/>
+      <enum desc="SpecialObligation" value="SPCLO"/>
+      <enum desc="SpecialTax" value="SPCLT"/>
+      <enum desc="TaxAnticipationNote" value="TAN"/>
+      <enum desc="TaxAllocation" value="TAXA"/>
+      <enum desc="TaxExemptCommercialPaper" value="TECP"/>
+      <enum desc="TaxRevenueAnticipationNote" value="TRAN"/>
+      <enum desc="VariableRateDemandNote" value="VRDN"/>
+      <enum desc="Warrant" value="WAR"/>
+      <enum desc="MutualFund" value="MF"/>
+      <enum desc="MultilegInstrument" value="MLEG"/>
+      <enum desc="NoSecurityType" value="NONE"/>
+    </field>
+    <field name="EffectiveTime" tag="168" type="UTCTimestamp"/>
+    <field name="StandInstDbType" tag="169" type="int">
+      <enum desc="Other" value="0"/>
+      <enum desc="DTCSID" value="1"/>
+      <enum desc="ThomsonALERT" value="2"/>
+      <enum desc="AGlobalCustodian" value="3"/>
+      <enum desc="AccountNet" value="4"/>
+    </field>
+    <field name="StandInstDbName" tag="170" type="String"/>
+    <field name="StandInstDbID" tag="171" type="String"/>
+    <field name="SettlDeliveryType" tag="172" type="int">
+      <enum desc="Versus" value="0"/>
+      <enum desc="Free" value="1"/>
+      <enum desc="TriParty" value="2"/>
+      <enum desc="HoldInCustody" value="3"/>
+    </field>
+    <field name="BidSpotRate" tag="188" type="Price"/>
+    <field name="BidForwardPoints" tag="189" type="PriceOffset"/>
+    <field name="OfferSpotRate" tag="190" type="Price"/>
+    <field name="OfferForwardPoints" tag="191" type="PriceOffset"/>
+    <field name="OrderQty2" tag="192" type="Qty"/>
+    <field name="SettlDate2" tag="193" type="LocalMktDate"/>
+    <field name="LastSpotRate" tag="194" type="Price"/>
+    <field name="LastForwardPoints" tag="195" type="PriceOffset"/>
+    <field name="AllocLinkID" tag="196" type="String"/>
+    <field name="AllocLinkType" tag="197" type="int">
+      <enum desc="FXNetting" value="0"/>
+      <enum desc="FXSwap" value="1"/>
+    </field>
+    <field name="SecondaryOrderID" tag="198" type="String"/>
+    <field name="NoIOIQualifiers" tag="199" type="NumInGroup"/>
+    <field name="MaturityMonthYear" tag="200" type="MonthYear"/>
+    <field name="PutOrCall" tag="201" type="int">
+      <enum desc="Put" value="0"/>
+      <enum desc="Call" value="1"/>
+    </field>
+    <field name="StrikePrice" tag="202" type="Price"/>
+    <field name="CoveredOrUncovered" tag="203" type="int">
+      <enum desc="Covered" value="0"/>
+      <enum desc="Uncovered" value="1"/>
+    </field>
+    <field name="OptAttribute" tag="206" type="char"/>
+    <field name="SecurityExchange" tag="207" type="Exchange"/>
+    <field name="NotifyBrokerOfCredit" tag="208" type="Boolean">
+      <enum desc="DetailsShouldBeCommunicated" value="Y"/>
+      <enum desc="DetailsShouldNotBeCommunicated" value="N"/>
+    </field>
+    <field name="AllocHandlInst" tag="209" type="int">
+      <enum desc="Match" value="1"/>
+      <enum desc="Forward" value="2"/>
+      <enum desc="ForwardAndMatch" value="3"/>
+    </field>
+    <field name="MaxShow" tag="210" type="Qty"/>
+    <field name="PegOffsetValue" tag="211" type="float"/>
+    <field name="XmlDataLen" tag="212" type="Length"/>
+    <field name="XmlData" tag="213" type="data"/>
+    <field name="SettlInstRefID" tag="214" type="String"/>
+    <field name="NoRoutingIDs" tag="215" type="NumInGroup"/>
+    <field name="RoutingType" tag="216" type="int">
+      <enum desc="TargetFirm" value="1"/>
+      <enum desc="TargetList" value="2"/>
+      <enum desc="BlockFirm" value="3"/>
+      <enum desc="BlockList" value="4"/>
+    </field>
+    <field name="RoutingID" tag="217" type="String"/>
+    <field name="Spread" tag="218" type="PriceOffset"/>
+    <field name="BenchmarkCurveCurrency" tag="220" type="Currency"/>
+    <field name="BenchmarkCurveName" tag="221" type="String"/>
+    <field name="BenchmarkCurvePoint" tag="222" type="String"/>
+    <field name="CouponRate" tag="223" type="Percentage"/>
+    <field name="CouponPaymentDate" tag="224" type="LocalMktDate"/>
+    <field name="IssueDate" tag="225" type="LocalMktDate"/>
+    <field name="RepurchaseTerm" tag="226" type="int"/>
+    <field name="RepurchaseRate" tag="227" type="Percentage"/>
+    <field name="Factor" tag="228" type="float"/>
+    <field name="TradeOriginationDate" tag="229" type="LocalMktDate"/>
+    <field name="ExDate" tag="230" type="LocalMktDate"/>
+    <field name="ContractMultiplier" tag="231" type="float"/>
+    <field name="NoStipulations" tag="232" type="NumInGroup"/>
+    <field name="StipulationType" tag="233" type="String">
+      <enum desc="AlternativeMinimumTax" value="AMT"/>
+      <enum desc="AutoReinvestment" value="AUTOREINV"/>
+      <enum desc="BankQualified" value="BANKQUAL"/>
+      <enum desc="BargainConditions" value="BGNCON"/>
+      <enum desc="CouponRange" value="COUPON"/>
+      <enum desc="ISOCurrencyCode" value="CURRENCY"/>
+      <enum desc="CustomStart" value="CUSTOMDATE"/>
+      <enum desc="Geographics" value="GEOG"/>
+      <enum desc="ValuationDiscount" value="HAIRCUT"/>
+      <enum desc="Insured" value="INSURED"/>
+      <enum desc="IssueDate" value="ISSUE"/>
+      <enum desc="Issuer" value="ISSUER"/>
+      <enum desc="IssueSizeRange" value="ISSUESIZE"/>
+      <enum desc="LookbackDays" value="LOOKBACK"/>
+      <enum desc="ExplicitLotIdentifier" value="LOT"/>
+      <enum desc="LotVariance" value="LOTVAR"/>
+      <enum desc="MaturityYearAndMonth" value="MAT"/>
+      <enum desc="MaturityRange" value="MATURITY"/>
+      <enum desc="MaximumSubstitutions" value="MAXSUBS"/>
+      <enum desc="MinimumQuantity" value="MINQTY"/>
+      <enum desc="MinimumIncrement" value="MININCR"/>
+      <enum desc="MinimumDenomination" value="MINDNOM"/>
+      <enum desc="PaymentFrequency" value="PAYFREQ"/>
+      <enum desc="NumberOfPieces" value="PIECES"/>
+      <enum desc="PoolsMaximum" value="PMAX"/>
+      <enum desc="PoolsPerMillion" value="PPM"/>
+      <enum desc="PoolsPerLot" value="PPL"/>
+      <enum desc="PoolsPerTrade" value="PPT"/>
+      <enum desc="PriceRange" value="PRICE"/>
+      <enum desc="PricingFrequency" value="PRICEFREQ"/>
+      <enum desc="ProductionYear" value="PROD"/>
+      <enum desc="CallProtection" value="PROTECT"/>
+      <enum desc="Purpose" value="PURPOSE"/>
+      <enum desc="BenchmarkPriceSource" value="PXSOURCE"/>
+      <enum desc="RatingSourceAndRange" value="RATING"/>
+      <enum desc="TypeOfRedemption" value="REDEMPTION"/>
+      <enum desc="Restricted" value="RESTRICTED"/>
+      <enum desc="MarketSector" value="SECTOR"/>
+      <enum desc="SecurityTypeIncludedOrExcluded" value="SECTYPE"/>
+      <enum desc="Structure" value="STRUCT"/>
+      <enum desc="SubstitutionsFrequency" value="SUBSFREQ"/>
+      <enum desc="SubstitutionsLeft" value="SUBSLEFT"/>
+      <enum desc="FreeformText" value="TEXT"/>
+      <enum desc="TradeVariance" value="TRDVAR"/>
+      <enum desc="WeightedAverageCoupon" value="WAC"/>
+      <enum desc="WeightedAverageLifeCoupon" value="WAL"/>
+      <enum desc="WeightedAverageLoanAge" value="WALA"/>
+      <enum desc="WeightedAverageMaturity" value="WAM"/>
+      <enum desc="WholePool" value="WHOLE"/>
+      <enum desc="YieldRange" value="YIELD"/>
+    </field>
+    <field name="StipulationValue" tag="234" type="String"/>
+    <field name="YieldType" tag="235" type="String">
+      <enum desc="AfterTaxYield" value="AFTERTAX"/>
+      <enum desc="AnnualYield" value="ANNUAL"/>
+      <enum desc="YieldAtIssue" value="ATISSUE"/>
+      <enum desc="YieldToAverageMaturity" value="AVGMATURITY"/>
+      <enum desc="BookYield" value="BOOK"/>
+      <enum desc="YieldToNextCall" value="CALL"/>
+      <enum desc="YieldChangeSinceClose" value="CHANGE"/>
+      <enum desc="ClosingYield" value="CLOSE"/>
+      <enum desc="CompoundYield" value="COMPOUND"/>
+      <enum desc="CurrentYield" value="CURRENT"/>
+      <enum desc="TrueGrossYield" value="GROSS"/>
+      <enum desc="GvntEquivalentYield" value="GOVTEQUIV"/>
+      <enum desc="YieldWithInflationAssumption" value="INFLATION"/>
+      <enum desc="InverseFloaterBondYield" value="INVERSEFLOATER"/>
+      <enum desc="MostRecentClosingYield" value="LASTCLOSE"/>
+      <enum desc="ClosingYieldMostRecentMonth" value="LASTMONTH"/>
+      <enum desc="ClosingYieldMostRecentQuarter" value="LASTQUARTER"/>
+      <enum desc="ClosingYieldMostRecentYear" value="LASTYEAR"/>
+      <enum desc="YieldToLongestAverageLife" value="LONGAVGLIFE"/>
+      <enum desc="MarkToMarketYield" value="MARK"/>
+      <enum desc="YieldToMaturity" value="MATURITY"/>
+      <enum desc="YieldToNextRefund" value="NEXTREFUND"/>
+      <enum desc="OpenAverageYield" value="OPENAVG"/>
+      <enum desc="YieldToNextPut" value="PUT"/>
+      <enum desc="PreviousCloseYield" value="PREVCLOSE"/>
+      <enum desc="ProceedsYield" value="PROCEEDS"/>
+      <enum desc="SemiAnnualYield" value="SEMIANNUAL"/>
+      <enum desc="YieldToShortestAverageLife" value="SHORTAVGLIFE"/>
+      <enum desc="SimpleYield" value="SIMPLE"/>
+      <enum desc="TaxEquivalentYield" value="TAXEQUIV"/>
+      <enum desc="YieldToTenderDate" value="TENDER"/>
+      <enum desc="TrueYield" value="TRUE"/>
+      <enum desc="YieldValueOf132" value="VALUE1/32"/>
+      <enum desc="YieldToWorst" value="WORST"/>
+    </field>
+    <field name="Yield" tag="236" type="Percentage"/>
+    <field name="TotalTakedown" tag="237" type="Amt"/>
+    <field name="Concession" tag="238" type="Amt"/>
+    <field name="RepoCollateralSecurityType" tag="239" type="String"/>
+    <field name="RedemptionDate" tag="240" type="LocalMktDate"/>
+    <field name="UnderlyingCouponPaymentDate" tag="241" type="LocalMktDate"/>
+    <field name="UnderlyingIssueDate" tag="242" type="LocalMktDate"/>
+    <field name="UnderlyingRepoCollateralSecurityType" tag="243" type="String"/>
+    <field name="UnderlyingRepurchaseTerm" tag="244" type="int"/>
+    <field name="UnderlyingRepurchaseRate" tag="245" type="Percentage"/>
+    <field name="UnderlyingFactor" tag="246" type="float"/>
+    <field name="UnderlyingRedemptionDate" tag="247" type="LocalMktDate"/>
+    <field name="LegCouponPaymentDate" tag="248" type="LocalMktDate"/>
+    <field name="LegIssueDate" tag="249" type="LocalMktDate"/>
+    <field name="LegRepoCollateralSecurityType" tag="250" type="String"/>
+    <field name="LegRepurchaseTerm" tag="251" type="int"/>
+    <field name="LegRepurchaseRate" tag="252" type="Percentage"/>
+    <field name="LegFactor" tag="253" type="float"/>
+    <field name="LegRedemptionDate" tag="254" type="LocalMktDate"/>
+    <field name="CreditRating" tag="255" type="String"/>
+    <field name="UnderlyingCreditRating" tag="256" type="String"/>
+    <field name="LegCreditRating" tag="257" type="String"/>
+    <field name="TradedFlatSwitch" tag="258" type="Boolean">
+      <enum desc="TradedFlat" value="Y"/>
+      <enum desc="NotTradedFlat" value="N"/>
+    </field>
+    <field name="BasisFeatureDate" tag="259" type="LocalMktDate"/>
+    <field name="BasisFeaturePrice" tag="260" type="Price"/>
+    <field name="MDReqID" tag="262" type="String"/>
+    <field name="SubscriptionRequestType" tag="263" type="char">
+      <enum desc="Snapshot" value="0"/>
+      <enum desc="SnapshotAndUpdates" value="1"/>
+      <enum desc="DisablePreviousSnapshot" value="2"/>
+    </field>
+    <field name="MarketDepth" tag="264" type="int"/>
+    <field name="MDUpdateType" tag="265" type="int">
+      <enum desc="FullRefresh" value="0"/>
+      <enum desc="IncrementalRefresh" value="1"/>
+    </field>
+    <field name="AggregatedBook" tag="266" type="Boolean">
+      <enum desc="BookEntriesToBeAggregated" value="Y"/>
+      <enum desc="BookEntriesShouldNotBeAggregated" value="N"/>
+    </field>
+    <field name="NoMDEntryTypes" tag="267" type="NumInGroup"/>
+    <field name="NoMDEntries" tag="268" type="NumInGroup"/>
+    <field name="MDEntryType" tag="269" type="char">
+      <enum desc="Bid" value="0"/>
+      <enum desc="Offer" value="1"/>
+      <enum desc="Trade" value="2"/>
+      <enum desc="IndexValue" value="3"/>
+      <enum desc="OpeningPrice" value="4"/>
+      <enum desc="ClosingPrice" value="5"/>
+      <enum desc="SettlementPrice" value="6"/>
+      <enum desc="TradingSessionHighPrice" value="7"/>
+      <enum desc="TradingSessionLowPrice" value="8"/>
+      <enum desc="TradingSessionVWAPPrice" value="9"/>
+      <enum desc="Imbalance" value="A"/>
+      <enum desc="TradeVolume" value="B"/>
+      <enum desc="OpenInterest" value="C"/>
+    </field>
+    <field name="MDEntryPx" tag="270" type="Price"/>
+    <field name="MDEntrySize" tag="271" type="Qty"/>
+    <field name="MDEntryDate" tag="272" type="UTCDateOnly"/>
+    <field name="MDEntryTime" tag="273" type="UTCTimeOnly"/>
+    <field name="TickDirection" tag="274" type="char">
+      <enum desc="PlusTick" value="0"/>
+      <enum desc="ZeroPlusTick" value="1"/>
+      <enum desc="MinusTick" value="2"/>
+      <enum desc="ZeroMinusTick" value="3"/>
+    </field>
+    <field name="MDMkt" tag="275" type="Exchange"/>
+    <field name="QuoteCondition" tag="276" type="MultipleValueString">
+      <enum desc="Open" value="A"/>
+      <enum desc="Closed" value="B"/>
+      <enum desc="ExchangeBest" value="C"/>
+      <enum desc="ConsolidatedBest" value="D"/>
+      <enum desc="Locked" value="E"/>
+      <enum desc="Crossed" value="F"/>
+      <enum desc="Depth" value="G"/>
+      <enum desc="FastTrading" value="H"/>
+      <enum desc="NonFirm" value="I"/>
+    </field>
+    <field name="TradeCondition" tag="277" type="MultipleValueString">
+      <enum desc="Cash" value="A"/>
+      <enum desc="AveragePriceTrade" value="B"/>
+      <enum desc="CashTrade" value="C"/>
+      <enum desc="NextDay" value="D"/>
+      <enum desc="Opening" value="E"/>
+      <enum desc="IntradayTradeDetail" value="F"/>
+      <enum desc="Rule127Trade" value="G"/>
+      <enum desc="Rule155Trade" value="H"/>
+      <enum desc="SoldLast" value="I"/>
+      <enum desc="NextDayTrade" value="J"/>
+      <enum desc="Opened" value="K"/>
+      <enum desc="Seller" value="L"/>
+      <enum desc="Sold" value="M"/>
+      <enum desc="StoppedStock" value="N"/>
+      <enum desc="ImbalanceMoreBuyers" value="P"/>
+      <enum desc="ImbalanceMoreSellers" value="Q"/>
+      <enum desc="OpeningPrice" value="R"/>
+    </field>
+    <field name="MDEntryID" tag="278" type="String"/>
+    <field name="MDUpdateAction" tag="279" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Change" value="1"/>
+      <enum desc="Delete" value="2"/>
+    </field>
+    <field name="MDEntryRefID" tag="280" type="String"/>
+    <field name="MDReqRejReason" tag="281" type="char">
+      <enum desc="UnknownSymbol" value="0"/>
+      <enum desc="DuplicateMDReqID" value="1"/>
+      <enum desc="InsufficientBandwidth" value="2"/>
+      <enum desc="InsufficientPermissions" value="3"/>
+      <enum desc="UnsupportedSubscriptionRequestType" value="4"/>
+      <enum desc="UnsupportedMarketDepth" value="5"/>
+      <enum desc="UnsupportedMDUpdateType" value="6"/>
+      <enum desc="UnsupportedAggregatedBook" value="7"/>
+      <enum desc="UnsupportedMDEntryType" value="8"/>
+      <enum desc="UnsupportedTradingSessionID" value="9"/>
+      <enum desc="UnsupportedScope" value="A"/>
+      <enum desc="UnsupportedOpenCloseSettleFlag" value="B"/>
+      <enum desc="UnsupportedMDImplicitDelete" value="C"/>
+    </field>
+    <field name="MDEntryOriginator" tag="282" type="String"/>
+    <field name="LocationID" tag="283" type="String"/>
+    <field name="DeskID" tag="284" type="String"/>
+    <field name="DeleteReason" tag="285" type="char">
+      <enum desc="Cancellation" value="0"/>
+      <enum desc="Error" value="1"/>
+    </field>
+    <field name="OpenCloseSettlFlag" tag="286" type="MultipleValueString">
+      <enum desc="DailyOpen" value="0"/>
+      <enum desc="SessionOpen" value="1"/>
+      <enum desc="DeliverySettlementEntry" value="2"/>
+      <enum desc="ExpectedEntry" value="3"/>
+      <enum desc="EntryFromPreviousBusinessDay" value="4"/>
+      <enum desc="TheoreticalPriceValue" value="5"/>
+    </field>
+    <field name="SellerDays" tag="287" type="int"/>
+    <field name="MDEntryBuyer" tag="288" type="String"/>
+    <field name="MDEntrySeller" tag="289" type="String"/>
+    <field name="MDEntryPositionNo" tag="290" type="int"/>
+    <field name="FinancialStatus" tag="291" type="MultipleValueString">
+      <enum desc="Bankrupt" value="1"/>
+      <enum desc="PendingDelisting" value="2"/>
+    </field>
+    <field name="CorporateAction" tag="292" type="MultipleValueString">
+      <enum desc="ExDividend" value="A"/>
+      <enum desc="ExDistribution" value="B"/>
+      <enum desc="ExRights" value="C"/>
+      <enum desc="New" value="D"/>
+      <enum desc="ExInterest" value="E"/>
+    </field>
+    <field name="DefBidSize" tag="293" type="Qty"/>
+    <field name="DefOfferSize" tag="294" type="Qty"/>
+    <field name="NoQuoteEntries" tag="295" type="NumInGroup"/>
+    <field name="NoQuoteSets" tag="296" type="NumInGroup"/>
+    <field name="QuoteStatus" tag="297" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="CancelForSymbol" value="1"/>
+      <enum desc="CanceledForSecurityType" value="2"/>
+      <enum desc="CanceledForUnderlying" value="3"/>
+      <enum desc="CanceledAll" value="4"/>
+      <enum desc="Rejected" value="5"/>
+      <enum desc="RemovedFromMarket" value="6"/>
+      <enum desc="Expired" value="7"/>
+      <enum desc="Query" value="8"/>
+      <enum desc="QuoteNotFound" value="9"/>
+      <enum desc="Pending" value="10"/>
+      <enum desc="Pass" value="11"/>
+      <enum desc="LockedMarketWarning" value="12"/>
+      <enum desc="CrossMarketWarning" value="13"/>
+      <enum desc="CanceledDueToLockMarket" value="14"/>
+      <enum desc="CanceledDueToCrossMarket" value="15"/>
+    </field>
+    <field name="QuoteCancelType" tag="298" type="int">
+      <enum desc="CancelForOneOrMoreSecurities" value="1"/>
+      <enum desc="CancelForSecurityType" value="2"/>
+      <enum desc="CancelForUnderlyingSecurity" value="3"/>
+      <enum desc="CancelAllQuotes" value="4"/>
+    </field>
+    <field name="QuoteEntryID" tag="299" type="String"/>
+    <field name="QuoteRejectReason" tag="300" type="int">
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="Exchange" value="2"/>
+      <enum desc="QuoteRequestExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="UnknownQuote" value="5"/>
+      <enum desc="DuplicateQuote" value="6"/>
+      <enum desc="InvalidBid" value="7"/>
+      <enum desc="InvalidPrice" value="8"/>
+      <enum desc="NotAuthorizedToQuoteSecurity" value="9"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="QuoteResponseLevel" tag="301" type="int">
+      <enum desc="NoAcknowledgement" value="0"/>
+      <enum desc="AcknowledgeOnlyNegativeOrErroneousQuotes" value="1"/>
+      <enum desc="AcknowledgeEachQuoteMessage" value="2"/>
+    </field>
+    <field name="QuoteSetID" tag="302" type="String"/>
+    <field name="QuoteRequestType" tag="303" type="int">
+      <enum desc="Manual" value="1"/>
+      <enum desc="Automatic" value="2"/>
+    </field>
+    <field name="TotNoQuoteEntries" tag="304" type="int"/>
+    <field name="UnderlyingSecurityIDSource" tag="305" type="String"/>
+    <field name="UnderlyingIssuer" tag="306" type="String"/>
+    <field name="UnderlyingSecurityDesc" tag="307" type="String"/>
+    <field name="UnderlyingSecurityExchange" tag="308" type="Exchange"/>
+    <field name="UnderlyingSecurityID" tag="309" type="String"/>
+    <field name="UnderlyingSecurityType" tag="310" type="String"/>
+    <field name="UnderlyingSymbol" tag="311" type="String"/>
+    <field name="UnderlyingSymbolSfx" tag="312" type="String"/>
+    <field name="UnderlyingMaturityMonthYear" tag="313" type="MonthYear"/>
+    <field name="UnderlyingPutOrCall" tag="315" type="int"/>
+    <field name="UnderlyingStrikePrice" tag="316" type="Price"/>
+    <field name="UnderlyingOptAttribute" tag="317" type="char"/>
+    <field name="UnderlyingCurrency" tag="318" type="Currency"/>
+    <field name="SecurityReqID" tag="320" type="String"/>
+    <field name="SecurityRequestType" tag="321" type="int">
+      <enum desc="RequestSecurityIdentityAndSpecifications" value="0"/>
+      <enum desc="RequestSecurityIdentityForSpecifications" value="1"/>
+      <enum desc="RequestListSecurityTypes" value="2"/>
+      <enum desc="RequestListSecurities" value="3"/>
+    </field>
+    <field name="SecurityResponseID" tag="322" type="String"/>
+    <field name="SecurityResponseType" tag="323" type="int">
+      <enum desc="AcceptAsIs" value="1"/>
+      <enum desc="AcceptWithRevisions" value="2"/>
+      <enum desc="RejectSecurityProposal" value="5"/>
+      <enum desc="CannotMatchSelectionCriteria" value="6"/>
+    </field>
+    <field name="SecurityStatusReqID" tag="324" type="String"/>
+    <field name="UnsolicitedIndicator" tag="325" type="Boolean">
+      <enum desc="MessageIsBeingSentUnsolicited" value="Y"/>
+      <enum desc="MessageIsBeingSentAsAResultOfAPriorRequest" value="N"/>
+    </field>
+    <field name="SecurityTradingStatus" tag="326" type="int">
+      <enum desc="OpeningDelay" value="1"/>
+      <enum desc="TradingHalt" value="2"/>
+      <enum desc="Resume" value="3"/>
+      <enum desc="NoOpen" value="4"/>
+      <enum desc="PriceIndication" value="5"/>
+      <enum desc="TradingRangeIndication" value="6"/>
+      <enum desc="MarketImbalanceBuy" value="7"/>
+      <enum desc="MarketImbalanceSell" value="8"/>
+      <enum desc="MarketOnCloseImbalanceBuy" value="9"/>
+      <enum desc="MarketOnCloseImbalanceSell" value="10"/>
+      <enum desc="NoMarketImbalance" value="12"/>
+      <enum desc="NoMarketOnCloseImbalance" value="13"/>
+      <enum desc="ITSPreOpening" value="14"/>
+      <enum desc="NewPriceIndication" value="15"/>
+      <enum desc="TradeDisseminationTime" value="16"/>
+      <enum desc="ReadyToTrade" value="17"/>
+      <enum desc="NotAvailableForTrading" value="18"/>
+      <enum desc="NotTradedOnThisMarket" value="19"/>
+      <enum desc="UnknownOrInvalid" value="20"/>
+      <enum desc="PreOpen" value="21"/>
+      <enum desc="OpeningRotation" value="22"/>
+      <enum desc="FastMarket" value="23"/>
+    </field>
+    <field name="HaltReason" tag="327" type="char">
+      <enum desc="OrderImbalance" value="I"/>
+      <enum desc="EquipmentChangeover" value="X"/>
+      <enum desc="NewsPending" value="P"/>
+      <enum desc="NewsDissemination" value="D"/>
+      <enum desc="OrderInflux" value="E"/>
+      <enum desc="AdditionalInformation" value="M"/>
+    </field>
+    <field name="InViewOfCommon" tag="328" type="Boolean">
+      <enum desc="HaltWasDueToCommonStockBeingHalted" value="Y"/>
+      <enum desc="HaltWasNotRelatedToAHaltOfTheCommonStock" value="N"/>
+    </field>
+    <field name="DueToRelated" tag="329" type="Boolean">
+      <enum desc="RelatedToSecurityHalt" value="Y"/>
+      <enum desc="NotRelatedToSecurityHalt" value="N"/>
+    </field>
+    <field name="BuyVolume" tag="330" type="Qty"/>
+    <field name="SellVolume" tag="331" type="Qty"/>
+    <field name="HighPx" tag="332" type="Price"/>
+    <field name="LowPx" tag="333" type="Price"/>
+    <field name="Adjustment" tag="334" type="int">
+      <enum desc="Cancel" value="1"/>
+      <enum desc="Error" value="2"/>
+      <enum desc="Correction" value="3"/>
+    </field>
+    <field name="TradSesReqID" tag="335" type="String"/>
+    <field name="TradingSessionID" tag="336" type="String"/>
+    <field name="ContraTrader" tag="337" type="String"/>
+    <field name="TradSesMethod" tag="338" type="int">
+      <enum desc="Electronic" value="1"/>
+      <enum desc="OpenOutcry" value="2"/>
+      <enum desc="TwoParty" value="3"/>
+    </field>
+    <field name="TradSesMode" tag="339" type="int">
+      <enum desc="Testing" value="1"/>
+      <enum desc="Simulated" value="2"/>
+      <enum desc="Production" value="3"/>
+    </field>
+    <field name="TradSesStatus" tag="340" type="int">
+      <enum desc="Unknown" value="0"/>
+      <enum desc="Halted" value="1"/>
+      <enum desc="Open" value="2"/>
+      <enum desc="Closed" value="3"/>
+      <enum desc="PreOpen" value="4"/>
+      <enum desc="PreClose" value="5"/>
+      <enum desc="RequestRejected" value="6"/>
+    </field>
+    <field name="TradSesStartTime" tag="341" type="UTCTimestamp"/>
+    <field name="TradSesOpenTime" tag="342" type="UTCTimestamp"/>
+    <field name="TradSesPreCloseTime" tag="343" type="UTCTimestamp"/>
+    <field name="TradSesCloseTime" tag="344" type="UTCTimestamp"/>
+    <field name="TradSesEndTime" tag="345" type="UTCTimestamp"/>
+    <field name="NumberOfOrders" tag="346" type="int"/>
+    <field name="MessageEncoding" tag="347" type="String">
+      <enum desc="ISO2022JP" value="ISO-2022-JP"/>
+      <enum desc="EUCJP" value="EUC-JP"/>
+      <enum desc="ShiftJIS" value="Shift_JIS"/>
+      <enum desc="UTF8" value="UTF-8"/>
+    </field>
+    <field name="EncodedIssuerLen" tag="348" type="Length"/>
+    <field name="EncodedIssuer" tag="349" type="data"/>
+    <field name="EncodedSecurityDescLen" tag="350" type="Length"/>
+    <field name="EncodedSecurityDesc" tag="351" type="data"/>
+    <field name="EncodedListExecInstLen" tag="352" type="Length"/>
+    <field name="EncodedListExecInst" tag="353" type="data"/>
+    <field name="EncodedTextLen" tag="354" type="Length"/>
+    <field name="EncodedText" tag="355" type="data"/>
+    <field name="EncodedSubjectLen" tag="356" type="Length"/>
+    <field name="EncodedSubject" tag="357" type="data"/>
+    <field name="EncodedHeadlineLen" tag="358" type="Length"/>
+    <field name="EncodedHeadline" tag="359" type="data"/>
+    <field name="EncodedAllocTextLen" tag="360" type="Length"/>
+    <field name="EncodedAllocText" tag="361" type="data"/>
+    <field name="EncodedUnderlyingIssuerLen" tag="362" type="Length"/>
+    <field name="EncodedUnderlyingIssuer" tag="363" type="data"/>
+    <field name="EncodedUnderlyingSecurityDescLen" tag="364" type="Length"/>
+    <field name="EncodedUnderlyingSecurityDesc" tag="365" type="data"/>
+    <field name="AllocPrice" tag="366" type="Price"/>
+    <field name="QuoteSetValidUntilTime" tag="367" type="UTCTimestamp"/>
+    <field name="QuoteEntryRejectReason" tag="368" type="int"/>
+    <field name="LastMsgSeqNumProcessed" tag="369" type="SeqNum"/>
+    <field name="RefTagID" tag="371" type="int"/>
+    <field name="RefMsgType" tag="372" type="String"/>
+    <field name="SessionRejectReason" tag="373" type="int">
+      <enum desc="InvalidTagNumber" value="0"/>
+      <enum desc="RequiredTagMissing" value="1"/>
+      <enum desc="TagNotDefinedForThisMessageType" value="2"/>
+      <enum desc="UndefinedTag" value="3"/>
+      <enum desc="TagSpecifiedWithoutAValue" value="4"/>
+      <enum desc="ValueIsIncorrect" value="5"/>
+      <enum desc="IncorrectDataFormatForValue" value="6"/>
+      <enum desc="DecryptionProblem" value="7"/>
+      <enum desc="SignatureProblem" value="8"/>
+      <enum desc="CompIDProblem" value="9"/>
+      <enum desc="SendingTimeAccuracyProblem" value="10"/>
+      <enum desc="InvalidMsgType" value="11"/>
+      <enum desc="XMLValidationError" value="12"/>
+      <enum desc="TagAppearsMoreThanOnce" value="13"/>
+      <enum desc="TagSpecifiedOutOfRequiredOrder" value="14"/>
+      <enum desc="RepeatingGroupFieldsOutOfOrder" value="15"/>
+      <enum desc="IncorrectNumInGroupCountForRepeatingGroup" value="16"/>
+      <enum desc="Non" value="17"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="BidRequestTransType" tag="374" type="char">
+      <enum desc="New" value="N"/>
+      <enum desc="Cancel" value="C"/>
+    </field>
+    <field name="ContraBroker" tag="375" type="String"/>
+    <field name="ComplianceID" tag="376" type="String"/>
+    <field name="SolicitedFlag" tag="377" type="Boolean">
+      <enum desc="WasSolicited" value="Y"/>
+      <enum desc="WasNotSolicited" value="N"/>
+    </field>
+    <field name="ExecRestatementReason" tag="378" type="int">
+      <enum desc="GTCorporateAction" value="0"/>
+      <enum desc="GTRenewal" value="1"/>
+      <enum desc="VerbalChange" value="2"/>
+      <enum desc="RepricingOfOrder" value="3"/>
+      <enum desc="BrokerOption" value="4"/>
+      <enum desc="PartialDeclineOfOrderQty" value="5"/>
+      <enum desc="CancelOnTradingHalt" value="6"/>
+      <enum desc="CancelOnSystemFailure" value="7"/>
+      <enum desc="Market" value="8"/>
+      <enum desc="Canceled" value="9"/>
+      <enum desc="WarehouseRecap" value="10"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="BusinessRejectRefID" tag="379" type="String"/>
+    <field name="BusinessRejectReason" tag="380" type="int">
+      <enum desc="Other" value="0"/>
+      <enum desc="UnknownID" value="1"/>
+      <enum desc="UnknownSecurity" value="2"/>
+      <enum desc="UnsupportedMessageType" value="3"/>
+      <enum desc="ApplicationNotAvailable" value="4"/>
+      <enum desc="ConditionallyRequiredFieldMissing" value="5"/>
+      <enum desc="NotAuthorized" value="6"/>
+      <enum desc="DeliverToFirmNotAvailableAtThisTime" value="7"/>
+    </field>
+    <field name="GrossTradeAmt" tag="381" type="Amt"/>
+    <field name="NoContraBrokers" tag="382" type="NumInGroup"/>
+    <field name="MaxMessageSize" tag="383" type="Length"/>
+    <field name="NoMsgTypes" tag="384" type="NumInGroup"/>
+    <field name="MsgDirection" tag="385" type="char">
+      <enum desc="Send" value="S"/>
+      <enum desc="Receive" value="R"/>
+    </field>
+    <field name="NoTradingSessions" tag="386" type="NumInGroup"/>
+    <field name="TotalVolumeTraded" tag="387" type="Qty"/>
+    <field name="DiscretionInst" tag="388" type="char">
+      <enum desc="RelatedToDisplayedPrice" value="0"/>
+      <enum desc="RelatedToMarketPrice" value="1"/>
+      <enum desc="RelatedToPrimaryPrice" value="2"/>
+      <enum desc="RelatedToLocalPrimaryPrice" value="3"/>
+      <enum desc="RelatedToMidpointPrice" value="4"/>
+      <enum desc="RelatedToLastTradePrice" value="5"/>
+      <enum desc="RelatedToVWAP" value="6"/>
+    </field>
+    <field name="DiscretionOffsetValue" tag="389" type="float"/>
+    <field name="BidID" tag="390" type="String"/>
+    <field name="ClientBidID" tag="391" type="String"/>
+    <field name="ListName" tag="392" type="String"/>
+    <field name="TotNoRelatedSym" tag="393" type="int"/>
+    <field name="BidType" tag="394" type="int">
+      <enum desc="NonDisclosed" value="1"/>
+      <enum desc="Disclosed" value="2"/>
+      <enum desc="NoBiddingProcess" value="3"/>
+    </field>
+    <field name="NumTickets" tag="395" type="int"/>
+    <field name="SideValue1" tag="396" type="Amt"/>
+    <field name="SideValue2" tag="397" type="Amt"/>
+    <field name="NoBidDescriptors" tag="398" type="NumInGroup"/>
+    <field name="BidDescriptorType" tag="399" type="int">
+      <enum desc="Sector" value="1"/>
+      <enum desc="Country" value="2"/>
+      <enum desc="Index" value="3"/>
+    </field>
+    <field name="BidDescriptor" tag="400" type="String"/>
+    <field name="SideValueInd" tag="401" type="int">
+      <enum desc="SideValue1" value="1"/>
+      <enum desc="SideValue2" value="2"/>
+    </field>
+    <field name="LiquidityPctLow" tag="402" type="Percentage"/>
+    <field name="LiquidityPctHigh" tag="403" type="Percentage"/>
+    <field name="LiquidityValue" tag="404" type="Amt"/>
+    <field name="EFPTrackingError" tag="405" type="Percentage"/>
+    <field name="FairValue" tag="406" type="Amt"/>
+    <field name="OutsideIndexPct" tag="407" type="Percentage"/>
+    <field name="ValueOfFutures" tag="408" type="Amt"/>
+    <field name="LiquidityIndType" tag="409" type="int">
+      <enum desc="FiveDayMovingAverage" value="1"/>
+      <enum desc="TwentyDayMovingAverage" value="2"/>
+      <enum desc="NormalMarketSize" value="3"/>
+      <enum desc="Other" value="4"/>
+    </field>
+    <field name="WtAverageLiquidity" tag="410" type="Percentage"/>
+    <field name="ExchangeForPhysical" tag="411" type="Boolean">
+      <enum desc="True" value="Y"/>
+      <enum desc="False" value="N"/>
+    </field>
+    <field name="OutMainCntryUIndex" tag="412" type="Amt"/>
+    <field name="CrossPercent" tag="413" type="Percentage"/>
+    <field name="ProgRptReqs" tag="414" type="int">
+      <enum desc="BuySideRequests" value="1"/>
+      <enum desc="SellSideSends" value="2"/>
+      <enum desc="RealTimeExecutionReports" value="3"/>
+    </field>
+    <field name="ProgPeriodInterval" tag="415" type="int"/>
+    <field name="IncTaxInd" tag="416" type="int">
+      <enum desc="Net" value="1"/>
+      <enum desc="Gross" value="2"/>
+    </field>
+    <field name="NumBidders" tag="417" type="int"/>
+    <field name="BidTradeType" tag="418" type="char">
+      <enum desc="RiskTrade" value="R"/>
+      <enum desc="VWAPGuarantee" value="G"/>
+      <enum desc="Agency" value="A"/>
+      <enum desc="GuaranteedClose" value="J"/>
+    </field>
+    <field name="BasisPxType" tag="419" type="char">
+      <enum desc="ClosingPriceAtMorningSession" value="2"/>
+      <enum desc="ClosingPrice" value="3"/>
+      <enum desc="CurrentPrice" value="4"/>
+      <enum desc="SQ" value="5"/>
+      <enum desc="VWAPThroughADay" value="6"/>
+      <enum desc="VWAPThroughAMorningSession" value="7"/>
+      <enum desc="VWAPThroughAnAfternoonSession" value="8"/>
+      <enum desc="VWAPThroughADayExcept" value="9"/>
+      <enum desc="VWAPThroughAMorningSessionExcept" value="A"/>
+      <enum desc="VWAPThroughAnAfternoonSessionExcept" value="B"/>
+      <enum desc="Strike" value="C"/>
+      <enum desc="Open" value="D"/>
+      <enum desc="Others" value="Z"/>
+    </field>
+    <field name="NoBidComponents" tag="420" type="NumInGroup"/>
+    <field name="Country" tag="421" type="Country"/>
+    <field name="TotNoStrikes" tag="422" type="int"/>
+    <field name="PriceType" tag="423" type="int">
+      <enum desc="Percentage" value="1"/>
+      <enum desc="PerUnit" value="2"/>
+      <enum desc="FixedAmount" value="3"/>
+      <enum desc="Discount" value="4"/>
+      <enum desc="Premium" value="5"/>
+      <enum desc="Spread" value="6"/>
+      <enum desc="TEDPrice" value="7"/>
+      <enum desc="TEDYield" value="8"/>
+      <enum desc="Yield" value="9"/>
+      <enum desc="FixedCabinetTradePrice" value="10"/>
+      <enum desc="VariableCabinetTradePrice" value="11"/>
+    </field>
+    <field name="DayOrderQty" tag="424" type="Qty"/>
+    <field name="DayCumQty" tag="425" type="Qty"/>
+    <field name="DayAvgPx" tag="426" type="Price"/>
+    <field name="GTBookingInst" tag="427" type="int">
+      <enum desc="BookOutAllTradesOnDayOfExecution" value="0"/>
+      <enum desc="AccumulateUntilFilledOrExpired" value="1"/>
+      <enum desc="AccumulateUntilVerballlyNotifiedOtherwise" value="2"/>
+    </field>
+    <field name="NoStrikes" tag="428" type="NumInGroup"/>
+    <field name="ListStatusType" tag="429" type="int">
+      <enum desc="Ack" value="1"/>
+      <enum desc="Response" value="2"/>
+      <enum desc="Timed" value="3"/>
+      <enum desc="ExecStarted" value="4"/>
+      <enum desc="AllDone" value="5"/>
+      <enum desc="Alert" value="6"/>
+    </field>
+    <field name="NetGrossInd" tag="430" type="int">
+      <enum desc="Net" value="1"/>
+      <enum desc="Gross" value="2"/>
+    </field>
+    <field name="ListOrderStatus" tag="431" type="int">
+      <enum desc="InBiddingProcess" value="1"/>
+      <enum desc="ReceivedForExecution" value="2"/>
+      <enum desc="Executing" value="3"/>
+      <enum desc="Cancelling" value="4"/>
+      <enum desc="Alert" value="5"/>
+      <enum desc="AllDone" value="6"/>
+      <enum desc="Reject" value="7"/>
+    </field>
+    <field name="ExpireDate" tag="432" type="LocalMktDate"/>
+    <field name="ListExecInstType" tag="433" type="char">
+      <enum desc="Immediate" value="1"/>
+      <enum desc="WaitForInstruction" value="2"/>
+      <enum desc="SellDriven" value="3"/>
+      <enum desc="BuyDrivenCashTopUp" value="4"/>
+      <enum desc="BuyDrivenCashWithdraw" value="5"/>
+    </field>
+    <field name="CxlRejResponseTo" tag="434" type="char">
+      <enum desc="OrderCancelRequest" value="1"/>
+      <enum desc="OrderCancel" value="2"/>
+    </field>
+    <field name="UnderlyingCouponRate" tag="435" type="Percentage"/>
+    <field name="UnderlyingContractMultiplier" tag="436" type="float"/>
+    <field name="ContraTradeQty" tag="437" type="Qty"/>
+    <field name="ContraTradeTime" tag="438" type="UTCTimestamp"/>
+    <field name="LiquidityNumSecurities" tag="441" type="int"/>
+    <field name="MultiLegReportingType" tag="442" type="char">
+      <enum desc="SingleSecurity" value="1"/>
+      <enum desc="IndividualLegOfAMultiLegSecurity" value="2"/>
+      <enum desc="MultiLegSecurity" value="3"/>
+    </field>
+    <field name="StrikeTime" tag="443" type="UTCTimestamp"/>
+    <field name="ListStatusText" tag="444" type="String"/>
+    <field name="EncodedListStatusTextLen" tag="445" type="Length"/>
+    <field name="EncodedListStatusText" tag="446" type="data"/>
+    <field name="PartyIDSource" tag="447" type="char">
+      <enum desc="BIC" value="B"/>
+      <enum desc="GeneralIdentifier" value="C"/>
+      <enum desc="Proprietary" value="D"/>
+      <enum desc="ISOCountryCode" value="E"/>
+      <enum desc="SettlementEntityLocation" value="F"/>
+      <enum desc="MIC" value="G"/>
+      <enum desc="CSDParticipant" value="H"/>
+      <enum desc="KoreanInvestorID" value="1"/>
+      <enum desc="TaiwaneseForeignInvestorID" value="2"/>
+      <enum desc="TaiwaneseTradingAcct" value="3"/>
+      <enum desc="MalaysianCentralDepository" value="4"/>
+      <enum desc="ChineseInvestorID" value="5"/>
+      <enum desc="UKNationalInsuranceOrPensionNumber" value="6"/>
+      <enum desc="USSocialSecurityNumber" value="7"/>
+      <enum desc="USEmployerOrTaxIDNumber" value="8"/>
+      <enum desc="AustralianBusinessNumber" value="9"/>
+      <enum desc="AustralianTaxFileNumber" value="A"/>
+      <enum desc="ISITCAcronym" value="I"/>
+    </field>
+    <field name="PartyID" tag="448" type="String"/>
+    <field name="NetChgPrevDay" tag="451" type="PriceOffset"/>
+    <field name="PartyRole" tag="452" type="int">
+      <enum desc="ExecutingFirm" value="1"/>
+      <enum desc="BrokerOfCredit" value="2"/>
+      <enum desc="ClientID" value="3"/>
+      <enum desc="ClearingFirm" value="4"/>
+      <enum desc="InvestorID" value="5"/>
+      <enum desc="IntroducingFirm" value="6"/>
+      <enum desc="EnteringFirm" value="7"/>
+      <enum desc="Locate" value="8"/>
+      <enum desc="FundManagerClientID" value="9"/>
+      <enum desc="SettlementLocation" value="10"/>
+      <enum desc="OrderOriginationTrader" value="11"/>
+      <enum desc="ExecutingTrader" value="12"/>
+      <enum desc="OrderOriginationFirm" value="13"/>
+      <enum desc="GiveupClearingFirm" value="14"/>
+      <enum desc="CorrespondantClearingFirm" value="15"/>
+      <enum desc="ExecutingSystem" value="16"/>
+      <enum desc="ContraFirm" value="17"/>
+      <enum desc="ContraClearingFirm" value="18"/>
+      <enum desc="SponsoringFirm" value="19"/>
+      <enum desc="UnderlyingContraFirm" value="20"/>
+      <enum desc="ClearingOrganization" value="21"/>
+      <enum desc="Exchange" value="22"/>
+      <enum desc="CustomerAccount" value="24"/>
+      <enum desc="CorrespondentClearingOrganization" value="25"/>
+      <enum desc="CorrespondentBroker" value="26"/>
+      <enum desc="Buyer" value="27"/>
+      <enum desc="Custodian" value="28"/>
+      <enum desc="Intermediary" value="29"/>
+      <enum desc="Agent" value="30"/>
+      <enum desc="SubCustodian" value="31"/>
+      <enum desc="Beneficiary" value="32"/>
+      <enum desc="InterestedParty" value="33"/>
+      <enum desc="RegulatoryBody" value="34"/>
+      <enum desc="LiquidityProvider" value="35"/>
+      <enum desc="EnteringTrader" value="36"/>
+      <enum desc="ContraTrader" value="37"/>
+      <enum desc="PositionAccount" value="38"/>
+    </field>
+    <field name="NoPartyIDs" tag="453" type="NumInGroup"/>
+    <field name="NoSecurityAltID" tag="454" type="NumInGroup"/>
+    <field name="SecurityAltID" tag="455" type="String"/>
+    <field name="SecurityAltIDSource" tag="456" type="String"/>
+    <field name="NoUnderlyingSecurityAltID" tag="457" type="NumInGroup"/>
+    <field name="UnderlyingSecurityAltID" tag="458" type="String"/>
+    <field name="UnderlyingSecurityAltIDSource" tag="459" type="String"/>
+    <field name="Product" tag="460" type="int">
+      <enum desc="AGENCY" value="1"/>
+      <enum desc="COMMODITY" value="2"/>
+      <enum desc="CORPORATE" value="3"/>
+      <enum desc="CURRENCY" value="4"/>
+      <enum desc="EQUITY" value="5"/>
+      <enum desc="GOVERNMENT" value="6"/>
+      <enum desc="INDEX" value="7"/>
+      <enum desc="LOAN" value="8"/>
+      <enum desc="MONEYMARKET" value="9"/>
+      <enum desc="MORTGAGE" value="10"/>
+      <enum desc="MUNICIPAL" value="11"/>
+      <enum desc="OTHER" value="12"/>
+      <enum desc="FINANCING" value="13"/>
+    </field>
+    <field name="CFICode" tag="461" type="String"/>
+    <field name="UnderlyingProduct" tag="462" type="int"/>
+    <field name="UnderlyingCFICode" tag="463" type="String"/>
+    <field name="TestMessageIndicator" tag="464" type="Boolean">
+      <enum desc="True" value="Y"/>
+      <enum desc="Fales" value="N"/>
+    </field>
+    <field name="BookingRefID" tag="466" type="String"/>
+    <field name="IndividualAllocID" tag="467" type="String"/>
+    <field name="RoundingDirection" tag="468" type="char">
+      <enum desc="RoundToNearest" value="0"/>
+      <enum desc="RoundDown" value="1"/>
+      <enum desc="RoundUp" value="2"/>
+    </field>
+    <field name="RoundingModulus" tag="469" type="float"/>
+    <field name="CountryOfIssue" tag="470" type="Country"/>
+    <field name="StateOrProvinceOfIssue" tag="471" type="String"/>
+    <field name="LocaleOfIssue" tag="472" type="String"/>
+    <field name="NoRegistDtls" tag="473" type="NumInGroup"/>
+    <field name="MailingDtls" tag="474" type="String"/>
+    <field name="InvestorCountryOfResidence" tag="475" type="Country"/>
+    <field name="PaymentRef" tag="476" type="String"/>
+    <field name="DistribPaymentMethod" tag="477" type="int">
+      <enum desc="CREST" value="1"/>
+      <enum desc="NSCC" value="2"/>
+      <enum desc="Euroclear" value="3"/>
+      <enum desc="Clearstream" value="4"/>
+      <enum desc="Cheque" value="5"/>
+      <enum desc="TelegraphicTransfer" value="6"/>
+      <enum desc="FedWire" value="7"/>
+      <enum desc="DirectCredit" value="8"/>
+      <enum desc="ACHCredit" value="9"/>
+      <enum desc="BPAY" value="10"/>
+      <enum desc="HighValueClearingSystemHVACS" value="11"/>
+      <enum desc="ReinvestInFund" value="12"/>
+    </field>
+    <field name="CashDistribCurr" tag="478" type="Currency"/>
+    <field name="CommCurrency" tag="479" type="Currency"/>
+    <field name="CancellationRights" tag="480" type="char">
+      <enum desc="Yes" value="Y"/>
+      <enum desc="NoExecutionOnly" value="N"/>
+      <enum desc="NoWaiverAgreement" value="M"/>
+      <enum desc="NoInstitutional" value="O"/>
+    </field>
+    <field name="MoneyLaunderingStatus" tag="481" type="char">
+      <enum desc="Passed" value="Y"/>
+      <enum desc="NotChecked" value="N"/>
+      <enum desc="ExemptBelowLimit" value="1"/>
+      <enum desc="ExemptMoneyType" value="2"/>
+      <enum desc="ExemptAuthorised" value="3"/>
+    </field>
+    <field name="MailingInst" tag="482" type="String"/>
+    <field name="TransBkdTime" tag="483" type="UTCTimestamp"/>
+    <field name="ExecPriceType" tag="484" type="char">
+      <enum desc="BidPrice" value="B"/>
+      <enum desc="CreationPrice" value="C"/>
+      <enum desc="CreationPricePlusAdjustmentPercent" value="D"/>
+      <enum desc="CreationPricePlusAdjustmentAmount" value="E"/>
+      <enum desc="OfferPrice" value="O"/>
+      <enum desc="OfferPriceMinusAdjustmentPercent" value="P"/>
+      <enum desc="OfferPriceMinusAdjustmentAmount" value="Q"/>
+      <enum desc="SinglePrice" value="S"/>
+    </field>
+    <field name="ExecPriceAdjustment" tag="485" type="float"/>
+    <field name="DateOfBirth" tag="486" type="LocalMktDate"/>
+    <field name="TradeReportTransType" tag="487" type="int"/>
+    <field name="CardHolderName" tag="488" type="String"/>
+    <field name="CardNumber" tag="489" type="String"/>
+    <field name="CardExpDate" tag="490" type="LocalMktDate"/>
+    <field name="CardIssNum" tag="491" type="String"/>
+    <field name="PaymentMethod" tag="492" type="int">
+      <enum desc="CREST" value="1"/>
+      <enum desc="NSCC" value="2"/>
+      <enum desc="Euroclear" value="3"/>
+      <enum desc="Clearstream" value="4"/>
+      <enum desc="Cheque" value="5"/>
+      <enum desc="TelegraphicTransfer" value="6"/>
+      <enum desc="FedWire" value="7"/>
+      <enum desc="DebitCard" value="8"/>
+      <enum desc="DirectDebit" value="9"/>
+      <enum desc="DirectCredit" value="10"/>
+      <enum desc="CreditCard" value="11"/>
+      <enum desc="ACHDebit" value="12"/>
+      <enum desc="ACHCredit" value="13"/>
+      <enum desc="BPAY" value="14"/>
+      <enum desc="HighValueClearingSystem" value="15"/>
+    </field>
+    <field name="RegistAcctType" tag="493" type="String"/>
+    <field name="Designation" tag="494" type="String"/>
+    <field name="TaxAdvantageType" tag="495" type="int">
+      <enum desc="None" value="0"/>
+      <enum desc="MaxiISA" value="1"/>
+      <enum desc="TESSA" value="2"/>
+      <enum desc="MiniCashISA" value="3"/>
+      <enum desc="MiniStocksAndSharesISA" value="4"/>
+      <enum desc="MiniInsuranceISA" value="5"/>
+      <enum desc="CurrentYearPayment" value="6"/>
+      <enum desc="PriorYearPayment" value="7"/>
+      <enum desc="AssetTransfer" value="8"/>
+      <enum desc="EmployeePriorYear" value="9"/>
+      <enum desc="EmployeeCurrentYear" value="10"/>
+      <enum desc="EmployerPriorYear" value="11"/>
+      <enum desc="EmployerCurrentYear" value="12"/>
+      <enum desc="NonFundPrototypeIRA" value="13"/>
+      <enum desc="NonFundQualifiedPlan" value="14"/>
+      <enum desc="DefinedContributionPlan" value="15"/>
+      <enum desc="IRA" value="16"/>
+      <enum desc="IRARollover" value="17"/>
+      <enum desc="KEOGH" value="18"/>
+      <enum desc="ProfitSharingPlan" value="19"/>
+      <enum desc="US401K" value="20"/>
+      <enum desc="SelfDirectedIRA" value="21"/>
+      <enum desc="US403b" value="22"/>
+      <enum desc="US457" value="23"/>
+      <enum desc="RothIRAPrototype" value="24"/>
+      <enum desc="RothIRANonPrototype" value="25"/>
+      <enum desc="RothConversionIRAPrototype" value="26"/>
+      <enum desc="RothConversionIRANonPrototype" value="27"/>
+      <enum desc="EducationIRAPrototype" value="28"/>
+      <enum desc="EducationIRANonPrototype" value="29"/>
+    </field>
+    <field name="RegistRejReasonText" tag="496" type="String"/>
+    <field name="FundRenewWaiv" tag="497" type="char">
+      <enum desc="Yes" value="Y"/>
+      <enum desc="No" value="N"/>
+    </field>
+    <field name="CashDistribAgentName" tag="498" type="String"/>
+    <field name="CashDistribAgentCode" tag="499" type="String"/>
+    <field name="CashDistribAgentAcctNumber" tag="500" type="String"/>
+    <field name="CashDistribPayRef" tag="501" type="String"/>
+    <field name="CashDistribAgentAcctName" tag="502" type="String"/>
+    <field name="CardStartDate" tag="503" type="LocalMktDate"/>
+    <field name="PaymentDate" tag="504" type="LocalMktDate"/>
+    <field name="PaymentRemitterID" tag="505" type="String"/>
+    <field name="RegistStatus" tag="506" type="char">
+      <enum desc="Accepted" value="A"/>
+      <enum desc="Rejected" value="R"/>
+      <enum desc="Held" value="H"/>
+      <enum desc="Reminder" value="N"/>
+    </field>
+    <field name="RegistRejReasonCode" tag="507" type="int">
+      <enum desc="InvalidAccountType" value="1"/>
+      <enum desc="InvalidTaxExemptType" value="2"/>
+      <enum desc="InvalidOwnershipType" value="3"/>
+      <enum desc="NoRegDetails" value="4"/>
+      <enum desc="InvalidRegSeqNo" value="5"/>
+      <enum desc="InvalidRegDetails" value="6"/>
+      <enum desc="InvalidMailingDetails" value="7"/>
+      <enum desc="InvalidMailingInstructions" value="8"/>
+      <enum desc="InvalidInvestorID" value="9"/>
+      <enum desc="InvalidInvestorIDSource" value="10"/>
+      <enum desc="InvalidDateOfBirth" value="11"/>
+      <enum desc="InvalidCountry" value="12"/>
+      <enum desc="InvalidDistribInstns" value="13"/>
+      <enum desc="InvalidPercentage" value="14"/>
+      <enum desc="InvalidPaymentMethod" value="15"/>
+      <enum desc="InvalidAccountName" value="16"/>
+      <enum desc="InvalidAgentCode" value="17"/>
+      <enum desc="InvalidAccountNum" value="18"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="RegistRefID" tag="508" type="String"/>
+    <field name="RegistDtls" tag="509" type="String"/>
+    <field name="NoDistribInsts" tag="510" type="NumInGroup"/>
+    <field name="RegistEmail" tag="511" type="String"/>
+    <field name="DistribPercentage" tag="512" type="Percentage"/>
+    <field name="RegistID" tag="513" type="String"/>
+    <field name="RegistTransType" tag="514" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="Replace" value="1"/>
+      <enum desc="Cancel" value="2"/>
+    </field>
+    <field name="ExecValuationPoint" tag="515" type="UTCTimestamp"/>
+    <field name="OrderPercent" tag="516" type="Percentage"/>
+    <field name="OwnershipType" tag="517" type="char">
+      <enum desc="JointInvestors" value="J"/>
+      <enum desc="TenantsInCommon" value="T"/>
+      <enum desc="JointTrustees" value="2"/>
+    </field>
+    <field name="NoContAmts" tag="518" type="NumInGroup"/>
+    <field name="ContAmtType" tag="519" type="int">
+      <enum desc="CommissionAmount" value="1"/>
+      <enum desc="CommissionPercent" value="2"/>
+      <enum desc="InitialChargeAmount" value="3"/>
+      <enum desc="InitialChargePercent" value="4"/>
+      <enum desc="DiscountAmount" value="5"/>
+      <enum desc="DiscountPercent" value="6"/>
+      <enum desc="DilutionLevyAmount" value="7"/>
+      <enum desc="DilutionLevyPercent" value="8"/>
+      <enum desc="ExitChargeAmount" value="9"/>
+      <enum desc="ExitChargePercent" value="10"/>
+      <enum desc="FundBasedRenewalCommissionPercent" value="11"/>
+      <enum desc="ProjectedFundValue" value="12"/>
+      <enum desc="FundBasedRenewalCommissionOnOrder" value="13"/>
+      <enum desc="FundBasedRenewalCommissionOnFund" value="14"/>
+      <enum desc="NetSettlementAmount" value="15"/>
+    </field>
+    <field name="ContAmtValue" tag="520" type="float"/>
+    <field name="ContAmtCurr" tag="521" type="Currency"/>
+    <field name="OwnerType" tag="522" type="int">
+      <enum desc="IndividualInvestor" value="1"/>
+      <enum desc="PublicCompany" value="2"/>
+      <enum desc="PrivateCompany" value="3"/>
+      <enum desc="IndividualTrustee" value="4"/>
+      <enum desc="CompanyTrustee" value="5"/>
+      <enum desc="PensionPlan" value="6"/>
+      <enum desc="CustodianUnderGiftsToMinorsAct" value="7"/>
+      <enum desc="Trusts" value="8"/>
+      <enum desc="Fiduciaries" value="9"/>
+      <enum desc="NetworkingSubAccount" value="10"/>
+      <enum desc="NonProfitOrganization" value="11"/>
+      <enum desc="CorporateBody" value="12"/>
+      <enum desc="Nominee" value="13"/>
+    </field>
+    <field name="PartySubID" tag="523" type="String"/>
+    <field name="NestedPartyID" tag="524" type="String"/>
+    <field name="NestedPartyIDSource" tag="525" type="char"/>
+    <field name="SecondaryClOrdID" tag="526" type="String"/>
+    <field name="SecondaryExecID" tag="527" type="String"/>
+    <field name="OrderCapacity" tag="528" type="char">
+      <enum desc="Agency" value="A"/>
+      <enum desc="Proprietary" value="G"/>
+      <enum desc="Individual" value="I"/>
+      <enum desc="Principal" value="P"/>
+      <enum desc="RisklessPrincipal" value="R"/>
+      <enum desc="AgentForOtherMember" value="W"/>
+    </field>
+    <field name="OrderRestrictions" tag="529" type="MultipleValueString">
+      <enum desc="ProgramTrade" value="1"/>
+      <enum desc="IndexArbitrage" value="2"/>
+      <enum desc="NonIndexArbitrage" value="3"/>
+      <enum desc="CompetingMarketMaker" value="4"/>
+      <enum desc="ActingAsMarketMakerOrSpecialistInSecurity" value="5"/>
+      <enum desc="ActingAsMarketMakerOrSpecialistInUnderlying" value="6"/>
+      <enum desc="ForeignEntity" value="7"/>
+      <enum desc="ExternalMarketParticipant" value="8"/>
+      <enum desc="ExternalInterConnectedMarketLinkage" value="9"/>
+      <enum desc="RisklessArbitrage" value="A"/>
+    </field>
+    <field name="MassCancelRequestType" tag="530" type="char">
+      <enum desc="CancelOrdersForASecurity" value="1"/>
+      <enum desc="CancelOrdersForAnUnderlyingSecurity" value="2"/>
+      <enum desc="CancelOrdersForAProduct" value="3"/>
+      <enum desc="CancelOrdersForACFICode" value="4"/>
+      <enum desc="CancelOrdersForASecurityType" value="5"/>
+      <enum desc="CancelOrdersForATradingSession" value="6"/>
+      <enum desc="CancelAllOrders" value="7"/>
+    </field>
+    <field name="MassCancelResponse" tag="531" type="char">
+      <enum desc="CancelRequestRejected" value="0"/>
+      <enum desc="CancelOrdersForASecurity" value="1"/>
+      <enum desc="CancelOrdersForAnUnderlyingSecurity" value="2"/>
+      <enum desc="CancelOrdersForAProduct" value="3"/>
+      <enum desc="CancelOrdersForACFICode" value="4"/>
+      <enum desc="CancelOrdersForASecurityType" value="5"/>
+      <enum desc="CancelOrdersForATradingSession" value="6"/>
+      <enum desc="CancelAllOrders" value="7"/>
+    </field>
+    <field name="MassCancelRejectReason" tag="532" type="char">
+      <enum desc="MassCancelNotSupported" value="0"/>
+      <enum desc="InvalidOrUnknownSecurity" value="1"/>
+      <enum desc="InvalidOrUnkownUnderlyingSecurity" value="2"/>
+      <enum desc="InvalidOrUnknownProduct" value="3"/>
+      <enum desc="InvalidOrUnknownCFICode" value="4"/>
+      <enum desc="InvalidOrUnknownSecurityType" value="5"/>
+      <enum desc="InvalidOrUnknownTradingSession" value="6"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="TotalAffectedOrders" tag="533" type="int"/>
+    <field name="NoAffectedOrders" tag="534" type="NumInGroup"/>
+    <field name="AffectedOrderID" tag="535" type="String"/>
+    <field name="AffectedSecondaryOrderID" tag="536" type="String"/>
+    <field name="QuoteType" tag="537" type="int">
+      <enum desc="Indicative" value="0"/>
+      <enum desc="Tradeable" value="1"/>
+      <enum desc="RestrictedTradeable" value="2"/>
+      <enum desc="Counter" value="3"/>
+    </field>
+    <field name="NestedPartyRole" tag="538" type="int"/>
+    <field name="NoNestedPartyIDs" tag="539" type="NumInGroup"/>
+    <field name="TotalAccruedInterestAmt" tag="540" type="Amt"/>
+    <field name="MaturityDate" tag="541" type="LocalMktDate"/>
+    <field name="UnderlyingMaturityDate" tag="542" type="LocalMktDate"/>
+    <field name="InstrRegistry" tag="543" type="String"/>
+    <field name="CashMargin" tag="544" type="char">
+      <enum desc="Cash" value="1"/>
+      <enum desc="MarginOpen" value="2"/>
+      <enum desc="MarginClose" value="3"/>
+    </field>
+    <field name="NestedPartySubID" tag="545" type="String"/>
+    <field name="Scope" tag="546" type="MultipleValueString">
+      <enum desc="LocalMarket" value="1"/>
+      <enum desc="National" value="2"/>
+      <enum desc="Global" value="3"/>
+    </field>
+    <field name="MDImplicitDelete" tag="547" type="Boolean">
+      <enum desc="Yes" value="Y"/>
+      <enum desc="No" value="N"/>
+    </field>
+    <field name="CrossID" tag="548" type="String"/>
+    <field name="CrossType" tag="549" type="int">
+      <enum desc="CrossAON" value="1"/>
+      <enum desc="CrossIOC" value="2"/>
+      <enum desc="CrossOneSide" value="3"/>
+      <enum desc="CrossSamePrice" value="4"/>
+    </field>
+    <field name="CrossPrioritization" tag="550" type="int">
+      <enum desc="None" value="0"/>
+      <enum desc="BuySideIsPrioritized" value="1"/>
+      <enum desc="SellSideIsPrioritized" value="2"/>
+    </field>
+    <field name="OrigCrossID" tag="551" type="String"/>
+    <field name="NoSides" tag="552" type="NumInGroup">
+      <enum desc="OneSide" value="1"/>
+      <enum desc="BothSides" value="2"/>
+    </field>
+    <field name="Username" tag="553" type="String"/>
+    <field name="Password" tag="554" type="String"/>
+    <field name="NoLegs" tag="555" type="NumInGroup"/>
+    <field name="LegCurrency" tag="556" type="Currency"/>
+    <field name="TotNoSecurityTypes" tag="557" type="int"/>
+    <field name="NoSecurityTypes" tag="558" type="NumInGroup"/>
+    <field name="SecurityListRequestType" tag="559" type="int">
+      <enum desc="Symbol" value="0"/>
+      <enum desc="SecurityTypeAnd" value="1"/>
+      <enum desc="Product" value="2"/>
+      <enum desc="TradingSessionID" value="3"/>
+      <enum desc="AllSecurities" value="4"/>
+    </field>
+    <field name="SecurityRequestResult" tag="560" type="int">
+      <enum desc="ValidRequest" value="0"/>
+      <enum desc="InvalidOrUnsupportedRequest" value="1"/>
+      <enum desc="NoInstrumentsFound" value="2"/>
+      <enum desc="NotAuthorizedToRetrieveInstrumentData" value="3"/>
+      <enum desc="InstrumentDataTemporarilyUnavailable" value="4"/>
+      <enum desc="RequestForInstrumentDataNotSupported" value="5"/>
+    </field>
+    <field name="RoundLot" tag="561" type="Qty"/>
+    <field name="MinTradeVol" tag="562" type="Qty"/>
+    <field name="MultiLegRptTypeReq" tag="563" type="int">
+      <enum desc="ReportByMulitlegSecurityOnly" value="0"/>
+      <enum desc="ReportByMultilegSecurityAndInstrumentLegs" value="1"/>
+      <enum desc="ReportByInstrumentLegsOnly" value="2"/>
+    </field>
+    <field name="LegPositionEffect" tag="564" type="char"/>
+    <field name="LegCoveredOrUncovered" tag="565" type="int"/>
+    <field name="LegPrice" tag="566" type="Price"/>
+    <field name="TradSesStatusRejReason" tag="567" type="int">
+      <enum desc="UnknownOrInvalidTradingSessionID" value="1"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="TradeRequestID" tag="568" type="String"/>
+    <field name="TradeRequestType" tag="569" type="int">
+      <enum desc="AllTrades" value="0"/>
+      <enum desc="MatchedTradesMatchingCriteria" value="1"/>
+      <enum desc="UnmatchedTradesThatMatchCriteria" value="2"/>
+      <enum desc="UnreportedTradesThatMatchCriteria" value="3"/>
+      <enum desc="AdvisoriesThatMatchCriteria" value="4"/>
+    </field>
+    <field name="PreviouslyReported" tag="570" type="Boolean">
+      <enum desc="PerviouslyReportedToCounterparty" value="Y"/>
+      <enum desc="NotReportedToCounterparty" value="N"/>
+    </field>
+    <field name="TradeReportID" tag="571" type="String"/>
+    <field name="TradeReportRefID" tag="572" type="String"/>
+    <field name="MatchStatus" tag="573" type="char">
+      <enum desc="Compared" value="0"/>
+      <enum desc="Uncompared" value="1"/>
+      <enum desc="AdvisoryOrAlert" value="2"/>
+    </field>
+    <field name="MatchType" tag="574" type="String">
+      <enum desc="ExactMatchPlus4BadgesExecTime" value="A1"/>
+      <enum desc="ExactMatchPlus4Badges" value="A2"/>
+      <enum desc="ExactMatchPlus2BadgesExecTime" value="A3"/>
+      <enum desc="ExactMatchPlus2Badges" value="A4"/>
+      <enum desc="ExactMatchPlusExecTime" value="A5"/>
+      <enum desc="StampedAdvisoriesOrSpecialistAccepts" value="AQ"/>
+      <enum desc="A1ExactMatchSummarizedQuantity" value="S1"/>
+      <enum desc="A2ExactMatchSummarizedQuantity" value="S2"/>
+      <enum desc="A3ExactMatchSummarizedQuantity" value="S3"/>
+      <enum desc="A4ExactMatchSummarizedQuantity" value="S4"/>
+      <enum desc="A5ExactMatchSummarizedQuantity" value="S5"/>
+      <enum desc="ExactMatchMinusBadgesTimes" value="M1"/>
+      <enum desc="SummarizedMatchMinusBadgesTimes" value="M2"/>
+      <enum desc="OCSLockedIn" value="MT"/>
+      <enum desc="ACTAcceptedTrade" value="M3"/>
+      <enum desc="ACTDefaultTrade" value="M4"/>
+      <enum desc="ACTDefaultAfterM2" value="M5"/>
+      <enum desc="ACTM6Match" value="M6"/>
+    </field>
+    <field name="OddLot" tag="575" type="Boolean">
+      <enum desc="TreatAsOddLot" value="Y"/>
+      <enum desc="TreatAsRoundLot" value="N"/>
+    </field>
+    <field name="NoClearingInstructions" tag="576" type="NumInGroup"/>
+    <field name="ClearingInstruction" tag="577" type="int">
+      <enum desc="ProcessNormally" value="0"/>
+      <enum desc="ExcludeFromAllNetting" value="1"/>
+      <enum desc="BilateralNettingOnly" value="2"/>
+      <enum desc="ExClearing" value="3"/>
+      <enum desc="SpecialTrade" value="4"/>
+      <enum desc="MultilateralNetting" value="5"/>
+      <enum desc="ClearAgainstCentralCounterparty" value="6"/>
+      <enum desc="ExcludeFromCentralCounterparty" value="7"/>
+      <enum desc="ManualMode" value="8"/>
+      <enum desc="AutomaticPostingMode" value="9"/>
+      <enum desc="AutomaticGiveUpMode" value="10"/>
+      <enum desc="QualifiedServiceRepresentativeQSR" value="11"/>
+      <enum desc="CustomerTrade" value="12"/>
+      <enum desc="SelfClearing" value="13"/>
+    </field>
+    <field name="TradeInputSource" tag="578" type="String"/>
+    <field name="TradeInputDevice" tag="579" type="String"/>
+    <field name="NoDates" tag="580" type="NumInGroup"/>
+    <field name="AccountType" tag="581" type="int">
+      <enum desc="CarriedCustomerSide" value="1"/>
+      <enum desc="CarriedNonCustomerSide" value="2"/>
+      <enum desc="HouseTrader" value="3"/>
+      <enum desc="FloorTrader" value="4"/>
+      <enum desc="CarriedNonCustomerSideCrossMargined" value="6"/>
+      <enum desc="HouseTraderCrossMargined" value="7"/>
+      <enum desc="JointBackOfficeAccount" value="8"/>
+    </field>
+    <field name="CustOrderCapacity" tag="582" type="int">
+      <enum desc="MemberTradingForTheirOwnAccount" value="1"/>
+      <enum desc="ClearingFirmTradingForItsProprietaryAccount" value="2"/>
+      <enum desc="MemberTradingForAnotherMember" value="3"/>
+      <enum desc="AllOther" value="4"/>
+    </field>
+    <field name="ClOrdLinkID" tag="583" type="String"/>
+    <field name="MassStatusReqID" tag="584" type="String"/>
+    <field name="MassStatusReqType" tag="585" type="int">
+      <enum desc="StatusForOrdersForASecurity" value="1"/>
+      <enum desc="StatusForOrdersForAnUnderlyingSecurity" value="2"/>
+      <enum desc="StatusForOrdersForAProduct" value="3"/>
+      <enum desc="StatusForOrdersForACFICode" value="4"/>
+      <enum desc="StatusForOrdersForASecurityType" value="5"/>
+      <enum desc="StatusForOrdersForATradingSession" value="6"/>
+      <enum desc="StatusForAllOrders" value="7"/>
+      <enum desc="StatusForOrdersForAPartyID" value="8"/>
+    </field>
+    <field name="OrigOrdModTime" tag="586" type="UTCTimestamp"/>
+    <field name="LegSettlType" tag="587" type="char"/>
+    <field name="LegSettlDate" tag="588" type="LocalMktDate"/>
+    <field name="DayBookingInst" tag="589" type="char">
+      <enum desc="Auto" value="0"/>
+      <enum desc="SpeakWithOrderInitiatorBeforeBooking" value="1"/>
+      <enum desc="Accumulate" value="2"/>
+    </field>
+    <field name="BookingUnit" tag="590" type="char">
+      <enum desc="EachPartialExecutionIsABookableUnit" value="0"/>
+      <enum desc="AggregatePartialExecutionsOnThisOrder" value="1"/>
+      <enum desc="AggregateExecutionsForThisSymbol" value="2"/>
+    </field>
+    <field name="PreallocMethod" tag="591" type="char">
+      <enum desc="ProRata" value="0"/>
+      <enum desc="DoNotProRata" value="1"/>
+    </field>
+    <field name="UnderlyingCountryOfIssue" tag="592" type="Country"/>
+    <field name="UnderlyingStateOrProvinceOfIssue" tag="593" type="String"/>
+    <field name="UnderlyingLocaleOfIssue" tag="594" type="String"/>
+    <field name="UnderlyingInstrRegistry" tag="595" type="String"/>
+    <field name="LegCountryOfIssue" tag="596" type="Country"/>
+    <field name="LegStateOrProvinceOfIssue" tag="597" type="String"/>
+    <field name="LegLocaleOfIssue" tag="598" type="String"/>
+    <field name="LegInstrRegistry" tag="599" type="String"/>
+    <field name="LegSymbol" tag="600" type="String"/>
+    <field name="LegSymbolSfx" tag="601" type="String"/>
+    <field name="LegSecurityID" tag="602" type="String"/>
+    <field name="LegSecurityIDSource" tag="603" type="String"/>
+    <field name="NoLegSecurityAltID" tag="604" type="NumInGroup"/>
+    <field name="LegSecurityAltID" tag="605" type="String"/>
+    <field name="LegSecurityAltIDSource" tag="606" type="String"/>
+    <field name="LegProduct" tag="607" type="int"/>
+    <field name="LegCFICode" tag="608" type="String"/>
+    <field name="LegSecurityType" tag="609" type="String"/>
+    <field name="LegMaturityMonthYear" tag="610" type="MonthYear"/>
+    <field name="LegMaturityDate" tag="611" type="LocalMktDate"/>
+    <field name="LegStrikePrice" tag="612" type="Price"/>
+    <field name="LegOptAttribute" tag="613" type="char"/>
+    <field name="LegContractMultiplier" tag="614" type="float"/>
+    <field name="LegCouponRate" tag="615" type="Percentage"/>
+    <field name="LegSecurityExchange" tag="616" type="Exchange"/>
+    <field name="LegIssuer" tag="617" type="String"/>
+    <field name="EncodedLegIssuerLen" tag="618" type="Length"/>
+    <field name="EncodedLegIssuer" tag="619" type="data"/>
+    <field name="LegSecurityDesc" tag="620" type="String"/>
+    <field name="EncodedLegSecurityDescLen" tag="621" type="Length"/>
+    <field name="EncodedLegSecurityDesc" tag="622" type="data"/>
+    <field name="LegRatioQty" tag="623" type="float"/>
+    <field name="LegSide" tag="624" type="char"/>
+    <field name="TradingSessionSubID" tag="625" type="String"/>
+    <field name="AllocType" tag="626" type="int">
+      <enum desc="Calculated" value="1"/>
+      <enum desc="Preliminary" value="2"/>
+      <enum desc="ReadyToBook" value="5"/>
+      <enum desc="WarehouseInstruction" value="7"/>
+      <enum desc="RequestToIntermediary" value="8"/>
+    </field>
+    <field name="NoHops" tag="627" type="NumInGroup"/>
+    <field name="HopCompID" tag="628" type="String"/>
+    <field name="HopSendingTime" tag="629" type="UTCTimestamp"/>
+    <field name="HopRefID" tag="630" type="SeqNum"/>
+    <field name="MidPx" tag="631" type="Price"/>
+    <field name="BidYield" tag="632" type="Percentage"/>
+    <field name="MidYield" tag="633" type="Percentage"/>
+    <field name="OfferYield" tag="634" type="Percentage"/>
+    <field name="ClearingFeeIndicator" tag="635" type="String">
+      <enum desc="CBOEMember" value="B"/>
+      <enum desc="NonMemberAndCustomer" value="C"/>
+      <enum desc="EquityMemberAndClearingMember" value="E"/>
+      <enum desc="FullAndAssociateMember" value="F"/>
+      <enum desc="Firms106HAnd106J" value="H"/>
+      <enum desc="GIM" value="I"/>
+      <enum desc="Lessee106FEmployees" value="L"/>
+      <enum desc="AllOtherOwnershipTypes" value="M"/>
+      <enum desc="FirstYearDelegate" value="1"/>
+      <enum desc="SecondYearDelegate" value="2"/>
+      <enum desc="ThirdYearDelegate" value="3"/>
+      <enum desc="FourthYearDelegate" value="4"/>
+      <enum desc="FifthYearDelegate" value="5"/>
+      <enum desc="SixthYearDelegate" value="9"/>
+    </field>
+    <field name="WorkingIndicator" tag="636" type="Boolean">
+      <enum desc="Working" value="Y"/>
+      <enum desc="NotWorking" value="N"/>
+    </field>
+    <field name="LegLastPx" tag="637" type="Price"/>
+    <field name="PriorityIndicator" tag="638" type="int">
+      <enum desc="PriorityUnchanged" value="0"/>
+      <enum desc="LostPriorityAsResultOfOrderChange" value="1"/>
+    </field>
+    <field name="PriceImprovement" tag="639" type="PriceOffset"/>
+    <field name="Price2" tag="640" type="Price"/>
+    <field name="LastForwardPoints2" tag="641" type="PriceOffset"/>
+    <field name="BidForwardPoints2" tag="642" type="PriceOffset"/>
+    <field name="OfferForwardPoints2" tag="643" type="PriceOffset"/>
+    <field name="RFQReqID" tag="644" type="String"/>
+    <field name="MktBidPx" tag="645" type="Price"/>
+    <field name="MktOfferPx" tag="646" type="Price"/>
+    <field name="MinBidSize" tag="647" type="Qty"/>
+    <field name="MinOfferSize" tag="648" type="Qty"/>
+    <field name="QuoteStatusReqID" tag="649" type="String"/>
+    <field name="LegalConfirm" tag="650" type="Boolean">
+      <enum desc="LegalConfirm" value="Y"/>
+      <enum desc="DoesNotConsituteALegalConfirm" value="N"/>
+    </field>
+    <field name="UnderlyingLastPx" tag="651" type="Price"/>
+    <field name="UnderlyingLastQty" tag="652" type="Qty"/>
+    <field name="LegRefID" tag="654" type="String"/>
+    <field name="ContraLegRefID" tag="655" type="String"/>
+    <field name="SettlCurrBidFxRate" tag="656" type="float"/>
+    <field name="SettlCurrOfferFxRate" tag="657" type="float"/>
+    <field name="QuoteRequestRejectReason" tag="658" type="int">
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="Exchange" value="2"/>
+      <enum desc="QuoteRequestExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="InvalidPrice" value="5"/>
+      <enum desc="NotAuthorizedToRequestQuote" value="6"/>
+      <enum desc="NoMatchForInquiry" value="7"/>
+      <enum desc="NoMarketForInstrument" value="8"/>
+      <enum desc="NoInventory" value="9"/>
+      <enum desc="Pass" value="10"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="SideComplianceID" tag="659" type="String"/>
+    <field name="AcctIDSource" tag="660" type="int">
+      <enum desc="BIC" value="1"/>
+      <enum desc="SIDCode" value="2"/>
+      <enum desc="TFM" value="3"/>
+      <enum desc="OMGEO" value="4"/>
+      <enum desc="DTCCCode" value="5"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="AllocAcctIDSource" tag="661" type="int"/>
+    <field name="BenchmarkPrice" tag="662" type="Price"/>
+    <field name="BenchmarkPriceType" tag="663" type="int"/>
+    <field name="ConfirmID" tag="664" type="String"/>
+    <field name="ConfirmStatus" tag="665" type="int">
+      <enum desc="Received" value="1"/>
+      <enum desc="MismatchedAccount" value="2"/>
+      <enum desc="MissingSettlementInstructions" value="3"/>
+      <enum desc="Confirmed" value="4"/>
+      <enum desc="RequestRejected" value="5"/>
+    </field>
+    <field name="ConfirmTransType" tag="666" type="int">
+      <enum desc="New" value="0"/>
+      <enum desc="Replace" value="1"/>
+      <enum desc="Cancel" value="2"/>
+    </field>
+    <field name="ContractSettlMonth" tag="667" type="MonthYear"/>
+    <field name="DeliveryForm" tag="668" type="int">
+      <enum desc="BookEntry" value="1"/>
+      <enum desc="Bearer" value="2"/>
+    </field>
+    <field name="LastParPx" tag="669" type="Price"/>
+    <field name="NoLegAllocs" tag="670" type="NumInGroup"/>
+    <field name="LegAllocAccount" tag="671" type="String"/>
+    <field name="LegIndividualAllocID" tag="672" type="String"/>
+    <field name="LegAllocQty" tag="673" type="Qty"/>
+    <field name="LegAllocAcctIDSource" tag="674" type="String"/>
+    <field name="LegSettlCurrency" tag="675" type="Currency"/>
+    <field name="LegBenchmarkCurveCurrency" tag="676" type="Currency"/>
+    <field name="LegBenchmarkCurveName" tag="677" type="String"/>
+    <field name="LegBenchmarkCurvePoint" tag="678" type="String"/>
+    <field name="LegBenchmarkPrice" tag="679" type="Price"/>
+    <field name="LegBenchmarkPriceType" tag="680" type="int"/>
+    <field name="LegBidPx" tag="681" type="Price"/>
+    <field name="LegIOIQty" tag="682" type="String"/>
+    <field name="NoLegStipulations" tag="683" type="NumInGroup"/>
+    <field name="LegOfferPx" tag="684" type="Price"/>
+    <field name="LegPriceType" tag="686" type="int"/>
+    <field name="LegQty" tag="687" type="Qty"/>
+    <field name="LegStipulationType" tag="688" type="String"/>
+    <field name="LegStipulationValue" tag="689" type="String"/>
+    <field name="LegSwapType" tag="690" type="int">
+      <enum desc="ParForPar" value="1"/>
+      <enum desc="ModifiedDuration" value="2"/>
+      <enum desc="Risk" value="4"/>
+      <enum desc="Proceeds" value="5"/>
+    </field>
+    <field name="Pool" tag="691" type="String"/>
+    <field name="QuotePriceType" tag="692" type="int">
+      <enum desc="Percent" value="1"/>
+      <enum desc="PerShare" value="2"/>
+      <enum desc="FixedAmount" value="3"/>
+      <enum desc="Discount" value="4"/>
+      <enum desc="Premium" value="5"/>
+      <enum desc="Spread" value="6"/>
+      <enum desc="TEDPrice" value="7"/>
+      <enum desc="TEDYield" value="8"/>
+      <enum desc="YieldSpread" value="9"/>
+      <enum desc="Yield" value="10"/>
+    </field>
+    <field name="QuoteRespID" tag="693" type="String"/>
+    <field name="QuoteRespType" tag="694" type="int">
+      <enum desc="Hit" value="1"/>
+      <enum desc="Counter" value="2"/>
+      <enum desc="Expired" value="3"/>
+      <enum desc="Cover" value="4"/>
+      <enum desc="DoneAway" value="5"/>
+      <enum desc="Pass" value="6"/>
+    </field>
+    <field name="QuoteQualifier" tag="695" type="char"/>
+    <field name="YieldRedemptionDate" tag="696" type="LocalMktDate"/>
+    <field name="YieldRedemptionPrice" tag="697" type="Price"/>
+    <field name="YieldRedemptionPriceType" tag="698" type="int"/>
+    <field name="BenchmarkSecurityID" tag="699" type="String"/>
+    <field name="ReversalIndicator" tag="700" type="Boolean"/>
+    <field name="YieldCalcDate" tag="701" type="LocalMktDate"/>
+    <field name="NoPositions" tag="702" type="NumInGroup"/>
+    <field name="PosType" tag="703" type="String">
+      <enum desc="TransactionQuantity" value="TQ"/>
+      <enum desc="IntraSpreadQty" value="IAS"/>
+      <enum desc="InterSpreadQty" value="IES"/>
+      <enum desc="EndOfDayQty" value="FIN"/>
+      <enum desc="StartOfDayQty" value="SOD"/>
+      <enum desc="OptionExerciseQty" value="EX"/>
+      <enum desc="OptionAssignment" value="AS"/>
+      <enum desc="TransactionFromExercise" value="TX"/>
+      <enum desc="TransactionFromAssignment" value="TA"/>
+      <enum desc="PitTradeQty" value="PIT"/>
+      <enum desc="TransferTradeQty" value="TRF"/>
+      <enum desc="ElectronicTradeQty" value="ETR"/>
+      <enum desc="AllocationTradeQty" value="ALC"/>
+      <enum desc="AdjustmentQty" value="PA"/>
+      <enum desc="AsOfTradeQty" value="ASF"/>
+      <enum desc="DeliveryQty" value="DLV"/>
+      <enum desc="TotalTransactionQty" value="TOT"/>
+      <enum desc="CrossMarginQty" value="XM"/>
+      <enum desc="IntegralSplit" value="SPL"/>
+    </field>
+    <field name="LongQty" tag="704" type="Qty"/>
+    <field name="ShortQty" tag="705" type="Qty"/>
+    <field name="PosQtyStatus" tag="706" type="int">
+      <enum desc="Submitted" value="0"/>
+      <enum desc="Accepted" value="1"/>
+      <enum desc="Rejected" value="2"/>
+    </field>
+    <field name="PosAmtType" tag="707" type="String">
+      <enum desc="FinalMarkToMarketAmount" value="FMTM"/>
+      <enum desc="IncrementalMarkToMarketAmount" value="IMTM"/>
+      <enum desc="TradeVariationAmount" value="TVAR"/>
+      <enum desc="StartOfDayMarkToMarketAmount" value="SMTM"/>
+      <enum desc="PremiumAmount" value="PREM"/>
+      <enum desc="CashResidualAmount" value="CRES"/>
+      <enum desc="CashAmount" value="CASH"/>
+      <enum desc="ValueAdjustedAmount" value="VADJ"/>
+    </field>
+    <field name="PosAmt" tag="708" type="Amt"/>
+    <field name="PosTransType" tag="709" type="int">
+      <enum desc="Exercise" value="1"/>
+      <enum desc="DoNotExercise" value="2"/>
+      <enum desc="PositionAdjustment" value="3"/>
+      <enum desc="PositionChangeSubmission" value="4"/>
+      <enum desc="Pledge" value="5"/>
+    </field>
+    <field name="PosReqID" tag="710" type="String"/>
+    <field name="NoUnderlyings" tag="711" type="NumInGroup"/>
+    <field name="PosMaintAction" tag="712" type="int">
+      <enum desc="New" value="1"/>
+      <enum desc="Replace" value="2"/>
+      <enum desc="Cancel" value="3"/>
+    </field>
+    <field name="OrigPosReqRefID" tag="713" type="String"/>
+    <field name="PosMaintRptRefID" tag="714" type="String"/>
+    <field name="ClearingBusinessDate" tag="715" type="LocalMktDate"/>
+    <field name="SettlSessID" tag="716" type="String">
+      <enum desc="Intraday" value="ITD"/>
+      <enum desc="RegularTradingHours" value="RTH"/>
+      <enum desc="ElectronicTradingHours" value="ETH"/>
+    </field>
+    <field name="SettlSessSubID" tag="717" type="String"/>
+    <field name="AdjustmentType" tag="718" type="int">
+      <enum desc="ProcessRequestAsMarginDisposition" value="0"/>
+      <enum desc="DeltaPlus" value="1"/>
+      <enum desc="DeltaMinus" value="2"/>
+      <enum desc="Final" value="3"/>
+    </field>
+    <field name="ContraryInstructionIndicator" tag="719" type="Boolean"/>
+    <field name="PriorSpreadIndicator" tag="720" type="Boolean"/>
+    <field name="PosMaintRptID" tag="721" type="String"/>
+    <field name="PosMaintStatus" tag="722" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="AcceptedWithWarnings" value="1"/>
+      <enum desc="Rejected" value="2"/>
+      <enum desc="Completed" value="3"/>
+      <enum desc="CompletedWithWarnings" value="4"/>
+    </field>
+    <field name="PosMaintResult" tag="723" type="int">
+      <enum desc="SuccessfulCompletion" value="0"/>
+      <enum desc="Rejected" value="1"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="PosReqType" tag="724" type="int">
+      <enum desc="Positions" value="0"/>
+      <enum desc="Trades" value="1"/>
+      <enum desc="Exercises" value="2"/>
+      <enum desc="Assignments" value="3"/>
+    </field>
+    <field name="ResponseTransportType" tag="725" type="int">
+      <enum desc="Inband" value="0"/>
+      <enum desc="OutOfBand" value="1"/>
+    </field>
+    <field name="ResponseDestination" tag="726" type="String"/>
+    <field name="TotalNumPosReports" tag="727" type="int"/>
+    <field name="PosReqResult" tag="728" type="int">
+      <enum desc="ValidRequest" value="0"/>
+      <enum desc="InvalidOrUnsupportedRequest" value="1"/>
+      <enum desc="NoPositionsFoundThatMatchCriteria" value="2"/>
+      <enum desc="NotAuthorizedToRequestPositions" value="3"/>
+      <enum desc="RequestForPositionNotSupported" value="4"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="PosReqStatus" tag="729" type="int">
+      <enum desc="Completed" value="0"/>
+      <enum desc="CompletedWithWarnings" value="1"/>
+      <enum desc="Rejected" value="2"/>
+    </field>
+    <field name="SettlPrice" tag="730" type="Price"/>
+    <field name="SettlPriceType" tag="731" type="int">
+      <enum desc="Final" value="1"/>
+      <enum desc="Theoretical" value="2"/>
+    </field>
+    <field name="UnderlyingSettlPrice" tag="732" type="Price"/>
+    <field name="UnderlyingSettlPriceType" tag="733" type="int"/>
+    <field name="PriorSettlPrice" tag="734" type="Price"/>
+    <field name="NoQuoteQualifiers" tag="735" type="NumInGroup"/>
+    <field name="AllocSettlCurrency" tag="736" type="Currency"/>
+    <field name="AllocSettlCurrAmt" tag="737" type="Amt"/>
+    <field name="InterestAtMaturity" tag="738" type="Amt"/>
+    <field name="LegDatedDate" tag="739" type="LocalMktDate"/>
+    <field name="LegPool" tag="740" type="String"/>
+    <field name="AllocInterestAtMaturity" tag="741" type="Amt"/>
+    <field name="AllocAccruedInterestAmt" tag="742" type="Amt"/>
+    <field name="DeliveryDate" tag="743" type="LocalMktDate"/>
+    <field name="AssignmentMethod" tag="744" type="char">
+      <enum desc="Random" value="R"/>
+      <enum desc="ProRata" value="P"/>
+    </field>
+    <field name="AssignmentUnit" tag="745" type="Qty"/>
+    <field name="OpenInterest" tag="746" type="Amt"/>
+    <field name="ExerciseMethod" tag="747" type="char">
+      <enum desc="Automatic" value="A"/>
+      <enum desc="Manual" value="M"/>
+    </field>
+    <field name="TotNumTradeReports" tag="748" type="int"/>
+    <field name="TradeRequestResult" tag="749" type="int">
+      <enum desc="Successful" value="0"/>
+      <enum desc="InvalidOrUnknownInstrument" value="1"/>
+      <enum desc="InvalidTypeOfTradeRequested" value="2"/>
+      <enum desc="InvalidParties" value="3"/>
+      <enum desc="InvalidTransportTypeRequested" value="4"/>
+      <enum desc="InvalidDestinationRequested" value="5"/>
+      <enum desc="TradeRequestTypeNotSupported" value="8"/>
+      <enum desc="NotAuthorized" value="9"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="TradeRequestStatus" tag="750" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="Completed" value="1"/>
+      <enum desc="Rejected" value="2"/>
+    </field>
+    <field name="TradeReportRejectReason" tag="751" type="int">
+      <enum desc="Successful" value="0"/>
+      <enum desc="InvalidPartyOnformation" value="1"/>
+      <enum desc="UnknownInstrument" value="2"/>
+      <enum desc="UnauthorizedToReportTrades" value="3"/>
+      <enum desc="InvalidTradeType" value="4"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="SideMultiLegReportingType" tag="752" type="int">
+      <enum desc="SingleSecurity" value="1"/>
+      <enum desc="IndividualLegOfAMultilegSecurity" value="2"/>
+      <enum desc="MultilegSecurity" value="3"/>
+    </field>
+    <field name="NoPosAmt" tag="753" type="NumInGroup"/>
+    <field name="AutoAcceptIndicator" tag="754" type="Boolean"/>
+    <field name="AllocReportID" tag="755" type="String"/>
+    <field name="NoNested2PartyIDs" tag="756" type="NumInGroup"/>
+    <field name="Nested2PartyID" tag="757" type="String"/>
+    <field name="Nested2PartyIDSource" tag="758" type="char"/>
+    <field name="Nested2PartyRole" tag="759" type="int"/>
+    <field name="Nested2PartySubID" tag="760" type="String"/>
+    <field name="BenchmarkSecurityIDSource" tag="761" type="String"/>
+    <field name="SecuritySubType" tag="762" type="String"/>
+    <field name="UnderlyingSecuritySubType" tag="763" type="String"/>
+    <field name="LegSecuritySubType" tag="764" type="String"/>
+    <field name="AllowableOneSidednessPct" tag="765" type="Percentage"/>
+    <field name="AllowableOneSidednessValue" tag="766" type="Amt"/>
+    <field name="AllowableOneSidednessCurr" tag="767" type="Currency"/>
+    <field name="NoTrdRegTimestamps" tag="768" type="NumInGroup"/>
+    <field name="TrdRegTimestamp" tag="769" type="UTCTimestamp"/>
+    <field name="TrdRegTimestampType" tag="770" type="int">
+      <enum desc="ExecutionTime" value="1"/>
+      <enum desc="TimeIn" value="2"/>
+      <enum desc="TimeOut" value="3"/>
+      <enum desc="BrokerReceipt" value="4"/>
+      <enum desc="BrokerExecution" value="5"/>
+    </field>
+    <field name="TrdRegTimestampOrigin" tag="771" type="String"/>
+    <field name="ConfirmRefID" tag="772" type="String"/>
+    <field name="ConfirmType" tag="773" type="int">
+      <enum desc="Status" value="1"/>
+      <enum desc="Confirmation" value="2"/>
+      <enum desc="ConfirmationRequestRejected" value="3"/>
+    </field>
+    <field name="ConfirmRejReason" tag="774" type="int">
+      <enum desc="MismatchedAccount" value="1"/>
+      <enum desc="MissingSettlementInstructions" value="2"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="BookingType" tag="775" type="int">
+      <enum desc="RegularBooking" value="0"/>
+      <enum desc="CFD" value="1"/>
+      <enum desc="TotalReturnSwap" value="2"/>
+    </field>
+    <field name="IndividualAllocRejCode" tag="776" type="int"/>
+    <field name="SettlInstMsgID" tag="777" type="String"/>
+    <field name="NoSettlInst" tag="778" type="NumInGroup"/>
+    <field name="LastUpdateTime" tag="779" type="UTCTimestamp"/>
+    <field name="AllocSettlInstType" tag="780" type="int">
+      <enum desc="UseDefaultInstructions" value="0"/>
+      <enum desc="DeriveFromParametersProvided" value="1"/>
+      <enum desc="FullDetailsProvided" value="2"/>
+      <enum desc="SSIDBIDsProvided" value="3"/>
+      <enum desc="PhoneForInstructions" value="4"/>
+    </field>
+    <field name="NoSettlPartyIDs" tag="781" type="NumInGroup"/>
+    <field name="SettlPartyID" tag="782" type="String"/>
+    <field name="SettlPartyIDSource" tag="783" type="char"/>
+    <field name="SettlPartyRole" tag="784" type="int"/>
+    <field name="SettlPartySubID" tag="785" type="String"/>
+    <field name="SettlPartySubIDType" tag="786" type="int"/>
+    <field name="DlvyInstType" tag="787" type="char">
+      <enum desc="Securities" value="S"/>
+      <enum desc="Cash" value="C"/>
+    </field>
+    <field name="TerminationType" tag="788" type="int">
+      <enum desc="Overnight" value="1"/>
+      <enum desc="Term" value="2"/>
+      <enum desc="Flexible" value="3"/>
+      <enum desc="Open" value="4"/>
+    </field>
+    <field name="NextExpectedMsgSeqNum" tag="789" type="SeqNum"/>
+    <field name="OrdStatusReqID" tag="790" type="String"/>
+    <field name="SettlInstReqID" tag="791" type="String"/>
+    <field name="SettlInstReqRejCode" tag="792" type="int">
+      <enum desc="UnableToProcessRequest" value="0"/>
+      <enum desc="UnknownAccount" value="1"/>
+      <enum desc="NoMatchingSettlementInstructionsFound" value="2"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="SecondaryAllocID" tag="793" type="String"/>
+    <field name="AllocReportType" tag="794" type="int">
+      <enum desc="SellsideCalculatedUsingPreliminary" value="3"/>
+      <enum desc="SellsideCalculatedWithoutPreliminary" value="4"/>
+      <enum desc="WarehouseRecap" value="5"/>
+      <enum desc="RequestToIntermediary" value="8"/>
+    </field>
+    <field name="AllocReportRefID" tag="795" type="String"/>
+    <field name="AllocCancReplaceReason" tag="796" type="int">
+      <enum desc="OriginalDetailsIncomplete" value="1"/>
+      <enum desc="ChangeInUnderlyingOrderDetails" value="2"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="CopyMsgIndicator" tag="797" type="Boolean"/>
+    <field name="AllocAccountType" tag="798" type="int">
+      <enum desc="CarriedCustomerSide" value="1"/>
+      <enum desc="CarriedNonCustomerSide" value="2"/>
+      <enum desc="HouseTrader" value="3"/>
+      <enum desc="FloorTrader" value="4"/>
+      <enum desc="CarriedNonCustomerSideCrossMargined" value="6"/>
+      <enum desc="HouseTraderCrossMargined" value="7"/>
+      <enum desc="JointBackOfficeAccount" value="8"/>
+    </field>
+    <field name="OrderAvgPx" tag="799" type="Price"/>
+    <field name="OrderBookingQty" tag="800" type="Qty"/>
+    <field name="NoSettlPartySubIDs" tag="801" type="NumInGroup"/>
+    <field name="NoPartySubIDs" tag="802" type="NumInGroup"/>
+    <field name="PartySubIDType" tag="803" type="int">
+      <enum desc="Firm" value="1"/>
+      <enum desc="Person" value="2"/>
+      <enum desc="System" value="3"/>
+      <enum desc="Application" value="4"/>
+      <enum desc="FullLegalNameOfFirm" value="5"/>
+      <enum desc="PostalAddress" value="6"/>
+      <enum desc="PhoneNumber" value="7"/>
+      <enum desc="EmailAddress" value="8"/>
+      <enum desc="ContactName" value="9"/>
+      <enum desc="SecuritiesAccountNumber" value="10"/>
+      <enum desc="RegistrationNumber" value="11"/>
+      <enum desc="RegisteredAddressForConfirmation" value="12"/>
+      <enum desc="RegulatoryStatus" value="13"/>
+      <enum desc="RegistrationName" value="14"/>
+      <enum desc="CashAccountNumber" value="15"/>
+      <enum desc="BIC" value="16"/>
+      <enum desc="CSDParticipantMemberCode" value="17"/>
+      <enum desc="RegisteredAddress" value="18"/>
+      <enum desc="FundAccountName" value="19"/>
+      <enum desc="TelexNumber" value="20"/>
+      <enum desc="FaxNumber" value="21"/>
+      <enum desc="SecuritiesAccountName" value="22"/>
+      <enum desc="CashAccountName" value="23"/>
+      <enum desc="Department" value="24"/>
+      <enum desc="LocationDesk" value="25"/>
+      <enum desc="PositionAccountType" value="26"/>
+    </field>
+    <field name="NoNestedPartySubIDs" tag="804" type="NumInGroup"/>
+    <field name="NestedPartySubIDType" tag="805" type="int"/>
+    <field name="NoNested2PartySubIDs" tag="806" type="NumInGroup"/>
+    <field name="Nested2PartySubIDType" tag="807" type="int"/>
+    <field name="AllocIntermedReqType" tag="808" type="int">
+      <enum desc="PendingAccept" value="1"/>
+      <enum desc="PendingRelease" value="2"/>
+      <enum desc="PendingReversal" value="3"/>
+      <enum desc="Accept" value="4"/>
+      <enum desc="BlockLevelReject" value="5"/>
+      <enum desc="AccountLevelReject" value="6"/>
+    </field>
+    <field name="UnderlyingPx" tag="810" type="Price"/>
+    <field name="PriceDelta" tag="811" type="float"/>
+    <field name="ApplQueueMax" tag="812" type="int"/>
+    <field name="ApplQueueDepth" tag="813" type="int"/>
+    <field name="ApplQueueResolution" tag="814" type="int">
+      <enum desc="NoActionTaken" value="0"/>
+      <enum desc="QueueFlushed" value="1"/>
+      <enum desc="OverlayLast" value="2"/>
+      <enum desc="EndSession" value="3"/>
+    </field>
+    <field name="ApplQueueAction" tag="815" type="int">
+      <enum desc="NoActionTaken" value="0"/>
+      <enum desc="QueueFlushed" value="1"/>
+      <enum desc="OverlayLast" value="2"/>
+      <enum desc="EndSession" value="3"/>
+    </field>
+    <field name="NoAltMDSource" tag="816" type="NumInGroup"/>
+    <field name="AltMDSourceID" tag="817" type="String"/>
+    <field name="SecondaryTradeReportID" tag="818" type="String"/>
+    <field name="AvgPxIndicator" tag="819" type="int">
+      <enum desc="NoAveragePricing" value="0"/>
+      <enum desc="Trade" value="1"/>
+      <enum desc="LastTrade" value="2"/>
+    </field>
+    <field name="TradeLinkID" tag="820" type="String"/>
+    <field name="OrderInputDevice" tag="821" type="String"/>
+    <field name="UnderlyingTradingSessionID" tag="822" type="String"/>
+    <field name="UnderlyingTradingSessionSubID" tag="823" type="String"/>
+    <field name="TradeLegRefID" tag="824" type="String"/>
+    <field name="ExchangeRule" tag="825" type="String"/>
+    <field name="TradeAllocIndicator" tag="826" type="int">
+      <enum desc="AllocationNotRequired" value="0"/>
+      <enum desc="AllocationRequired" value="1"/>
+      <enum desc="UseAllocationProvidedWithTheTrade" value="2"/>
+    </field>
+    <field name="ExpirationCycle" tag="827" type="int">
+      <enum desc="ExpireOnTradingSessionClose" value="0"/>
+      <enum desc="ExpireOnTradingSessionOpen" value="1"/>
+    </field>
+    <field name="TrdType" tag="828" type="int">
+      <enum desc="RegularTrade" value="0"/>
+      <enum desc="BlockTrade" value="1"/>
+      <enum desc="EFP" value="2"/>
+      <enum desc="Transfer" value="3"/>
+      <enum desc="LateTrade" value="4"/>
+      <enum desc="TTrade" value="5"/>
+      <enum desc="WeightedAveragePriceTrade" value="6"/>
+      <enum desc="BunchedTrade" value="7"/>
+      <enum desc="LateBunchedTrade" value="8"/>
+      <enum desc="PriorReferencePriceTrade" value="9"/>
+      <enum desc="AfterHoursTrade" value="10"/>
+    </field>
+    <field name="TrdSubType" tag="829" type="int"/>
+    <field name="TransferReason" tag="830" type="String"/>
+    <field name="TotNumAssignmentReports" tag="832" type="int"/>
+    <field name="AsgnRptID" tag="833" type="String"/>
+    <field name="ThresholdAmount" tag="834" type="PriceOffset"/>
+    <field name="PegMoveType" tag="835" type="int">
+      <enum desc="Floating" value="0"/>
+      <enum desc="Fixed" value="1"/>
+    </field>
+    <field name="PegOffsetType" tag="836" type="int">
+      <enum desc="Price" value="0"/>
+      <enum desc="BasisPoints" value="1"/>
+      <enum desc="Ticks" value="2"/>
+      <enum desc="PriceTier" value="3"/>
+    </field>
+    <field name="PegLimitType" tag="837" type="int">
+      <enum desc="OrBetter" value="0"/>
+      <enum desc="Strict" value="1"/>
+      <enum desc="OrWorse" value="2"/>
+    </field>
+    <field name="PegRoundDirection" tag="838" type="int">
+      <enum desc="MoreAggressive" value="1"/>
+      <enum desc="MorePassive" value="2"/>
+    </field>
+    <field name="PeggedPrice" tag="839" type="Price"/>
+    <field name="PegScope" tag="840" type="int">
+      <enum desc="Local" value="1"/>
+      <enum desc="National" value="2"/>
+      <enum desc="Global" value="3"/>
+      <enum desc="NationalExcludingLocal" value="4"/>
+    </field>
+    <field name="DiscretionMoveType" tag="841" type="int">
+      <enum desc="Floating" value="0"/>
+      <enum desc="Fixed" value="1"/>
+    </field>
+    <field name="DiscretionOffsetType" tag="842" type="int">
+      <enum desc="Price" value="0"/>
+      <enum desc="BasisPoints" value="1"/>
+      <enum desc="Ticks" value="2"/>
+      <enum desc="PriceTier" value="3"/>
+    </field>
+    <field name="DiscretionLimitType" tag="843" type="int">
+      <enum desc="OrBetter" value="0"/>
+      <enum desc="Strict" value="1"/>
+      <enum desc="OrWorse" value="2"/>
+    </field>
+    <field name="DiscretionRoundDirection" tag="844" type="int">
+      <enum desc="MoreAggressive" value="1"/>
+      <enum desc="MorePassive" value="2"/>
+    </field>
+    <field name="DiscretionPrice" tag="845" type="Price"/>
+    <field name="DiscretionScope" tag="846" type="int">
+      <enum desc="Local" value="1"/>
+      <enum desc="National" value="2"/>
+      <enum desc="Global" value="3"/>
+      <enum desc="NationalExcludingLocal" value="4"/>
+    </field>
+    <field name="TargetStrategy" tag="847" type="int">
+      <enum desc="VWAP" value="1"/>
+      <enum desc="Participate" value="2"/>
+      <enum desc="MininizeMarketImpact" value="3"/>
+    </field>
+    <field name="TargetStrategyParameters" tag="848" type="String"/>
+    <field name="ParticipationRate" tag="849" type="Percentage"/>
+    <field name="TargetStrategyPerformance" tag="850" type="float"/>
+    <field name="LastLiquidityInd" tag="851" type="int">
+      <enum desc="AddedLiquidity" value="1"/>
+      <enum desc="RemovedLiquidity" value="2"/>
+      <enum desc="LiquidityRoutedOut" value="3"/>
+    </field>
+    <field name="PublishTrdIndicator" tag="852" type="Boolean">
+      <enum desc="ReportTrade" value="Y"/>
+      <enum desc="DoNotReportTrade" value="N"/>
+    </field>
+    <field name="ShortSaleReason" tag="853" type="int">
+      <enum desc="DealerSoldShort" value="0"/>
+      <enum desc="DealerSoldShortExempt" value="1"/>
+      <enum desc="SellingCustomerSoldShort" value="2"/>
+      <enum desc="SellingCustomerSoldShortExempt" value="3"/>
+      <enum desc="QualifiedServiceRepresentative" value="4"/>
+      <enum desc="QSROrAGUContraSideSoldShortExempt" value="5"/>
+    </field>
+    <field name="QtyType" tag="854" type="int">
+      <enum desc="Units" value="0"/>
+      <enum desc="Contracts" value="1"/>
+    </field>
+    <field name="SecondaryTrdType" tag="855" type="int"/>
+    <field name="TradeReportType" tag="856" type="int">
+      <enum desc="Submit" value="0"/>
+      <enum desc="Alleged" value="1"/>
+      <enum desc="Accept" value="2"/>
+      <enum desc="Decline" value="3"/>
+      <enum desc="Addendum" value="4"/>
+      <enum desc="No" value="5"/>
+      <enum desc="TradeReportCancel" value="6"/>
+      <enum desc="LockedIn" value="7"/>
+    </field>
+    <field name="AllocNoOrdersType" tag="857" type="int">
+      <enum desc="NotSpecified" value="0"/>
+      <enum desc="ExplicitListProvided" value="1"/>
+    </field>
+    <field name="SharedCommission" tag="858" type="Amt"/>
+    <field name="ConfirmReqID" tag="859" type="String"/>
+    <field name="AvgParPx" tag="860" type="Price"/>
+    <field name="ReportedPx" tag="861" type="Price"/>
+    <field name="NoCapacities" tag="862" type="NumInGroup"/>
+    <field name="OrderCapacityQty" tag="863" type="Qty"/>
+    <field name="NoEvents" tag="864" type="NumInGroup"/>
+    <field name="EventType" tag="865" type="int">
+      <enum desc="Put" value="1"/>
+      <enum desc="Call" value="2"/>
+      <enum desc="Tender" value="3"/>
+      <enum desc="SinkingFundCall" value="4"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="EventDate" tag="866" type="LocalMktDate"/>
+    <field name="EventPx" tag="867" type="Price"/>
+    <field name="EventText" tag="868" type="String"/>
+    <field name="PctAtRisk" tag="869" type="Percentage"/>
+    <field name="NoInstrAttrib" tag="870" type="NumInGroup"/>
+    <field name="InstrAttribType" tag="871" type="int">
+      <enum desc="Flat" value="1"/>
+      <enum desc="ZeroCoupon" value="2"/>
+      <enum desc="InterestBearing" value="3"/>
+      <enum desc="NoPeriodicPayments" value="4"/>
+      <enum desc="VariableRate" value="5"/>
+      <enum desc="LessFeeForPut" value="6"/>
+      <enum desc="SteppedCoupon" value="7"/>
+      <enum desc="CouponPeriod" value="8"/>
+      <enum desc="When" value="9"/>
+      <enum desc="OriginalIssueDiscount" value="10"/>
+      <enum desc="Callable" value="11"/>
+      <enum desc="EscrowedToMaturity" value="12"/>
+      <enum desc="EscrowedToRedemptionDate" value="13"/>
+      <enum desc="PreRefunded" value="14"/>
+      <enum desc="InDefault" value="15"/>
+      <enum desc="Unrated" value="16"/>
+      <enum desc="Taxable" value="17"/>
+      <enum desc="Indexed" value="18"/>
+      <enum desc="SubjectToAlternativeMinimumTax" value="19"/>
+      <enum desc="OriginalIssueDiscountPrice" value="20"/>
+      <enum desc="CallableBelowMaturityValue" value="21"/>
+      <enum desc="CallableWithoutNotice" value="22"/>
+      <enum desc="Text" value="99"/>
+    </field>
+    <field name="InstrAttribValue" tag="872" type="String"/>
+    <field name="DatedDate" tag="873" type="LocalMktDate"/>
+    <field name="InterestAccrualDate" tag="874" type="LocalMktDate"/>
+    <field name="CPProgram" tag="875" type="int">
+      <enum desc="Program3a3" value="1"/>
+      <enum desc="Program42" value="2"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="CPRegType" tag="876" type="String"/>
+    <field name="UnderlyingCPProgram" tag="877" type="String"/>
+    <field name="UnderlyingCPRegType" tag="878" type="String"/>
+    <field name="UnderlyingQty" tag="879" type="Qty"/>
+    <field name="TrdMatchID" tag="880" type="String"/>
+    <field name="SecondaryTradeReportRefID" tag="881" type="String"/>
+    <field name="UnderlyingDirtyPrice" tag="882" type="Price"/>
+    <field name="UnderlyingEndPrice" tag="883" type="Price"/>
+    <field name="UnderlyingStartValue" tag="884" type="Amt"/>
+    <field name="UnderlyingCurrentValue" tag="885" type="Amt"/>
+    <field name="UnderlyingEndValue" tag="886" type="Amt"/>
+    <field name="NoUnderlyingStips" tag="887" type="NumInGroup"/>
+    <field name="UnderlyingStipType" tag="888" type="String"/>
+    <field name="UnderlyingStipValue" tag="889" type="String"/>
+    <field name="MaturityNetMoney" tag="890" type="Amt"/>
+    <field name="MiscFeeBasis" tag="891" type="int">
+      <enum desc="Absolute" value="0"/>
+      <enum desc="PerUnit" value="1"/>
+      <enum desc="Percentage" value="2"/>
+    </field>
+    <field name="TotNoAllocs" tag="892" type="int"/>
+    <field name="LastFragment" tag="893" type="Boolean">
+      <enum desc="LastMessage" value="Y"/>
+      <enum desc="NotLastMessage" value="N"/>
+    </field>
+    <field name="CollReqID" tag="894" type="String"/>
+    <field name="CollAsgnReason" tag="895" type="int">
+      <enum desc="Initial" value="0"/>
+      <enum desc="Scheduled" value="1"/>
+      <enum desc="TimeWarning" value="2"/>
+      <enum desc="MarginDeficiency" value="3"/>
+      <enum desc="MarginExcess" value="4"/>
+      <enum desc="ForwardCollateralDemand" value="5"/>
+      <enum desc="EventOfDefault" value="6"/>
+      <enum desc="AdverseTaxEvent" value="7"/>
+    </field>
+    <field name="CollInquiryQualifier" tag="896" type="int">
+      <enum desc="TradeDate" value="0"/>
+      <enum desc="GCInstrument" value="1"/>
+      <enum desc="CollateralInstrument" value="2"/>
+      <enum desc="SubstitutionEligible" value="3"/>
+      <enum desc="NotAssigned" value="4"/>
+      <enum desc="PartiallyAssigned" value="5"/>
+      <enum desc="FullyAssigned" value="6"/>
+      <enum desc="OutstandingTrades" value="7"/>
+    </field>
+    <field name="NoTrades" tag="897" type="NumInGroup"/>
+    <field name="MarginRatio" tag="898" type="Percentage"/>
+    <field name="MarginExcess" tag="899" type="Amt"/>
+    <field name="TotalNetValue" tag="900" type="Amt"/>
+    <field name="CashOutstanding" tag="901" type="Amt"/>
+    <field name="CollAsgnID" tag="902" type="String"/>
+    <field name="CollAsgnTransType" tag="903" type="int">
+      <enum desc="New" value="0"/>
+      <enum desc="Replace" value="1"/>
+      <enum desc="Cancel" value="2"/>
+      <enum desc="Release" value="3"/>
+      <enum desc="Reverse" value="4"/>
+    </field>
+    <field name="CollRespID" tag="904" type="String"/>
+    <field name="CollAsgnRespType" tag="905" type="int">
+      <enum desc="Received" value="0"/>
+      <enum desc="Accepted" value="1"/>
+      <enum desc="Declined" value="2"/>
+      <enum desc="Rejected" value="3"/>
+    </field>
+    <field name="CollAsgnRejectReason" tag="906" type="int">
+      <enum desc="UnknownDeal" value="0"/>
+      <enum desc="UnknownOrInvalidInstrument" value="1"/>
+      <enum desc="UnauthorizedTransaction" value="2"/>
+      <enum desc="InsufficientCollateral" value="3"/>
+      <enum desc="InvalidTypeOfCollateral" value="4"/>
+      <enum desc="ExcessiveSubstitution" value="5"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="CollAsgnRefID" tag="907" type="String"/>
+    <field name="CollRptID" tag="908" type="String"/>
+    <field name="CollInquiryID" tag="909" type="String"/>
+    <field name="CollStatus" tag="910" type="int">
+      <enum desc="Unassigned" value="0"/>
+      <enum desc="PartiallyAssigned" value="1"/>
+      <enum desc="AssignmentProposed" value="2"/>
+      <enum desc="Assigned" value="3"/>
+      <enum desc="Challenged" value="4"/>
+    </field>
+    <field name="TotNumReports" tag="911" type="int"/>
+    <field name="LastRptRequested" tag="912" type="Boolean"/>
+    <field name="AgreementDesc" tag="913" type="String"/>
+    <field name="AgreementID" tag="914" type="String"/>
+    <field name="AgreementDate" tag="915" type="LocalMktDate"/>
+    <field name="StartDate" tag="916" type="LocalMktDate"/>
+    <field name="EndDate" tag="917" type="LocalMktDate"/>
+    <field name="AgreementCurrency" tag="918" type="Currency"/>
+    <field name="DeliveryType" tag="919" type="int">
+      <enum desc="VersusPayment" value="0"/>
+      <enum desc="Free" value="1"/>
+      <enum desc="TriParty" value="2"/>
+      <enum desc="HoldInCustody" value="3"/>
+    </field>
+    <field name="EndAccruedInterestAmt" tag="920" type="Amt"/>
+    <field name="StartCash" tag="921" type="Amt"/>
+    <field name="EndCash" tag="922" type="Amt"/>
+    <field name="UserRequestID" tag="923" type="String"/>
+    <field name="UserRequestType" tag="924" type="int">
+      <enum desc="LogOnUser" value="1"/>
+      <enum desc="LogOffUser" value="2"/>
+      <enum desc="ChangePasswordForUser" value="3"/>
+      <enum desc="RequestIndividualUserStatus" value="4"/>
+    </field>
+    <field name="NewPassword" tag="925" type="String"/>
+    <field name="UserStatus" tag="926" type="int">
+      <enum desc="LoggedIn" value="1"/>
+      <enum desc="NotLoggedIn" value="2"/>
+      <enum desc="UserNotRecognised" value="3"/>
+      <enum desc="PasswordIncorrect" value="4"/>
+      <enum desc="PasswordChanged" value="5"/>
+      <enum desc="Other" value="6"/>
+    </field>
+    <field name="UserStatusText" tag="927" type="String"/>
+    <field name="StatusValue" tag="928" type="int">
+      <enum desc="Connected" value="1"/>
+      <enum desc="NotConnectedUnexpected" value="2"/>
+      <enum desc="NotConnectedExpected" value="3"/>
+      <enum desc="InProcess" value="4"/>
+    </field>
+    <field name="StatusText" tag="929" type="String"/>
+    <field name="RefCompID" tag="930" type="String"/>
+    <field name="RefSubID" tag="931" type="String"/>
+    <field name="NetworkResponseID" tag="932" type="String"/>
+    <field name="NetworkRequestID" tag="933" type="String"/>
+    <field name="LastNetworkResponseID" tag="934" type="String"/>
+    <field name="NetworkRequestType" tag="935" type="int">
+      <enum desc="Snapshot" value="1"/>
+      <enum desc="Subscribe" value="2"/>
+      <enum desc="StopSubscribing" value="4"/>
+      <enum desc="LevelOfDetail" value="8"/>
+    </field>
+    <field name="NoCompIDs" tag="936" type="NumInGroup"/>
+    <field name="NetworkStatusResponseType" tag="937" type="int">
+      <enum desc="Full" value="1"/>
+      <enum desc="IncrementalUpdate" value="2"/>
+    </field>
+    <field name="NoCollInquiryQualifier" tag="938" type="NumInGroup"/>
+    <field name="TrdRptStatus" tag="939" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="Rejected" value="1"/>
+    </field>
+    <field name="AffirmStatus" tag="940" type="int">
+      <enum desc="Received" value="1"/>
+      <enum desc="ConfirmRejected" value="2"/>
+      <enum desc="Affirmed" value="3"/>
+    </field>
+    <field name="UnderlyingStrikeCurrency" tag="941" type="Currency"/>
+    <field name="LegStrikeCurrency" tag="942" type="Currency"/>
+    <field name="TimeBracket" tag="943" type="String"/>
+    <field name="CollAction" tag="944" type="int">
+      <enum desc="Retain" value="0"/>
+      <enum desc="Add" value="1"/>
+      <enum desc="Remove" value="2"/>
+    </field>
+    <field name="CollInquiryStatus" tag="945" type="int">
+      <enum desc="Accepted" value="0"/>
+      <enum desc="AcceptedWithWarnings" value="1"/>
+      <enum desc="Completed" value="2"/>
+      <enum desc="CompletedWithWarnings" value="3"/>
+      <enum desc="Rejected" value="4"/>
+    </field>
+    <field name="CollInquiryResult" tag="946" type="int">
+      <enum desc="Successful" value="0"/>
+      <enum desc="InvalidOrUnknownInstrument" value="1"/>
+      <enum desc="InvalidOrUnknownCollateralType" value="2"/>
+      <enum desc="InvalidParties" value="3"/>
+      <enum desc="InvalidTransportTypeRequested" value="4"/>
+      <enum desc="InvalidDestinationRequested" value="5"/>
+      <enum desc="NoCollateralFoundForTheTradeSpecified" value="6"/>
+      <enum desc="NoCollateralFoundForTheOrderSpecified" value="7"/>
+      <enum desc="CollateralInquiryTypeNotSupported" value="8"/>
+      <enum desc="UnauthorizedForCollateralInquiry" value="9"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="StrikeCurrency" tag="947" type="Currency"/>
+    <field name="NoNested3PartyIDs" tag="948" type="NumInGroup"/>
+    <field name="Nested3PartyID" tag="949" type="String"/>
+    <field name="Nested3PartyIDSource" tag="950" type="char"/>
+    <field name="Nested3PartyRole" tag="951" type="int"/>
+    <field name="NoNested3PartySubIDs" tag="952" type="NumInGroup"/>
+    <field name="Nested3PartySubID" tag="953" type="String"/>
+    <field name="Nested3PartySubIDType" tag="954" type="int"/>
+    <field name="LegContractSettlMonth" tag="955" type="MonthYear"/>
+    <field name="LegInterestAccrualDate" tag="956" type="LocalMktDate"/>
+  </fields>
+  <groups>
+    <group countTag="683" firstTag="688" name="LegStipulations">
+      <member tag="688"/>
+      <member tag="689"/>
+    </group>
+    <group countTag="539" firstTag="524" name="NestedParties">
+      <member tag="524"/>
+      <member tag="525"/>
+      <member tag="538"/>
+    </group>
+    <group countTag="756" firstTag="757" name="NestedParties2">
+      <member tag="757"/>
+      <member tag="758"/>
+      <member tag="759"/>
+    </group>
+    <group countTag="948" firstTag="949" name="NestedParties3">
+      <member tag="949"/>
+      <member tag="950"/>
+      <member tag="951"/>
+    </group>
+    <group countTag="453" firstTag="448" name="Parties">
+      <member tag="448"/>
+      <member tag="447"/>
+      <member tag="452"/>
+    </group>
+    <group countTag="753" firstTag="707" name="PositionAmountData">
+      <member tag="707"/>
+      <member tag="708"/>
+    </group>
+    <group countTag="702" firstTag="703" name="PositionQty">
+      <member tag="703"/>
+      <member tag="704"/>
+      <member tag="705"/>
+      <member tag="706"/>
+    </group>
+    <group countTag="781" firstTag="782" name="SettlParties">
+      <member tag="782"/>
+      <member tag="783"/>
+      <member tag="784"/>
+    </group>
+    <group countTag="232" firstTag="233" name="Stipulations">
+      <member tag="233"/>
+      <member tag="234"/>
+    </group>
+    <group countTag="768" firstTag="769" name="TrdRegTimestamps">
+      <member tag="769"/>
+      <member tag="770"/>
+      <member tag="771"/>
+    </group>
+    <group countTag="887" firstTag="888" name="UnderlyingStipulations">
+      <member tag="888"/>
+      <member tag="889"/>
+    </group>
+  </groups>
+  <messages>
+    <message msgType="0" name="Heartbeat">
+      <tag id="112"/>
+    </message>
+    <message msgType="1" name="TestRequest">
+      <tag id="112"/>
+    </message>
+    <message msgType="2" name="ResendRequest">
+      <tag id="7"/>
+      <tag id="16"/>
+    </message>
+    <message msgType="3" name="Reject">
+      <tag id="45"/>
+      <tag id="371"/>
+      <tag id="372"/>
+      <tag id="373"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="4" name="SequenceReset">
+      <tag id="123"/>
+      <tag id="36"/>
+    </message>
+    <message msgType="5" name="Logout">
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="6" name="IOI">
+      <tag id="23"/>
+      <tag id="28"/>
+      <tag id="26"/>
+      <tag id="54"/>
+      <tag id="854"/>
+      <tag id="27"/>
+      <tag id="15"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="62"/>
+      <tag id="25"/>
+      <tag id="130"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="60"/>
+      <tag id="149"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="7" name="Advertisement">
+      <tag id="2"/>
+      <tag id="5"/>
+      <tag id="3"/>
+      <tag id="4"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="44"/>
+      <tag id="15"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="149"/>
+      <tag id="30"/>
+      <tag id="336"/>
+      <tag id="625"/>
+    </message>
+    <message msgType="8" name="ExecutionReport">
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="527"/>
+      <tag id="11"/>
+      <tag id="41"/>
+      <tag id="583"/>
+      <tag id="693"/>
+      <tag id="790"/>
+      <tag id="584"/>
+      <tag id="911"/>
+      <tag id="912"/>
+      <tag id="229"/>
+      <tag id="66"/>
+      <tag id="548"/>
+      <tag id="551"/>
+      <tag id="549"/>
+      <tag id="17"/>
+      <tag id="19"/>
+      <tag id="150"/>
+      <tag id="39"/>
+      <tag id="636"/>
+      <tag id="103"/>
+      <tag id="378"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="589"/>
+      <tag id="590"/>
+      <tag id="591"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="544"/>
+      <tag id="635"/>
+      <tag id="54"/>
+      <tag id="854"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="839"/>
+      <tag id="845"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="850"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="18"/>
+      <tag id="528"/>
+      <tag id="529"/>
+      <tag id="582"/>
+      <tag id="32"/>
+      <tag id="652"/>
+      <tag id="31"/>
+      <tag id="651"/>
+      <tag id="669"/>
+      <tag id="194"/>
+      <tag id="195"/>
+      <tag id="30"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="943"/>
+      <tag id="29"/>
+      <tag id="151"/>
+      <tag id="14"/>
+      <tag id="6"/>
+      <tag id="424"/>
+      <tag id="425"/>
+      <tag id="426"/>
+      <tag id="427"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="113"/>
+      <tag id="381"/>
+      <tag id="157"/>
+      <tag id="230"/>
+      <tag id="158"/>
+      <tag id="159"/>
+      <tag id="738"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="258"/>
+      <tag id="259"/>
+      <tag id="260"/>
+      <tag id="238"/>
+      <tag id="237"/>
+      <tag id="118"/>
+      <tag id="119"/>
+      <tag id="120"/>
+      <tag id="155"/>
+      <tag id="156"/>
+      <tag id="21"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="77"/>
+      <tag id="210"/>
+      <tag id="775"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="641"/>
+      <tag id="442"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <tag id="483"/>
+      <tag id="515"/>
+      <tag id="484"/>
+      <tag id="485"/>
+      <tag id="638"/>
+      <tag id="639"/>
+      <tag id="851"/>
+      <tag id="797"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="9" name="OrderCancelReject">
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="11"/>
+      <tag id="583"/>
+      <tag id="41"/>
+      <tag id="39"/>
+      <tag id="636"/>
+      <tag id="586"/>
+      <tag id="66"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="229"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="434"/>
+      <tag id="102"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="A" name="Logon">
+      <tag id="98"/>
+      <tag id="108"/>
+      <tag id="95"/>
+      <tag id="96"/>
+      <tag id="141"/>
+      <tag id="789"/>
+      <tag id="383"/>
+      <tag id="372"/>
+      <tag id="385"/>
+      <tag id="464"/>
+      <tag id="553"/>
+      <tag id="554"/>
+    </message>
+    <message msgType="AA" name="DerivativeSecurityList">
+      <tag id="320"/>
+      <tag id="322"/>
+      <tag id="560"/>
+      <tag id="393"/>
+      <tag id="893"/>
+    </message>
+    <message msgType="AB" name="NewOrderMultileg">
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="583"/>
+      <tag id="229"/>
+      <tag id="75"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="589"/>
+      <tag id="590"/>
+      <tag id="591"/>
+      <tag id="70"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="544"/>
+      <tag id="635"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="81"/>
+      <tag id="54"/>
+      <tag id="140"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="854"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="528"/>
+      <tag id="529"/>
+      <tag id="582"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="775"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="210"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <tag id="563"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AC" name="MultilegOrderCancelReplace">
+      <tag id="37"/>
+      <tag id="41"/>
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="583"/>
+      <tag id="586"/>
+      <tag id="229"/>
+      <tag id="75"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="589"/>
+      <tag id="590"/>
+      <tag id="591"/>
+      <tag id="70"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="544"/>
+      <tag id="635"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="81"/>
+      <tag id="54"/>
+      <tag id="140"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="854"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="528"/>
+      <tag id="529"/>
+      <tag id="582"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="775"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="210"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <tag id="563"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AD" name="TradeCaptureReportRequest">
+      <tag id="568"/>
+      <tag id="569"/>
+      <tag id="263"/>
+      <tag id="571"/>
+      <tag id="818"/>
+      <tag id="17"/>
+      <tag id="150"/>
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="573"/>
+      <tag id="828"/>
+      <tag id="829"/>
+      <tag id="830"/>
+      <tag id="855"/>
+      <tag id="820"/>
+      <tag id="880"/>
+      <tag id="715"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="943"/>
+      <tag id="54"/>
+      <tag id="442"/>
+      <tag id="578"/>
+      <tag id="579"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AE" name="TradeCaptureReport">
+      <tag id="571"/>
+      <tag id="487"/>
+      <tag id="856"/>
+      <tag id="568"/>
+      <tag id="828"/>
+      <tag id="829"/>
+      <tag id="855"/>
+      <tag id="830"/>
+      <tag id="150"/>
+      <tag id="748"/>
+      <tag id="912"/>
+      <tag id="325"/>
+      <tag id="263"/>
+      <tag id="572"/>
+      <tag id="881"/>
+      <tag id="818"/>
+      <tag id="820"/>
+      <tag id="880"/>
+      <tag id="17"/>
+      <tag id="39"/>
+      <tag id="527"/>
+      <tag id="378"/>
+      <tag id="570"/>
+      <tag id="423"/>
+      <tag id="854"/>
+      <tag id="822"/>
+      <tag id="823"/>
+      <tag id="32"/>
+      <tag id="31"/>
+      <tag id="669"/>
+      <tag id="194"/>
+      <tag id="195"/>
+      <tag id="30"/>
+      <tag id="75"/>
+      <tag id="715"/>
+      <tag id="6"/>
+      <tag id="819"/>
+      <tag id="442"/>
+      <tag id="824"/>
+      <tag id="60"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="573"/>
+      <tag id="574"/>
+      <tag id="797"/>
+      <tag id="852"/>
+      <tag id="853"/>
+      <groupRef name="PositionAmountData"/>
+      <groupRef name="TrdRegTimestamps"/>
+    </message>
+    <message msgType="AF" name="OrderMassStatusRequest">
+      <tag id="584"/>
+      <tag id="585"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="54"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AG" name="QuoteRequestReject">
+      <tag id="131"/>
+      <tag id="644"/>
+      <tag id="658"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="AH" name="RFQRequest">
+      <tag id="644"/>
+      <tag id="263"/>
+    </message>
+    <message msgType="AI" name="QuoteStatusReport">
+      <tag id="649"/>
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="693"/>
+      <tag id="537"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="54"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="15"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="126"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="132"/>
+      <tag id="133"/>
+      <tag id="645"/>
+      <tag id="646"/>
+      <tag id="647"/>
+      <tag id="134"/>
+      <tag id="648"/>
+      <tag id="135"/>
+      <tag id="62"/>
+      <tag id="188"/>
+      <tag id="190"/>
+      <tag id="189"/>
+      <tag id="191"/>
+      <tag id="631"/>
+      <tag id="632"/>
+      <tag id="633"/>
+      <tag id="634"/>
+      <tag id="60"/>
+      <tag id="40"/>
+      <tag id="642"/>
+      <tag id="643"/>
+      <tag id="656"/>
+      <tag id="657"/>
+      <tag id="156"/>
+      <tag id="13"/>
+      <tag id="12"/>
+      <tag id="582"/>
+      <tag id="100"/>
+      <tag id="297"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="AJ" name="QuoteResponse">
+      <tag id="693"/>
+      <tag id="117"/>
+      <tag id="694"/>
+      <tag id="11"/>
+      <tag id="528"/>
+      <tag id="23"/>
+      <tag id="537"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="54"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="15"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="132"/>
+      <tag id="133"/>
+      <tag id="645"/>
+      <tag id="646"/>
+      <tag id="647"/>
+      <tag id="134"/>
+      <tag id="648"/>
+      <tag id="135"/>
+      <tag id="62"/>
+      <tag id="188"/>
+      <tag id="190"/>
+      <tag id="189"/>
+      <tag id="191"/>
+      <tag id="631"/>
+      <tag id="632"/>
+      <tag id="633"/>
+      <tag id="634"/>
+      <tag id="60"/>
+      <tag id="40"/>
+      <tag id="642"/>
+      <tag id="643"/>
+      <tag id="656"/>
+      <tag id="657"/>
+      <tag id="156"/>
+      <tag id="12"/>
+      <tag id="13"/>
+      <tag id="582"/>
+      <tag id="100"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="AK" name="Confirmation">
+      <tag id="664"/>
+      <tag id="772"/>
+      <tag id="859"/>
+      <tag id="666"/>
+      <tag id="773"/>
+      <tag id="797"/>
+      <tag id="650"/>
+      <tag id="665"/>
+      <tag id="70"/>
+      <tag id="793"/>
+      <tag id="467"/>
+      <tag id="60"/>
+      <tag id="75"/>
+      <tag id="80"/>
+      <tag id="854"/>
+      <tag id="54"/>
+      <tag id="15"/>
+      <tag id="30"/>
+      <tag id="79"/>
+      <tag id="661"/>
+      <tag id="798"/>
+      <tag id="6"/>
+      <tag id="74"/>
+      <tag id="423"/>
+      <tag id="860"/>
+      <tag id="861"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="81"/>
+      <tag id="381"/>
+      <tag id="157"/>
+      <tag id="230"/>
+      <tag id="158"/>
+      <tag id="159"/>
+      <tag id="738"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="238"/>
+      <tag id="237"/>
+      <tag id="118"/>
+      <tag id="890"/>
+      <tag id="119"/>
+      <tag id="120"/>
+      <tag id="155"/>
+      <tag id="156"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="858"/>
+      <groupRef name="Parties"/>
+      <groupRef name="TrdRegTimestamps"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="AL" name="PositionMaintenanceRequest">
+      <tag id="710"/>
+      <tag id="709"/>
+      <tag id="712"/>
+      <tag id="713"/>
+      <tag id="714"/>
+      <tag id="715"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="15"/>
+      <tag id="60"/>
+      <tag id="718"/>
+      <tag id="719"/>
+      <tag id="720"/>
+      <tag id="834"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="PositionQty"/>
+    </message>
+    <message msgType="AM" name="PositionMaintenanceReport">
+      <tag id="721"/>
+      <tag id="709"/>
+      <tag id="710"/>
+      <tag id="712"/>
+      <tag id="713"/>
+      <tag id="722"/>
+      <tag id="723"/>
+      <tag id="715"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="15"/>
+      <tag id="60"/>
+      <tag id="718"/>
+      <tag id="834"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="PositionQty"/>
+      <groupRef name="PositionAmountData"/>
+    </message>
+    <message msgType="AN" name="RequestForPositions">
+      <tag id="710"/>
+      <tag id="724"/>
+      <tag id="573"/>
+      <tag id="263"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="15"/>
+      <tag id="715"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="60"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AO" name="RequestForPositionsAck">
+      <tag id="721"/>
+      <tag id="710"/>
+      <tag id="727"/>
+      <tag id="325"/>
+      <tag id="728"/>
+      <tag id="729"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="15"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AP" name="PositionReport">
+      <tag id="721"/>
+      <tag id="710"/>
+      <tag id="724"/>
+      <tag id="263"/>
+      <tag id="727"/>
+      <tag id="325"/>
+      <tag id="728"/>
+      <tag id="715"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="15"/>
+      <tag id="730"/>
+      <tag id="731"/>
+      <tag id="734"/>
+      <tag id="506"/>
+      <tag id="743"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="PositionQty"/>
+      <groupRef name="PositionAmountData"/>
+    </message>
+    <message msgType="AQ" name="TradeCaptureReportRequestAck">
+      <tag id="568"/>
+      <tag id="569"/>
+      <tag id="263"/>
+      <tag id="748"/>
+      <tag id="749"/>
+      <tag id="750"/>
+      <tag id="442"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="AR" name="TradeCaptureReportAck">
+      <tag id="571"/>
+      <tag id="487"/>
+      <tag id="856"/>
+      <tag id="828"/>
+      <tag id="829"/>
+      <tag id="855"/>
+      <tag id="830"/>
+      <tag id="150"/>
+      <tag id="572"/>
+      <tag id="881"/>
+      <tag id="939"/>
+      <tag id="751"/>
+      <tag id="818"/>
+      <tag id="263"/>
+      <tag id="820"/>
+      <tag id="880"/>
+      <tag id="17"/>
+      <tag id="527"/>
+      <tag id="60"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="635"/>
+      <tag id="528"/>
+      <tag id="529"/>
+      <tag id="582"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="77"/>
+      <tag id="591"/>
+      <groupRef name="TrdRegTimestamps"/>
+    </message>
+    <message msgType="AS" name="AllocationReport">
+      <tag id="755"/>
+      <tag id="70"/>
+      <tag id="71"/>
+      <tag id="795"/>
+      <tag id="796"/>
+      <tag id="793"/>
+      <tag id="794"/>
+      <tag id="87"/>
+      <tag id="88"/>
+      <tag id="72"/>
+      <tag id="808"/>
+      <tag id="196"/>
+      <tag id="197"/>
+      <tag id="466"/>
+      <tag id="857"/>
+      <tag id="570"/>
+      <tag id="700"/>
+      <tag id="574"/>
+      <tag id="54"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="30"/>
+      <tag id="229"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="423"/>
+      <tag id="6"/>
+      <tag id="860"/>
+      <tag id="15"/>
+      <tag id="74"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="775"/>
+      <tag id="381"/>
+      <tag id="238"/>
+      <tag id="237"/>
+      <tag id="118"/>
+      <tag id="77"/>
+      <tag id="754"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="157"/>
+      <tag id="158"/>
+      <tag id="159"/>
+      <tag id="540"/>
+      <tag id="738"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="650"/>
+      <tag id="892"/>
+      <tag id="893"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="AT" name="AllocationReportAck">
+      <tag id="755"/>
+      <tag id="70"/>
+      <tag id="793"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="87"/>
+      <tag id="88"/>
+      <tag id="794"/>
+      <tag id="808"/>
+      <tag id="573"/>
+      <tag id="460"/>
+      <tag id="167"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AU" name="ConfirmationAck">
+      <tag id="664"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="940"/>
+      <tag id="774"/>
+      <tag id="573"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="AV" name="SettlementInstructionRequest">
+      <tag id="791"/>
+      <tag id="60"/>
+      <tag id="79"/>
+      <tag id="661"/>
+      <tag id="54"/>
+      <tag id="460"/>
+      <tag id="167"/>
+      <tag id="461"/>
+      <tag id="168"/>
+      <tag id="126"/>
+      <tag id="779"/>
+      <tag id="169"/>
+      <tag id="170"/>
+      <tag id="171"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="AW" name="AssignmentReport">
+      <tag id="833"/>
+      <tag id="832"/>
+      <tag id="912"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="15"/>
+      <tag id="834"/>
+      <tag id="730"/>
+      <tag id="731"/>
+      <tag id="732"/>
+      <tag id="432"/>
+      <tag id="744"/>
+      <tag id="745"/>
+      <tag id="746"/>
+      <tag id="747"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="715"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="PositionQty"/>
+      <groupRef name="PositionAmountData"/>
+    </message>
+    <message msgType="AX" name="CollateralRequest">
+      <tag id="894"/>
+      <tag id="895"/>
+      <tag id="60"/>
+      <tag id="126"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="64"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="15"/>
+      <tag id="899"/>
+      <tag id="900"/>
+      <tag id="901"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="159"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="715"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="TrdRegTimestamps"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="AY" name="CollateralAssignment">
+      <tag id="902"/>
+      <tag id="894"/>
+      <tag id="895"/>
+      <tag id="903"/>
+      <tag id="907"/>
+      <tag id="60"/>
+      <tag id="126"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="64"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="15"/>
+      <tag id="899"/>
+      <tag id="900"/>
+      <tag id="901"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="159"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="715"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="TrdRegTimestamps"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="AZ" name="CollateralResponse">
+      <tag id="904"/>
+      <tag id="902"/>
+      <tag id="894"/>
+      <tag id="895"/>
+      <tag id="903"/>
+      <tag id="905"/>
+      <tag id="906"/>
+      <tag id="60"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="64"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="15"/>
+      <tag id="899"/>
+      <tag id="900"/>
+      <tag id="901"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="159"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="TrdRegTimestamps"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="B" name="News">
+      <tag id="42"/>
+      <tag id="61"/>
+      <tag id="148"/>
+      <tag id="358"/>
+      <tag id="359"/>
+      <tag id="149"/>
+      <tag id="95"/>
+      <tag id="96"/>
+    </message>
+    <message msgType="BA" name="CollateralReport">
+      <tag id="908"/>
+      <tag id="909"/>
+      <tag id="910"/>
+      <tag id="911"/>
+      <tag id="912"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="64"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="15"/>
+      <tag id="899"/>
+      <tag id="900"/>
+      <tag id="901"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="159"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="715"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="TrdRegTimestamps"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="BB" name="CollateralInquiry">
+      <tag id="909"/>
+      <tag id="263"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="64"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="15"/>
+      <tag id="899"/>
+      <tag id="900"/>
+      <tag id="901"/>
+      <tag id="54"/>
+      <tag id="44"/>
+      <tag id="423"/>
+      <tag id="159"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="715"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="TrdRegTimestamps"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="BC" name="NetworkCounterpartySystemStatusRequest">
+      <tag id="935"/>
+      <tag id="933"/>
+    </message>
+    <message msgType="BD" name="NetworkCounterpartySystemStatusResponse">
+      <tag id="937"/>
+      <tag id="933"/>
+      <tag id="932"/>
+      <tag id="934"/>
+    </message>
+    <message msgType="BE" name="UserRequest">
+      <tag id="923"/>
+      <tag id="924"/>
+      <tag id="553"/>
+      <tag id="554"/>
+      <tag id="925"/>
+      <tag id="95"/>
+      <tag id="96"/>
+    </message>
+    <message msgType="BF" name="UserResponse">
+      <tag id="923"/>
+      <tag id="553"/>
+      <tag id="926"/>
+      <tag id="927"/>
+    </message>
+    <message msgType="BG" name="CollateralInquiryAck">
+      <tag id="909"/>
+      <tag id="945"/>
+      <tag id="946"/>
+      <tag id="911"/>
+      <tag id="1"/>
+      <tag id="581"/>
+      <tag id="11"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="526"/>
+      <tag id="64"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="15"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="716"/>
+      <tag id="717"/>
+      <tag id="715"/>
+      <tag id="725"/>
+      <tag id="726"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="BH" name="ConfirmationRequest">
+      <tag id="859"/>
+      <tag id="773"/>
+      <tag id="70"/>
+      <tag id="793"/>
+      <tag id="467"/>
+      <tag id="60"/>
+      <tag id="79"/>
+      <tag id="661"/>
+      <tag id="798"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="C" name="Email">
+      <tag id="164"/>
+      <tag id="94"/>
+      <tag id="42"/>
+      <tag id="147"/>
+      <tag id="356"/>
+      <tag id="357"/>
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="95"/>
+      <tag id="96"/>
+    </message>
+    <message msgType="D" name="NewOrderSingle">
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="583"/>
+      <tag id="229"/>
+      <tag id="75"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="589"/>
+      <tag id="590"/>
+      <tag id="591"/>
+      <tag id="70"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="544"/>
+      <tag id="635"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="81"/>
+      <tag id="140"/>
+      <tag id="54"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="854"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="528"/>
+      <tag id="529"/>
+      <tag id="582"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="775"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="640"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="210"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="E" name="NewOrderList">
+      <tag id="66"/>
+      <tag id="390"/>
+      <tag id="391"/>
+      <tag id="414"/>
+      <tag id="394"/>
+      <tag id="415"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="433"/>
+      <tag id="69"/>
+      <tag id="352"/>
+      <tag id="353"/>
+      <tag id="765"/>
+      <tag id="766"/>
+      <tag id="767"/>
+      <tag id="68"/>
+      <tag id="893"/>
+    </message>
+    <message msgType="F" name="OrderCancelRequest">
+      <tag id="41"/>
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="583"/>
+      <tag id="66"/>
+      <tag id="586"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="54"/>
+      <tag id="60"/>
+      <tag id="376"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="G" name="OrderCancelReplaceRequest">
+      <tag id="37"/>
+      <tag id="229"/>
+      <tag id="75"/>
+      <tag id="41"/>
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="583"/>
+      <tag id="66"/>
+      <tag id="586"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="589"/>
+      <tag id="590"/>
+      <tag id="591"/>
+      <tag id="70"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="544"/>
+      <tag id="635"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="54"/>
+      <tag id="60"/>
+      <tag id="854"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="376"/>
+      <tag id="377"/>
+      <tag id="15"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="528"/>
+      <tag id="529"/>
+      <tag id="582"/>
+      <tag id="121"/>
+      <tag id="120"/>
+      <tag id="775"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="640"/>
+      <tag id="77"/>
+      <tag id="203"/>
+      <tag id="210"/>
+      <tag id="114"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="H" name="OrderStatusRequest">
+      <tag id="37"/>
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="583"/>
+      <tag id="790"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="54"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="J" name="AllocationInstruction">
+      <tag id="70"/>
+      <tag id="71"/>
+      <tag id="626"/>
+      <tag id="793"/>
+      <tag id="72"/>
+      <tag id="796"/>
+      <tag id="808"/>
+      <tag id="196"/>
+      <tag id="197"/>
+      <tag id="466"/>
+      <tag id="857"/>
+      <tag id="570"/>
+      <tag id="700"/>
+      <tag id="574"/>
+      <tag id="54"/>
+      <tag id="53"/>
+      <tag id="854"/>
+      <tag id="30"/>
+      <tag id="229"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="423"/>
+      <tag id="6"/>
+      <tag id="860"/>
+      <tag id="15"/>
+      <tag id="74"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="775"/>
+      <tag id="381"/>
+      <tag id="238"/>
+      <tag id="237"/>
+      <tag id="118"/>
+      <tag id="77"/>
+      <tag id="754"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="157"/>
+      <tag id="158"/>
+      <tag id="159"/>
+      <tag id="540"/>
+      <tag id="738"/>
+      <tag id="920"/>
+      <tag id="921"/>
+      <tag id="922"/>
+      <tag id="650"/>
+      <tag id="892"/>
+      <tag id="893"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="K" name="ListCancelRequest">
+      <tag id="66"/>
+      <tag id="60"/>
+      <tag id="229"/>
+      <tag id="75"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="L" name="ListExecute">
+      <tag id="66"/>
+      <tag id="391"/>
+      <tag id="390"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="M" name="ListStatusRequest">
+      <tag id="66"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="N" name="ListStatus">
+      <tag id="66"/>
+      <tag id="429"/>
+      <tag id="82"/>
+      <tag id="431"/>
+      <tag id="83"/>
+      <tag id="444"/>
+      <tag id="445"/>
+      <tag id="446"/>
+      <tag id="60"/>
+      <tag id="68"/>
+      <tag id="893"/>
+    </message>
+    <message msgType="P" name="AllocationInstructionAck">
+      <tag id="70"/>
+      <tag id="793"/>
+      <tag id="75"/>
+      <tag id="60"/>
+      <tag id="87"/>
+      <tag id="88"/>
+      <tag id="626"/>
+      <tag id="808"/>
+      <tag id="573"/>
+      <tag id="460"/>
+      <tag id="167"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="Q" name="DontKnowTrade">
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="17"/>
+      <tag id="127"/>
+      <tag id="54"/>
+      <tag id="32"/>
+      <tag id="31"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="R" name="QuoteRequest">
+      <tag id="131"/>
+      <tag id="644"/>
+      <tag id="11"/>
+      <tag id="528"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="S" name="Quote">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="693"/>
+      <tag id="537"/>
+      <tag id="301"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="54"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="193"/>
+      <tag id="192"/>
+      <tag id="15"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="132"/>
+      <tag id="133"/>
+      <tag id="645"/>
+      <tag id="646"/>
+      <tag id="647"/>
+      <tag id="134"/>
+      <tag id="648"/>
+      <tag id="135"/>
+      <tag id="62"/>
+      <tag id="188"/>
+      <tag id="190"/>
+      <tag id="189"/>
+      <tag id="191"/>
+      <tag id="631"/>
+      <tag id="632"/>
+      <tag id="633"/>
+      <tag id="634"/>
+      <tag id="60"/>
+      <tag id="40"/>
+      <tag id="642"/>
+      <tag id="643"/>
+      <tag id="656"/>
+      <tag id="657"/>
+      <tag id="156"/>
+      <tag id="13"/>
+      <tag id="12"/>
+      <tag id="582"/>
+      <tag id="100"/>
+      <tag id="528"/>
+      <tag id="423"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="T" name="SettlementInstructions">
+      <tag id="777"/>
+      <tag id="791"/>
+      <tag id="160"/>
+      <tag id="792"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="11"/>
+      <tag id="60"/>
+    </message>
+    <message msgType="V" name="MarketDataRequest">
+      <tag id="262"/>
+      <tag id="263"/>
+      <tag id="264"/>
+      <tag id="265"/>
+      <tag id="266"/>
+      <tag id="286"/>
+      <tag id="546"/>
+      <tag id="547"/>
+      <tag id="815"/>
+      <tag id="812"/>
+    </message>
+    <message msgType="W" name="MarketDataSnapshotFullRefresh">
+      <tag id="262"/>
+      <tag id="291"/>
+      <tag id="292"/>
+      <tag id="451"/>
+      <tag id="813"/>
+      <tag id="814"/>
+    </message>
+    <message msgType="X" name="MarketDataIncrementalRefresh">
+      <tag id="262"/>
+      <tag id="813"/>
+      <tag id="814"/>
+    </message>
+    <message msgType="Y" name="MarketDataRequestReject">
+      <tag id="262"/>
+      <tag id="281"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="Z" name="QuoteCancel">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="298"/>
+      <tag id="301"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="a" name="QuoteStatusRequest">
+      <tag id="649"/>
+      <tag id="117"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="263"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="b" name="MassQuoteAcknowledgement">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="297"/>
+      <tag id="300"/>
+      <tag id="301"/>
+      <tag id="537"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="c" name="SecurityDefinitionRequest">
+      <tag id="320"/>
+      <tag id="321"/>
+      <tag id="15"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="827"/>
+      <tag id="263"/>
+    </message>
+    <message msgType="d" name="SecurityDefinition">
+      <tag id="320"/>
+      <tag id="322"/>
+      <tag id="323"/>
+      <tag id="15"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="827"/>
+      <tag id="561"/>
+      <tag id="562"/>
+    </message>
+    <message msgType="e" name="SecurityStatusRequest">
+      <tag id="324"/>
+      <tag id="15"/>
+      <tag id="263"/>
+      <tag id="336"/>
+      <tag id="625"/>
+    </message>
+    <message msgType="f" name="SecurityStatus">
+      <tag id="324"/>
+      <tag id="15"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="325"/>
+      <tag id="326"/>
+      <tag id="291"/>
+      <tag id="292"/>
+      <tag id="327"/>
+      <tag id="328"/>
+      <tag id="329"/>
+      <tag id="330"/>
+      <tag id="331"/>
+      <tag id="332"/>
+      <tag id="333"/>
+      <tag id="31"/>
+      <tag id="60"/>
+      <tag id="334"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="g" name="TradingSessionStatusRequest">
+      <tag id="335"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="338"/>
+      <tag id="339"/>
+      <tag id="263"/>
+    </message>
+    <message msgType="h" name="TradingSessionStatus">
+      <tag id="335"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="338"/>
+      <tag id="339"/>
+      <tag id="325"/>
+      <tag id="340"/>
+      <tag id="567"/>
+      <tag id="341"/>
+      <tag id="342"/>
+      <tag id="343"/>
+      <tag id="344"/>
+      <tag id="345"/>
+      <tag id="387"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="i" name="MassQuote">
+      <tag id="131"/>
+      <tag id="117"/>
+      <tag id="537"/>
+      <tag id="301"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="581"/>
+      <tag id="293"/>
+      <tag id="294"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="j" name="BusinessMessageReject">
+      <tag id="45"/>
+      <tag id="372"/>
+      <tag id="379"/>
+      <tag id="380"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="k" name="BidRequest">
+      <tag id="390"/>
+      <tag id="391"/>
+      <tag id="374"/>
+      <tag id="392"/>
+      <tag id="393"/>
+      <tag id="394"/>
+      <tag id="395"/>
+      <tag id="15"/>
+      <tag id="396"/>
+      <tag id="397"/>
+      <tag id="409"/>
+      <tag id="410"/>
+      <tag id="411"/>
+      <tag id="412"/>
+      <tag id="413"/>
+      <tag id="414"/>
+      <tag id="415"/>
+      <tag id="416"/>
+      <tag id="121"/>
+      <tag id="417"/>
+      <tag id="75"/>
+      <tag id="418"/>
+      <tag id="419"/>
+      <tag id="443"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="l" name="BidResponse">
+      <tag id="390"/>
+      <tag id="391"/>
+    </message>
+    <message msgType="m" name="ListStrikePrice">
+      <tag id="66"/>
+      <tag id="422"/>
+      <tag id="893"/>
+    </message>
+    <message msgType="n" name="XMLnonFIX"/>
+    <message msgType="o" name="RegistrationInstructions">
+      <tag id="513"/>
+      <tag id="514"/>
+      <tag id="508"/>
+      <tag id="11"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="493"/>
+      <tag id="495"/>
+      <tag id="517"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="p" name="RegistrationInstructionsResponse">
+      <tag id="513"/>
+      <tag id="514"/>
+      <tag id="508"/>
+      <tag id="11"/>
+      <tag id="1"/>
+      <tag id="660"/>
+      <tag id="506"/>
+      <tag id="507"/>
+      <tag id="496"/>
+      <groupRef name="Parties"/>
+    </message>
+    <message msgType="q" name="OrderMassCancelRequest">
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="530"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="54"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="r" name="OrderMassCancelReport">
+      <tag id="11"/>
+      <tag id="526"/>
+      <tag id="37"/>
+      <tag id="198"/>
+      <tag id="530"/>
+      <tag id="531"/>
+      <tag id="532"/>
+      <tag id="533"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="54"/>
+      <tag id="60"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+    </message>
+    <message msgType="s" name="NewOrderCross">
+      <tag id="548"/>
+      <tag id="549"/>
+      <tag id="550"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="81"/>
+      <tag id="140"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="210"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="t" name="CrossOrderCancelReplaceRequest">
+      <tag id="37"/>
+      <tag id="548"/>
+      <tag id="551"/>
+      <tag id="549"/>
+      <tag id="550"/>
+      <tag id="63"/>
+      <tag id="64"/>
+      <tag id="21"/>
+      <tag id="18"/>
+      <tag id="110"/>
+      <tag id="111"/>
+      <tag id="100"/>
+      <tag id="81"/>
+      <tag id="140"/>
+      <tag id="114"/>
+      <tag id="60"/>
+      <tag id="40"/>
+      <tag id="423"/>
+      <tag id="44"/>
+      <tag id="99"/>
+      <tag id="15"/>
+      <tag id="376"/>
+      <tag id="23"/>
+      <tag id="117"/>
+      <tag id="59"/>
+      <tag id="168"/>
+      <tag id="432"/>
+      <tag id="126"/>
+      <tag id="427"/>
+      <tag id="210"/>
+      <tag id="847"/>
+      <tag id="848"/>
+      <tag id="849"/>
+      <tag id="480"/>
+      <tag id="481"/>
+      <tag id="513"/>
+      <tag id="494"/>
+      <groupRef name="Stipulations"/>
+    </message>
+    <message msgType="u" name="CrossOrderCancelRequest">
+      <tag id="37"/>
+      <tag id="548"/>
+      <tag id="551"/>
+      <tag id="549"/>
+      <tag id="550"/>
+      <tag id="60"/>
+    </message>
+    <message msgType="v" name="SecurityTypeRequest">
+      <tag id="320"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="460"/>
+      <tag id="167"/>
+      <tag id="762"/>
+    </message>
+    <message msgType="w" name="SecurityTypes">
+      <tag id="320"/>
+      <tag id="322"/>
+      <tag id="323"/>
+      <tag id="557"/>
+      <tag id="893"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="263"/>
+    </message>
+    <message msgType="x" name="SecurityListRequest">
+      <tag id="320"/>
+      <tag id="559"/>
+      <tag id="15"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="263"/>
+    </message>
+    <message msgType="y" name="SecurityList">
+      <tag id="320"/>
+      <tag id="322"/>
+      <tag id="560"/>
+      <tag id="393"/>
+      <tag id="893"/>
+    </message>
+    <message msgType="z" name="DerivativeSecurityListRequest">
+      <tag id="320"/>
+      <tag id="559"/>
+      <tag id="762"/>
+      <tag id="15"/>
+      <tag id="58"/>
+      <tag id="354"/>
+      <tag id="355"/>
+      <tag id="336"/>
+      <tag id="625"/>
+      <tag id="263"/>
+    </message>
+  </messages>
+</fix-dictionary>

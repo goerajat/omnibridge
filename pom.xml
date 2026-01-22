@@ -13,6 +13,7 @@
     <description>High-performance FIX protocol engine with non-blocking I/O and shared memory persistence</description>
 
     <modules>
+        <module>fix-dictionary</module>
         <module>fix-config</module>
         <module>fix-network-io</module>
         <module>fix-persistence</module>
@@ -45,6 +46,11 @@
     <dependencyManagement>
         <dependencies>
             <!-- Internal modules -->
+            <dependency>
+                <groupId>com.fixengine</groupId>
+                <artifactId>fix-dictionary</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
                 <artifactId>fix-config</artifactId>

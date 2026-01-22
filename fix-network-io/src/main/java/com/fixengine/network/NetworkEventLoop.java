@@ -1,8 +1,10 @@
 package com.fixengine.network;
 
-import com.fixengine.config.NetworkConfig;
+import com.fixengine.config.Component;
+import com.fixengine.config.ComponentState;
 import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.network.affinity.CpuAffinity;
+import com.fixengine.network.config.NetworkConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +31,7 @@ import java.util.function.Consumer;
  *   <li><b>Busy spin mode</b>: Uses selectNow() for minimal latency at cost of CPU usage</li>
  * </ul>
  */
-public class NetworkEventLoop implements Runnable, AutoCloseable {
+public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
 
     private static final Logger log = LoggerFactory.getLogger(NetworkEventLoop.class);
 
@@ -48,13 +50,14 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
     private final Queue<Runnable> taskQueue;
     private final AtomicBoolean running;
     private final AtomicBoolean started;
+    private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
     // Reusable consumer to avoid garbage in busy spin mode
     private final Consumer<SelectionKey> keyProcessor;
 
     private Thread eventLoopThread;
     private NetworkHandler defaultHandler;
-    private ComponentProvider<?, ?, ?> componentProvider;
+    private ComponentProvider componentProvider;
 
     /**
      * Create a new NetworkEventLoop with default settings.
@@ -103,7 +106,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
      * @param provider the component provider (may be null)
      * @throws IOException if unable to open the selector
      */
-    public NetworkEventLoop(NetworkConfig config, ComponentProvider<?, ?, ?> provider) throws IOException {
+    public NetworkEventLoop(NetworkConfig config, ComponentProvider provider) throws IOException {
         this(config.getName(),
              config.getCpuAffinity(),
              config.getReadBufferSize(),
@@ -157,14 +160,14 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
     /**
      * Get the component provider.
      */
-    public ComponentProvider<?, ?, ?> getComponentProvider() {
+    public ComponentProvider getComponentProvider() {
         return componentProvider;
     }
 
     /**
      * Set the component provider.
      */
-    public void setComponentProvider(ComponentProvider<?, ?, ?> provider) {
+    public void setComponentProvider(ComponentProvider provider) {
         this.componentProvider = provider;
     }
 
@@ -664,6 +667,66 @@ public class NetworkEventLoop implements Runnable, AutoCloseable {
     @Override
     public void close() {
         stop();
+    }
+
+    // ==================== Component Interface ====================
+
+    @Override
+    public void initialize() throws Exception {
+        if (componentState != ComponentState.UNINITIALIZED) {
+            throw new IllegalStateException("Cannot initialize from state: " + componentState);
+        }
+        componentState = ComponentState.INITIALIZED;
+        log.debug("[{}] Component initialized", name);
+    }
+
+    @Override
+    public void startActive() throws Exception {
+        if (componentState != ComponentState.INITIALIZED) {
+            throw new IllegalStateException("Cannot start active from state: " + componentState);
+        }
+        start();
+        componentState = ComponentState.ACTIVE;
+    }
+
+    @Override
+    public void startStandby() throws Exception {
+        if (componentState != ComponentState.INITIALIZED) {
+            throw new IllegalStateException("Cannot start standby from state: " + componentState);
+        }
+        // In standby mode, initialize but don't start the event loop
+        componentState = ComponentState.STANDBY;
+        log.info("[{}] Started in STANDBY mode", name);
+    }
+
+    @Override
+    public void becomeActive() throws Exception {
+        if (componentState != ComponentState.STANDBY) {
+            throw new IllegalStateException("Cannot become active from state: " + componentState);
+        }
+        start();
+        componentState = ComponentState.ACTIVE;
+        log.info("[{}] Transitioned to ACTIVE mode", name);
+    }
+
+    @Override
+    public void becomeStandby() throws Exception {
+        if (componentState != ComponentState.ACTIVE) {
+            throw new IllegalStateException("Cannot become standby from state: " + componentState);
+        }
+        stop();
+        componentState = ComponentState.STANDBY;
+        log.info("[{}] Transitioned to STANDBY mode", name);
+    }
+
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public ComponentState getState() {
+        return componentState;
     }
 
     /**

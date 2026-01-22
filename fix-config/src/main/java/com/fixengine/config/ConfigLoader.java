@@ -27,7 +27,6 @@ import java.util.List;
  * <pre>{@code
  * // Load with custom config files
  * Config config = ConfigLoader.load("base.conf", "override.conf");
- * FixEngineConfig engineConfig = FixEngineConfig.fromConfig(config);
  *
  * // Or use the builder
  * Config config = ConfigLoader.builder()
@@ -71,86 +70,6 @@ public final class ConfigLoader {
      */
     public static Config load(List<String> configFiles) {
         return builder().addFiles(configFiles).build();
-    }
-
-    /**
-     * Load FixEngineConfig directly from config files.
-     *
-     * @param configFiles paths to config files
-     * @return parsed FixEngineConfig
-     */
-    public static FixEngineConfig loadEngineConfig(String... configFiles) {
-        return FixEngineConfig.fromConfig(load(configFiles));
-    }
-
-    /**
-     * Load FixEngineConfig directly from config files.
-     *
-     * @param configFiles list of paths to config files
-     * @return parsed FixEngineConfig
-     */
-    public static FixEngineConfig loadEngineConfig(List<String> configFiles) {
-        return FixEngineConfig.fromConfig(load(configFiles));
-    }
-
-    /**
-     * Load NetworkConfig from Typesafe Config.
-     *
-     * @param config the root config
-     * @return parsed NetworkConfig
-     */
-    public static NetworkConfig loadNetworkConfig(Config config) {
-        return NetworkConfig.fromConfig(config.getConfig("network"));
-    }
-
-    /**
-     * Load NetworkConfig directly from config files.
-     *
-     * @param configFiles paths to config files
-     * @return parsed NetworkConfig
-     */
-    public static NetworkConfig loadNetworkConfig(String... configFiles) {
-        return loadNetworkConfig(load(configFiles));
-    }
-
-    /**
-     * Load NetworkConfig directly from config files.
-     *
-     * @param configFiles list of paths to config files
-     * @return parsed NetworkConfig
-     */
-    public static NetworkConfig loadNetworkConfig(List<String> configFiles) {
-        return loadNetworkConfig(load(configFiles));
-    }
-
-    /**
-     * Load PersistenceConfig from Typesafe Config.
-     *
-     * @param config the root config
-     * @return parsed PersistenceConfig
-     */
-    public static PersistenceConfig loadPersistenceConfig(Config config) {
-        return PersistenceConfig.fromConfig(config.getConfig("persistence"));
-    }
-
-    /**
-     * Load PersistenceConfig directly from config files.
-     *
-     * @param configFiles paths to config files
-     * @return parsed PersistenceConfig
-     */
-    public static PersistenceConfig loadPersistenceConfig(String... configFiles) {
-        return loadPersistenceConfig(load(configFiles));
-    }
-
-    /**
-     * Load PersistenceConfig directly from config files.
-     *
-     * @param configFiles list of paths to config files
-     * @return parsed PersistenceConfig
-     */
-    public static PersistenceConfig loadPersistenceConfig(List<String> configFiles) {
-        return loadPersistenceConfig(load(configFiles));
     }
 
     /**

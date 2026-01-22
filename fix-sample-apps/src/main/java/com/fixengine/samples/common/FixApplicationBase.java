@@ -2,13 +2,17 @@ package com.fixengine.samples.common;
 
 import com.fixengine.config.provider.DefaultComponentProvider;
 import com.fixengine.engine.FixEngine;
+import com.fixengine.engine.config.FixEngineConfig;
 import com.fixengine.engine.session.FixSession;
 import com.fixengine.engine.session.MessageListener;
 import com.fixengine.engine.session.SessionStateListener;
 import com.fixengine.network.NetworkEventLoop;
+import com.fixengine.network.config.NetworkConfig;
 import com.fixengine.persistence.FixLogStore;
+import com.fixengine.persistence.config.PersistenceConfig;
 import com.fixengine.persistence.memory.MemoryMappedFixLogStore;
 import ch.qos.logback.classic.Level;
+import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,20 +44,32 @@ public abstract class FixApplicationBase implements Callable<Integer> {
             List<String> configFiles = getConfigFiles();
             log.info("Loading configuration from: {}", configFiles);
 
-            // Create and initialize provider
+            // Create provider
             provider = DefaultComponentProvider.create(configFiles);
+            Config config = provider.getConfig();
 
-            // Register standard component factories
-            provider.withNetworkFactory(config -> new NetworkEventLoop(config, provider))
-                    .withPersistenceFactory(config -> new MemoryMappedFixLogStore(config, provider))
-                    .withEngineFactory((config, networkLoop, persistence) ->
-                            new FixEngine(config, (NetworkEventLoop) networkLoop, (FixLogStore) persistence));
+            // Register NetworkEventLoop factory
+            provider.register(NetworkEventLoop.class, (name, cfg, p) -> {
+                NetworkConfig networkConfig = NetworkConfig.fromConfig(cfg.getConfig(name==null?"network":"network." + name));
+                return new NetworkEventLoop(networkConfig, p);
+            });
 
-            // Initialize components
-            provider.initialize();
+            // Register FixLogStore factory if persistence is enabled
+            if (config.hasPath("persistence") && config.getBoolean("persistence.enabled")) {
+                provider.register(FixLogStore.class, (name, cfg, p) -> {
+                    PersistenceConfig persistenceConfig = PersistenceConfig.fromConfig(cfg.getConfig(name==null?"persistence":"persistence." + name));
+                    return new MemoryMappedFixLogStore(persistenceConfig, p);
+                });
+            }
 
-            // Get engine and create sessions
-            FixEngine engine = (FixEngine) provider.getEngineProvider().get();
+            // Register FixEngine factory
+            provider.register(FixEngine.class, (name, cfg, p) -> {
+                FixEngineConfig engineConfig = FixEngineConfig.fromConfig(cfg);
+                return new FixEngine(engineConfig, p);
+            });
+
+            // Get engine (this triggers creation of all dependencies)
+            FixEngine engine = provider.getComponent(FixEngine.class);
             List<FixSession> sessions = engine.createSessionsFromConfig();
 
             if (sessions.isEmpty()) {
@@ -71,7 +87,8 @@ public abstract class FixApplicationBase implements Callable<Integer> {
                 shutdown();
             }));
 
-            // Start provider (starts network loop and engine)
+            // Initialize and start components
+            provider.initialize();
             provider.start();
 
             // Run application-specific logic

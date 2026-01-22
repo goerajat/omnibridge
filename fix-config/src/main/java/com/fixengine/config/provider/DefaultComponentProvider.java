@@ -5,42 +5,54 @@ import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Default implementation of ComponentProvider.
+ * Default implementation of ComponentProvider with ComponentRegistry support.
  *
- * <p>This provider uses factory interfaces to create components, allowing
- * the actual component implementations to be defined in other modules.</p>
+ * <p>This provider manages component lifecycle and provides dependency injection
+ * through the ComponentProvider interface passed to component factories.</p>
+ *
+ * <p>Example usage:</p>
+ * <pre>{@code
+ * DefaultComponentProvider provider = DefaultComponentProvider.create(configFiles);
+ *
+ * // Register component factories
+ * provider.register(NetworkEventLoop.class, (name, config, p) ->
+ *     new NetworkEventLoop(NetworkConfig.fromConfig(config), p));
+ * provider.register(FixEngine.class, (name, config, p) ->
+ *     new FixEngine(FixEngineConfig.fromConfig(config), p));
+ *
+ * // Initialize and start
+ * provider.initialize();
+ * provider.start();
+ *
+ * // Get components
+ * NetworkEventLoop eventLoop = provider.getComponent(NetworkEventLoop.class);
+ * }</pre>
  */
-public class DefaultComponentProvider implements ComponentProvider<Object, Object, Object> {
+public class DefaultComponentProvider implements ComponentProvider, ComponentRegistry, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultComponentProvider.class);
 
-    private final Config rawConfig;
-    private final NetworkConfig networkConfig;
-    private final PersistenceConfig persistenceConfig;
-    private final FixEngineConfig engineConfig;
-
-    private NetworkEventLoopProvider<Object> networkProvider;
-    private PersistenceStoreProvider<Object> persistenceProvider;
-    private FixEngineProvider<Object> fixEngineProvider;
-
+    private final Config config;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    // Factory interfaces for component creation
-    private NetworkEventLoopFactory networkFactory;
-    private PersistenceStoreFactory persistenceFactory;
-    private FixEngineFactory fixEngineFactory;
+    // Component factories keyed by type
+    private final Map<Class<? extends Component>, ComponentFactory<?>> factories = new LinkedHashMap<>();
 
-    private DefaultComponentProvider(Config rawConfig, NetworkConfig networkConfig,
-                                     PersistenceConfig persistenceConfig, FixEngineConfig engineConfig) {
-        this.rawConfig = rawConfig;
-        this.networkConfig = networkConfig;
-        this.persistenceConfig = persistenceConfig;
-        this.engineConfig = engineConfig;
+    // Component instances keyed by "type" or "type:name"
+    private final Map<String, Component> instances = new ConcurrentHashMap<>();
+
+    // Lifecycle manager for all components
+    private final LifeCycleComponent lifeCycle;
+
+    private DefaultComponentProvider(Config config) {
+        this.config = config;
+        this.lifeCycle = new LifeCycleComponent("default-provider");
     }
 
     /**
@@ -48,216 +60,162 @@ public class DefaultComponentProvider implements ComponentProvider<Object, Objec
      */
     public static DefaultComponentProvider create(List<String> configFiles) {
         Config config = ConfigLoader.load(configFiles);
-        NetworkConfig networkConfig = ConfigLoader.loadNetworkConfig(config);
-        PersistenceConfig persistenceConfig = ConfigLoader.loadPersistenceConfig(config);
-        FixEngineConfig engineConfig = FixEngineConfig.fromConfig(config);
-        return new DefaultComponentProvider(config, networkConfig, persistenceConfig, engineConfig);
+        return new DefaultComponentProvider(config);
     }
 
     /**
-     * Create a provider from pre-built configs.
+     * Create a provider from a Config object.
      */
-    public static DefaultComponentProvider create(NetworkConfig networkConfig,
-                                                  PersistenceConfig persistenceConfig,
-                                                  FixEngineConfig engineConfig) {
-        return new DefaultComponentProvider(null, networkConfig, persistenceConfig, engineConfig);
+    public static DefaultComponentProvider create(Config config) {
+        return new DefaultComponentProvider(config);
     }
 
     /**
-     * Create a provider from a pre-built engine config with default network and persistence.
+     * Create a provider with default configuration.
      */
-    public static DefaultComponentProvider create(FixEngineConfig engineConfig) {
-        return new DefaultComponentProvider(null,
-                NetworkConfig.builder().build(),
-                PersistenceConfig.builder().build(),
-                engineConfig);
-    }
-
-    // ==================== Factory Registration ====================
-
-    /**
-     * Register a factory for creating NetworkEventLoop instances.
-     */
-    public DefaultComponentProvider withNetworkFactory(NetworkEventLoopFactory factory) {
-        this.networkFactory = factory;
-        return this;
-    }
-
-    /**
-     * Register a factory for creating PersistenceStore instances.
-     */
-    public DefaultComponentProvider withPersistenceFactory(PersistenceStoreFactory factory) {
-        this.persistenceFactory = factory;
-        return this;
-    }
-
-    /**
-     * Register a factory for creating FixEngine instances.
-     */
-    public DefaultComponentProvider withEngineFactory(FixEngineFactory factory) {
-        this.fixEngineFactory = factory;
-        return this;
+    public static DefaultComponentProvider create() {
+        return new DefaultComponentProvider(ConfigLoader.load());
     }
 
     // ==================== ComponentProvider Implementation ====================
 
     @Override
-    public Config getRawConfig() {
-        return rawConfig;
+    public Config getConfig() {
+        return config;
     }
 
     @Override
-    public FixEngineConfig getEngineConfig() {
-        return engineConfig;
+    public <T extends Component> T getComponent(Class<T> type) {
+        return getComponent(null, type);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T extends Component> T getComponent(String name, Class<T> type) {
+        String key = makeKey(type, name);
+
+        // Check if already created
+        Component instance = instances.get(key);
+        if (instance != null) {
+            return type.cast(instance);
+        }
+
+        // Get factory for this type
+        ComponentFactory<?> factory = factories.get(type);
+        if (factory == null) {
+            throw new IllegalArgumentException("No factory registered for type: " + type.getName());
+        }
+
+        // Create instance
+        synchronized (this) {
+            // Double-check after acquiring lock
+            instance = instances.get(key);
+            if (instance != null) {
+                return type.cast(instance);
+            }
+
+            try {
+                instance = ((ComponentFactory<Component>) factory).create(name, config, this);
+                instances.put(key, instance);
+                lifeCycle.addComponent(instance);
+                log.debug("Created component: {} (type={})", key, type.getSimpleName());
+                return type.cast(instance);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to create component: " + key, e);
+            }
+        }
+    }
+
+    // ==================== ComponentRegistry Implementation ====================
+
+    @Override
+    public <T extends Component> void register(Class<T> type, ComponentFactory<T> factory) {
+        if (initialized.get()) {
+            throw new IllegalStateException("Cannot register components after initialization");
+        }
+        factories.put(type, factory);
+        log.debug("Registered factory for type: {}", type.getSimpleName());
+    }
+
+    @Override
+    public boolean hasFactory(Class<? extends Component> type) {
+        return factories.containsKey(type);
+    }
+
+    @Override
+    public Set<Class<? extends Component>> getRegisteredTypes() {
+        return Collections.unmodifiableSet(factories.keySet());
+    }
+
+    // ==================== Lifecycle Management ====================
+
+    /**
+     * Get the lifecycle component for coordinated lifecycle management.
+     */
+    public LifeCycleComponent getLifeCycle() {
+        return lifeCycle;
     }
 
     /**
-     * Get the network configuration.
+     * Initialize all registered components.
      */
-    public NetworkConfig getNetworkConfig() {
-        return networkConfig;
-    }
-
-    /**
-     * Get the persistence configuration.
-     */
-    public PersistenceConfig getPersistenceConfig() {
-        return persistenceConfig;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public NetworkEventLoopProvider<Object> getNetworkProvider() {
-        if (networkProvider == null) {
-            if (networkFactory == null) {
-                throw new IllegalStateException("NetworkEventLoopFactory not registered. Call withNetworkFactory() first.");
-            }
-            networkProvider = new DefaultNetworkEventLoopProvider(networkConfig, networkFactory);
-        }
-        return networkProvider;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public PersistenceStoreProvider<Object> getPersistenceProvider() {
-        if (persistenceProvider == null) {
-            if (persistenceFactory == null) {
-                throw new IllegalStateException("PersistenceStoreFactory not registered. Call withPersistenceFactory() first.");
-            }
-            persistenceProvider = new DefaultPersistenceStoreProvider(persistenceConfig, persistenceFactory);
-        }
-        return persistenceProvider;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public FixEngineProvider<Object> getEngineProvider() {
-        if (fixEngineProvider == null) {
-            if (fixEngineFactory == null) {
-                throw new IllegalStateException("FixEngineFactory not registered. Call withEngineFactory() first.");
-            }
-            fixEngineProvider = new DefaultFixEngineProvider(
-                    engineConfig,
-                    getNetworkProvider(),
-                    getPersistenceProvider(),
-                    fixEngineFactory
-            );
-        }
-        return fixEngineProvider;
-    }
-
-    @Override
     public void initialize() throws Exception {
         if (initialized.compareAndSet(false, true)) {
-            log.info("Initializing FIX engine components");
+            log.info("Initializing components");
 
-            // Create network event loop
-            if (networkProvider != null || networkFactory != null) {
-                getNetworkProvider().get();
-                log.info("Network event loop created");
+            // Initialize all registered components via lifecycle
+            if (!instances.isEmpty()) {
+                lifeCycle.initialize();
             }
 
-            // Create persistence store
-            if ((persistenceProvider != null || persistenceFactory != null) && persistenceConfig.isEnabled()) {
-                getPersistenceProvider().get();
-                log.info("Persistence store created");
-            }
-
-            // Create FIX engine
-            if (fixEngineProvider != null || fixEngineFactory != null) {
-                getEngineProvider().get();
-                log.info("FIX engine created");
-            }
-
-            log.info("FIX engine components initialized");
+            log.info("Components initialized");
         }
     }
 
-    @Override
+    /**
+     * Start all components.
+     */
     public void start() throws Exception {
         if (!initialized.get()) {
             initialize();
         }
 
         if (running.compareAndSet(false, true)) {
-            log.info("Starting FIX engine components");
+            log.info("Starting components");
 
-            // Start network event loop
-            if (networkProvider != null) {
-                networkProvider.start();
+            if (lifeCycle.getState() == ComponentState.INITIALIZED) {
+                lifeCycle.startActive();
             }
 
-            // Start FIX engine
-            if (fixEngineProvider != null) {
-                fixEngineProvider.start();
-            }
-
-            log.info("FIX engine components started");
+            log.info("Components started");
         }
     }
 
-    @Override
+    /**
+     * Stop all components.
+     */
     public void stop() {
         if (running.compareAndSet(true, false)) {
-            log.info("Stopping FIX engine components");
+            log.info("Stopping components");
 
-            // Stop FIX engine first
-            if (fixEngineProvider != null) {
-                try {
-                    fixEngineProvider.stop();
-                } catch (Exception e) {
-                    log.error("Error stopping FIX engine", e);
-                }
+            if (lifeCycle.getState().isOperational()) {
+                lifeCycle.stop();
             }
 
-            // Stop network event loop
-            if (networkProvider != null) {
-                try {
-                    networkProvider.stop();
-                } catch (Exception e) {
-                    log.error("Error stopping network event loop", e);
-                }
-            }
-
-            // Close persistence store
-            if (persistenceProvider != null) {
-                try {
-                    persistenceProvider.close();
-                } catch (Exception e) {
-                    log.error("Error closing persistence store", e);
-                }
-            }
-
-            log.info("FIX engine components stopped");
+            log.info("Components stopped");
         }
     }
 
-    @Override
+    /**
+     * Check if components are initialized.
+     */
     public boolean isInitialized() {
         return initialized.get();
     }
 
-    @Override
+    /**
+     * Check if components are running.
+     */
     public boolean isRunning() {
         return running.get();
     }
@@ -267,210 +225,12 @@ public class DefaultComponentProvider implements ComponentProvider<Object, Objec
         stop();
     }
 
-    // ==================== Factory Interfaces ====================
+    // ==================== Helper Methods ====================
 
-    /**
-     * Factory for creating NetworkEventLoop instances.
-     */
-    @FunctionalInterface
-    public interface NetworkEventLoopFactory {
-        Object create(NetworkConfig config) throws Exception;
-    }
-
-    /**
-     * Factory for creating PersistenceStore instances.
-     */
-    @FunctionalInterface
-    public interface PersistenceStoreFactory {
-        Object create(PersistenceConfig config) throws Exception;
-    }
-
-    /**
-     * Factory for creating FixEngine instances.
-     */
-    @FunctionalInterface
-    public interface FixEngineFactory {
-        Object create(FixEngineConfig config, Object networkEventLoop, Object persistenceStore) throws Exception;
-    }
-
-    // ==================== Default Provider Implementations ====================
-
-    private static class DefaultNetworkEventLoopProvider implements NetworkEventLoopProvider<Object> {
-        private final NetworkConfig config;
-        private final NetworkEventLoopFactory factory;
-        private Object instance;
-        private final AtomicBoolean running = new AtomicBoolean(false);
-
-        DefaultNetworkEventLoopProvider(NetworkConfig config, NetworkEventLoopFactory factory) {
-            this.config = config;
-            this.factory = factory;
+    private String makeKey(Class<?> type, String name) {
+        if (name == null || name.isEmpty()) {
+            return type.getName();
         }
-
-        @Override
-        public NetworkConfig getConfig() {
-            return config;
-        }
-
-        @Override
-        public synchronized Object get() throws Exception {
-            if (instance == null) {
-                instance = factory.create(config);
-            }
-            return instance;
-        }
-
-        @Override
-        public boolean isCreated() {
-            return instance != null;
-        }
-
-        @Override
-        public boolean isRunning() {
-            return running.get();
-        }
-
-        @Override
-        public void start() throws Exception {
-            if (instance != null && running.compareAndSet(false, true)) {
-                // Use reflection to call start() method
-                instance.getClass().getMethod("start").invoke(instance);
-            }
-        }
-
-        @Override
-        public void stop() {
-            if (instance != null && running.compareAndSet(true, false)) {
-                try {
-                    instance.getClass().getMethod("stop").invoke(instance);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to stop network event loop", e);
-                }
-            }
-        }
-    }
-
-    private static class DefaultPersistenceStoreProvider implements PersistenceStoreProvider<Object> {
-        private final PersistenceConfig config;
-        private final PersistenceStoreFactory factory;
-        private Object instance;
-
-        DefaultPersistenceStoreProvider(PersistenceConfig config, PersistenceStoreFactory factory) {
-            this.config = config;
-            this.factory = factory;
-        }
-
-        @Override
-        public PersistenceConfig getConfig() {
-            return config;
-        }
-
-        @Override
-        public synchronized Object get() throws Exception {
-            if (!config.isEnabled()) {
-                return null;
-            }
-            if (instance == null) {
-                instance = factory.create(config);
-            }
-            return instance;
-        }
-
-        @Override
-        public boolean isCreated() {
-            return instance != null;
-        }
-
-        @Override
-        public boolean isEnabled() {
-            return config.isEnabled();
-        }
-
-        @Override
-        public void close() {
-            if (instance != null) {
-                try {
-                    instance.getClass().getMethod("close").invoke(instance);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to close persistence store", e);
-                }
-            }
-        }
-    }
-
-    private static class DefaultFixEngineProvider implements FixEngineProvider<Object> {
-        private final FixEngineConfig config;
-        private final NetworkEventLoopProvider<Object> networkProvider;
-        private final PersistenceStoreProvider<Object> persistenceProvider;
-        private final FixEngineFactory factory;
-        private Object instance;
-        private final AtomicBoolean running = new AtomicBoolean(false);
-
-        DefaultFixEngineProvider(FixEngineConfig config,
-                                 NetworkEventLoopProvider<Object> networkProvider,
-                                 PersistenceStoreProvider<Object> persistenceProvider,
-                                 FixEngineFactory factory) {
-            this.config = config;
-            this.networkProvider = networkProvider;
-            this.persistenceProvider = persistenceProvider;
-            this.factory = factory;
-        }
-
-        @Override
-        public FixEngineConfig getConfig() {
-            return config;
-        }
-
-        @Override
-        public List<EngineSessionConfig> getSessionConfigs() {
-            return config.getSessions();
-        }
-
-        @Override
-        public synchronized Object get() throws Exception {
-            if (instance == null) {
-                Object networkLoop = networkProvider.get();
-                Object persistence = persistenceProvider.isEnabled() ? persistenceProvider.get() : null;
-                instance = factory.create(config, networkLoop, persistence);
-            }
-            return instance;
-        }
-
-        @Override
-        public boolean isCreated() {
-            return instance != null;
-        }
-
-        @Override
-        public boolean isRunning() {
-            return running.get();
-        }
-
-        @Override
-        public void start() throws Exception {
-            if (instance != null && running.compareAndSet(false, true)) {
-                instance.getClass().getMethod("start").invoke(instance);
-            }
-        }
-
-        @Override
-        public void stop() {
-            if (instance != null && running.compareAndSet(true, false)) {
-                try {
-                    instance.getClass().getMethod("stop").invoke(instance);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to stop FIX engine", e);
-                }
-            }
-        }
-
-        @Override
-        public NetworkEventLoopProvider<?> getNetworkProvider() {
-            return networkProvider;
-        }
-
-        @Override
-        public PersistenceStoreProvider<?> getPersistenceProvider() {
-            return persistenceProvider;
-        }
+        return type.getName() + ":" + name;
     }
 }

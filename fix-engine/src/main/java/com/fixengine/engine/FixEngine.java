@@ -1,9 +1,11 @@
 package com.fixengine.engine;
 
-import com.fixengine.config.EngineSessionConfig;
-import com.fixengine.config.FixEngineConfig;
+import com.fixengine.config.Component;
+import com.fixengine.config.ComponentState;
 import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.engine.config.EngineConfig;
+import com.fixengine.engine.config.EngineSessionConfig;
+import com.fixengine.engine.config.FixEngineConfig;
 import com.fixengine.engine.config.SessionConfig;
 import com.fixengine.engine.session.EodEvent;
 import com.fixengine.engine.session.EodEventListener;
@@ -37,15 +39,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Main FIX engine class.
  * Manages FIX sessions, network I/O, and scheduling.
  */
-public class FixEngine {
+public class FixEngine implements Component {
 
     private static final Logger log = LoggerFactory.getLogger(FixEngine.class);
 
     private final EngineConfig config;
     private final FixEngineConfig engineConfig;
-    private final ComponentProvider<?, ?, ?> componentProvider;
+    private final ComponentProvider componentProvider;
     private final NetworkEventLoop eventLoop;
     private final FixLogStore logStore;
+    private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
     private final Map<String, FixSession> sessions = new ConcurrentHashMap<>();
     private final Map<Integer, TcpAcceptor> acceptors = new ConcurrentHashMap<>();
@@ -104,28 +107,23 @@ public class FixEngine {
      * @param engineConfig the FIX engine configuration
      * @param provider the component provider
      */
-    public FixEngine(FixEngineConfig engineConfig, ComponentProvider<?, ?, ?> provider) {
+    public FixEngine(FixEngineConfig engineConfig, ComponentProvider provider) {
         this.engineConfig = engineConfig;
         this.componentProvider = provider;
         this.config = null; // Not using legacy config
 
         // Get event loop from provider
-        try {
-            this.eventLoop = (NetworkEventLoop) provider.getNetworkProvider().get();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to get NetworkEventLoop from provider", e);
-        }
+        this.eventLoop = provider.getComponent(NetworkEventLoop.class);
 
-        // Get log store from provider
-        if (provider.getPersistenceProvider().isEnabled()) {
-            try {
-                this.logStore = (FixLogStore) provider.getPersistenceProvider().get();
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to get FixLogStore from provider", e);
-            }
-        } else {
-            this.logStore = null;
+        // Get log store from provider (may be null if persistence not enabled)
+        FixLogStore store = null;
+        try {
+            store = provider.getComponent(FixLogStore.class);
+        } catch (IllegalArgumentException e) {
+            // No persistence factory registered, that's OK
+            log.debug("No FixLogStore registered with provider");
         }
+        this.logStore = store;
 
         log.info("FIX Engine created with provider: network={}, persistence={}",
                 eventLoop != null, logStore != null);
@@ -835,7 +833,7 @@ public class FixEngine {
     /**
      * Get the component provider.
      */
-    public ComponentProvider<?, ?, ?> getComponentProvider() {
+    public ComponentProvider getComponentProvider() {
         return componentProvider;
     }
 
@@ -858,5 +856,69 @@ public class FixEngine {
      */
     public boolean isRunning() {
         return running.get();
+    }
+
+    // ==================== Component Interface ====================
+
+    @Override
+    public void initialize() throws Exception {
+        if (componentState != ComponentState.UNINITIALIZED) {
+            throw new IllegalStateException("Cannot initialize from state: " + componentState);
+        }
+        // Create sessions from config if available
+        if (engineConfig != null) {
+            createSessionsFromConfig();
+        }
+        componentState = ComponentState.INITIALIZED;
+        log.info("FixEngine component initialized");
+    }
+
+    @Override
+    public void startActive() throws Exception {
+        if (componentState != ComponentState.INITIALIZED) {
+            throw new IllegalStateException("Cannot start active from state: " + componentState);
+        }
+        start();
+        componentState = ComponentState.ACTIVE;
+    }
+
+    @Override
+    public void startStandby() throws Exception {
+        if (componentState != ComponentState.INITIALIZED) {
+            throw new IllegalStateException("Cannot start standby from state: " + componentState);
+        }
+        // In standby mode, sessions are ready but not processing
+        componentState = ComponentState.STANDBY;
+        log.info("FixEngine started in STANDBY mode");
+    }
+
+    @Override
+    public void becomeActive() throws Exception {
+        if (componentState != ComponentState.STANDBY) {
+            throw new IllegalStateException("Cannot become active from state: " + componentState);
+        }
+        start();
+        componentState = ComponentState.ACTIVE;
+        log.info("FixEngine transitioned to ACTIVE mode");
+    }
+
+    @Override
+    public void becomeStandby() throws Exception {
+        if (componentState != ComponentState.ACTIVE) {
+            throw new IllegalStateException("Cannot become standby from state: " + componentState);
+        }
+        stop();
+        componentState = ComponentState.STANDBY;
+        log.info("FixEngine transitioned to STANDBY mode");
+    }
+
+    @Override
+    public String getName() {
+        return "fix-engine";
+    }
+
+    @Override
+    public ComponentState getState() {
+        return componentState;
     }
 }

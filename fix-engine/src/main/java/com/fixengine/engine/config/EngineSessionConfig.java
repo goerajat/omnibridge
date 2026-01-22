@@ -1,4 +1,4 @@
-package com.fixengine.config;
+package com.fixengine.engine.config;
 
 import com.typesafe.config.Config;
 

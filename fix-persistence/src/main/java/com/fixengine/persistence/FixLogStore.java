@@ -1,5 +1,7 @@
 package com.fixengine.persistence;
 
+import com.fixengine.config.Component;
+
 import java.io.Closeable;
 import java.util.Collection;
 
@@ -12,7 +14,7 @@ import java.util.Collection;
  * <p>The store organizes messages by stream name (typically a session identifier)
  * and supports filtering by direction (inbound/outbound) and sequence number.</p>
  */
-public interface FixLogStore extends Closeable {
+public interface FixLogStore extends Closeable, Component {
 
     /**
      * Write a log entry to the store.
