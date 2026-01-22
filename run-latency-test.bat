@@ -10,8 +10,8 @@ REM ==========================================================================
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
-set UBER_JAR=fix-sample-apps\target\fix-sample-apps-1.0.0-SNAPSHOT-all.jar
-set CONFIG_DIR=fix-sample-apps\src\main\resources
+set UBER_JAR=fix\sample-apps\target\sample-apps-1.0.0-SNAPSHOT-all.jar
+set CONFIG_DIR=fix\sample-apps\src\main\resources
 
 REM Check if uber jar exists
 if not exist "%UBER_JAR%" (

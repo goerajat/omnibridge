@@ -9,8 +9,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-UBER_JAR="fix-sample-apps/target/fix-sample-apps-1.0.0-SNAPSHOT-all.jar"
-CONFIG_DIR="fix-sample-apps/src/main/resources"
+UBER_JAR="fix/sample-apps/target/sample-apps-1.0.0-SNAPSHOT-all.jar"
+CONFIG_DIR="fix/sample-apps/src/main/resources"
 
 # Check if uber jar exists
 if [ ! -f "$UBER_JAR" ]; then

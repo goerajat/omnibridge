@@ -11,9 +11,9 @@ REM ==========================================================================
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
-set ACCEPTOR_JAR=fix-sample-apps\target\fix-sample-apps-1.0.0-SNAPSHOT-all.jar
-set TESTER_JAR=fix-reference-tester\target\fix-reference-tester-1.0.0-SNAPSHOT-all.jar
-set CONFIG_DIR=fix-sample-apps\src\main\resources
+set ACCEPTOR_JAR=fix\sample-apps\target\sample-apps-1.0.0-SNAPSHOT-all.jar
+set TESTER_JAR=fix\reference-tester\target\reference-tester-1.0.0-SNAPSHOT-all.jar
+set CONFIG_DIR=fix\sample-apps\src\main\resources
 
 REM Check if jars exist
 if not exist "%ACCEPTOR_JAR%" (

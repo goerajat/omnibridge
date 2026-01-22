@@ -41,9 +41,9 @@ quickfix-store/
 *.ear
 *.class
 
-# Persistence data (but not fix-persistence module)
+# Persistence data
 data/
-/persistence/
+persistence-data/
 
 # Node modules (for fix-admin-ui)
 node_modules/

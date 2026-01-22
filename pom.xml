@@ -13,16 +13,12 @@
     <description>High-performance FIX protocol engine with non-blocking I/O and shared memory persistence</description>
 
     <modules>
-        <module>fix-dictionary</module>
-        <module>fix-config</module>
-        <module>fix-network-io</module>
-        <module>fix-persistence</module>
-        <module>fix-message</module>
-        <module>fix-engine</module>
-        <module>fix-sample-apps</module>
-        <module>fix-session-tester</module>
-        <module>fix-admin-api</module>
-        <module>fix-reference-tester</module>
+        <!-- Core infrastructure modules -->
+        <module>config</module>
+        <module>network</module>
+        <module>persistence</module>
+        <!-- FIX protocol modules -->
+        <module>fix</module>
         <!-- fix-admin-ui is an npm project, not a Maven module -->
     </modules>
 
@@ -48,32 +44,32 @@
             <!-- Internal modules -->
             <dependency>
                 <groupId>com.fixengine</groupId>
-                <artifactId>fix-dictionary</artifactId>
+                <artifactId>dictionary</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
-                <artifactId>fix-config</artifactId>
+                <artifactId>config</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
-                <artifactId>fix-network-io</artifactId>
+                <artifactId>network</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
-                <artifactId>fix-persistence</artifactId>
+                <artifactId>persistence</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
-                <artifactId>fix-message</artifactId>
+                <artifactId>message</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fixengine</groupId>
-                <artifactId>fix-engine</artifactId>
+                <artifactId>engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

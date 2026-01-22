@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.fixengine</groupId>
+        <artifactId>connectivity</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>fix</artifactId>
+    <packaging>pom</packaging>
+    <name>FIX Protocol</name>
+    <description>FIX protocol implementation modules</description>
+
+    <modules>
+        <module>dictionary</module>
+        <module>message</module>
+        <module>engine</module>
+        <module>sample-apps</module>
+        <module>session-tester</module>
+        <module>reference-tester</module>
+        <module>admin-api</module>
+    </modules>
+</project>
