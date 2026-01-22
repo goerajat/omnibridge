@@ -1,9 +1,10 @@
 package com.fixengine.message;
 
+import com.fixengine.config.ClockProvider;
+
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Zero-allocation FIX timestamp encoder.
@@ -63,13 +64,13 @@ public final class FastTimestampEncoder {
      *
      * <p>Format: YYYYMMDD-HH:MM:SS.sss (21 bytes)</p>
      *
-     * @param clock the clock to use for obtaining current time
+     * @param clockProvider the clock provider to use for obtaining current time
      * @param buffer the destination byte array
      * @param offset the position in buffer to start writing
      * @return the number of bytes written (always 21)
      */
-    public static int encodeNow(Clock clock, byte[] buffer, int offset) {
-        return encode(clock.currentTimeMillis(), buffer, offset);
+    public static int encodeNow(ClockProvider clockProvider, byte[] buffer, int offset) {
+        return encode(clockProvider.currentTimeMillis(), buffer, offset);
     }
 
     /**

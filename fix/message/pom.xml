@@ -15,6 +15,12 @@
     <description>FIX message parsing and building abstractions</description>
 
     <dependencies>
+        <!-- Internal modules -->
+        <dependency>
+            <groupId>com.fixengine</groupId>
+            <artifactId>config</artifactId>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>

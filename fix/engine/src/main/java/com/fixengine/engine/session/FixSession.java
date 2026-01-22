@@ -1,7 +1,7 @@
 package com.fixengine.engine.session;
 
+import com.fixengine.config.ClockProvider;
 import com.fixengine.engine.config.SessionConfig;
-import com.fixengine.message.Clock;
 import com.fixengine.message.FixReader;
 import com.fixengine.message.FixTags;
 import com.fixengine.message.IncomingFixMessage;
@@ -65,8 +65,8 @@ public class FixSession implements NetworkHandler {
     // Message pool for incoming message parsing
     private final IncomingMessagePool incomingMessagePool;
 
-    // Clock for time sources
-    private final Clock clock;
+    // Clock provider for time sources
+    private final ClockProvider clockProvider;
 
     // Thread-local ring buffer message wrappers for concurrent access
     private final ThreadLocal<RingBufferOutgoingMessage> ringBufferMessageThreadLocal;
@@ -77,7 +77,7 @@ public class FixSession implements NetworkHandler {
     public FixSession(SessionConfig config, LogStore logStore) {
         this.config = config;
         this.logStore = logStore;
-        this.clock = config.getClock();
+        this.clockProvider = config.getClockProvider();
 
         // Initialize message pool configuration (used by ring buffer message)
         this.poolConfig = MessagePoolConfig.builder()
@@ -86,7 +86,7 @@ public class FixSession implements NetworkHandler {
                 .beginString(config.getBeginString())
                 .senderCompId(config.getSenderCompId())
                 .targetCompId(config.getTargetCompId())
-                .clock(clock)
+                .clockProvider(clockProvider)
                 .build();
 
         // Initialize thread-local ring buffer message wrappers for concurrent access
@@ -197,7 +197,7 @@ public class FixSession implements NetworkHandler {
         log.info("[{}] Connected to {}:{}", config.getSessionId(), config.getHost(), config.getPort());
         this.channel = channel;
         setState(SessionState.CONNECTED);
-        lastReceivedTime = clock.currentTimeMillis();
+        lastReceivedTime = clockProvider.currentTimeMillis();
 
         // Reset reader state for new connection
         // This is critical for reconnection scenarios where the reader may have
@@ -213,7 +213,7 @@ public class FixSession implements NetworkHandler {
 
     @Override
     public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
-        lastReceivedTime = clock.currentTimeMillis();
+        lastReceivedTime = clockProvider.currentTimeMillis();
 
         // Feed data to reader
         reader.addData(buffer, offset, length);
@@ -691,7 +691,7 @@ public class FixSession implements NetworkHandler {
      */
     public void commitMessage(RingBufferOutgoingMessage msg) {
         // Prepare the message
-        long sendingTime = clock.currentTimeMillis();
+        long sendingTime = clockProvider.currentTimeMillis();
         int messageLength = msg.prepareForSend(sendingTime);
 
         // Log outgoing message
@@ -711,7 +711,7 @@ public class FixSession implements NetworkHandler {
         TcpChannel ch = channel;
         if (ch != null) {
             ch.commit(msg.getClaimIndex());
-            lastSentTime = clock.currentTimeMillis();
+            lastSentTime = clockProvider.currentTimeMillis();
             log.debug("[{}] Committed to ring buffer: {} SeqNum={}",
                     config.getSessionId(), msg.getMsgType(), msg.getSeqNum());
             if (config.isLogMessages()) {
@@ -893,7 +893,7 @@ public class FixSession implements NetworkHandler {
             byte[] rawMessage = entry.getRawMessage();
             int written = ch.writeRaw(rawMessage, 0, rawMessage.length);
             if (written > 0) {
-                lastSentTime = clock.currentTimeMillis();
+                lastSentTime = clockProvider.currentTimeMillis();
                 log.info("[{}] OUT <<< (resend) {}", config.getSessionId(), formatRawMessage(rawMessage));
             } else {
                 log.error("[{}] Failed to write resend message to ring buffer", config.getSessionId());
@@ -1015,7 +1015,7 @@ public class FixSession implements NetworkHandler {
             return;
         }
 
-        long now = clock.currentTimeMillis();
+        long now = clockProvider.currentTimeMillis();
         long heartbeatMs = config.getHeartbeatInterval() * 1000L;
 
         // Send heartbeat if we haven't sent anything in a while

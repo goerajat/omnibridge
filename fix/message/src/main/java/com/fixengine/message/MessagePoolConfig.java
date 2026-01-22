@@ -1,5 +1,7 @@
 package com.fixengine.message;
 
+import com.fixengine.config.ClockProvider;
+
 /**
  * Configuration for outgoing FIX messages.
  *
@@ -32,7 +34,7 @@ public class MessagePoolConfig {
     private int targetCompIdMaxLength = 16;
     private int bodyLengthDigits = 5;
     private int seqNumDigits = 8;
-    private Clock clock = SystemClock.INSTANCE;
+    private ClockProvider clockProvider = ClockProvider.system();
 
     /**
      * Create a new builder for MessagePoolConfig.
@@ -125,12 +127,12 @@ public class MessagePoolConfig {
     }
 
     /**
-     * Get the clock used for timestamps.
+     * Get the clock provider used for timestamps.
      *
-     * @return the clock instance
+     * @return the clock provider instance
      */
-    public Clock getClock() {
-        return clock;
+    public ClockProvider getClockProvider() {
+        return clockProvider;
     }
 
     /**
@@ -266,16 +268,16 @@ public class MessagePoolConfig {
         }
 
         /**
-         * Set the clock to use for timestamps.
+         * Set the clock provider to use for timestamps.
          *
-         * @param clock the clock instance
+         * @param clockProvider the clock provider instance
          * @return this builder
          */
-        public Builder clock(Clock clock) {
-            if (clock == null) {
-                throw new IllegalArgumentException("Clock cannot be null");
+        public Builder clockProvider(ClockProvider clockProvider) {
+            if (clockProvider == null) {
+                throw new IllegalArgumentException("ClockProvider cannot be null");
             }
-            config.clock = clock;
+            config.clockProvider = clockProvider;
             return this;
         }
 

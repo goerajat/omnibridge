@@ -1,6 +1,9 @@
 package com.fixengine.samples.common;
 
+import com.fixengine.config.ClockProvider;
 import com.fixengine.config.provider.DefaultComponentProvider;
+import com.fixengine.config.schedule.SchedulerConfig;
+import com.fixengine.config.schedule.SessionScheduler;
 import com.fixengine.engine.FixEngine;
 import com.fixengine.engine.config.FixEngineConfig;
 import com.fixengine.engine.session.FixSession;
@@ -48,6 +51,9 @@ public abstract class FixApplicationBase implements Callable<Integer> {
             provider = DefaultComponentProvider.create(configFiles);
             Config config = provider.getConfig();
 
+            // Register ClockProvider factory (system clock by default)
+            provider.register(ClockProvider.class, (name, cfg, p) -> ClockProvider.system());
+
             // Register NetworkEventLoop factory
             provider.register(NetworkEventLoop.class, (name, cfg, p) -> {
                 NetworkConfig networkConfig = NetworkConfig.fromConfig(cfg.getConfig(name==null?"network":"network." + name));
@@ -59,6 +65,17 @@ public abstract class FixApplicationBase implements Callable<Integer> {
                 provider.register(LogStore.class, (name, cfg, p) -> {
                     PersistenceConfig persistenceConfig = PersistenceConfig.fromConfig(cfg.getConfig(name==null?"persistence":"persistence." + name));
                     return new MemoryMappedLogStore(persistenceConfig, p);
+                });
+            }
+
+            // Register SessionScheduler factory if schedulers are configured
+            if (config.hasPath("schedulers")) {
+                provider.register(SessionScheduler.class, (name, cfg, p) -> {
+                    ClockProvider clock = p.getComponent(ClockProvider.class);
+                    SessionScheduler scheduler = new SessionScheduler(clock);
+                    SchedulerConfig schedulerConfig = SchedulerConfig.fromConfig(cfg);
+                    schedulerConfig.applyTo(scheduler);
+                    return scheduler;
                 });
             }
 
@@ -75,6 +92,23 @@ public abstract class FixApplicationBase implements Callable<Integer> {
             if (sessions.isEmpty()) {
                 log.error("No sessions configured");
                 return 1;
+            }
+
+            // Associate sessions with schedules if SessionScheduler is configured
+            if (engine.getSessionScheduler() != null) {
+                var associations = SchedulerConfig.getSessionScheduleAssociations(config);
+                for (var entry : associations.entrySet()) {
+                    String sessionName = entry.getKey();
+                    String scheduleName = entry.getValue();
+                    // Find session by name and associate
+                    for (FixSession session : sessions) {
+                        if (sessionName.equals(session.getConfig().getSessionName())) {
+                            engine.associateSessionWithSchedule(session.getConfig().getSessionId(), scheduleName);
+                            log.info("Associated session '{}' with schedule '{}'", sessionName, scheduleName);
+                            break;
+                        }
+                    }
+                }
             }
 
             // Let subclass configure listeners

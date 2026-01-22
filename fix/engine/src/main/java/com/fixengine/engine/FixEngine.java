@@ -1,8 +1,12 @@
 package com.fixengine.engine;
 
+import com.fixengine.config.ClockProvider;
 import com.fixengine.config.Component;
 import com.fixengine.config.ComponentState;
 import com.fixengine.config.provider.ComponentProvider;
+import com.fixengine.config.schedule.ScheduleEvent;
+import com.fixengine.config.schedule.ScheduleListener;
+import com.fixengine.config.schedule.SessionScheduler;
 import com.fixengine.engine.config.EngineConfig;
 import com.fixengine.engine.config.EngineSessionConfig;
 import com.fixengine.engine.config.FixEngineConfig;
@@ -49,6 +53,8 @@ public class FixEngine implements Component {
     private final ComponentProvider componentProvider;
     private final NetworkEventLoop eventLoop;
     private final LogStore logStore;
+    private final ClockProvider clockProvider;
+    private final SessionScheduler sessionScheduler;
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
     private final Map<String, FixSession> sessions = new ConcurrentHashMap<>();
@@ -72,6 +78,9 @@ public class FixEngine implements Component {
     private final List<MessageListener> globalMessageListeners = new CopyOnWriteArrayList<>();
     private final List<EodEventListener> eodListeners = new CopyOnWriteArrayList<>();
 
+    // Schedule listener for SessionScheduler integration
+    private final ScheduleListener scheduleListener = this::onScheduleEvent;
+
     /**
      * Create a FIX engine with the given configuration.
      * @deprecated Use FixEngine(FixEngineConfig, ComponentProvider) instead
@@ -81,6 +90,8 @@ public class FixEngine implements Component {
         this.config = config;
         this.engineConfig = null;
         this.componentProvider = null;
+        this.clockProvider = ClockProvider.system();
+        this.sessionScheduler = null;
 
         // Create event loop directly (legacy mode)
         this.eventLoop = new NetworkEventLoop();
@@ -103,7 +114,7 @@ public class FixEngine implements Component {
 
     /**
      * Create a FIX engine using the provider pattern.
-     * The provider is used to access the NetworkEventLoop and LogStore.
+     * The provider is used to access the NetworkEventLoop, LogStore, ClockProvider, and SessionScheduler.
      *
      * @param engineConfig the FIX engine configuration
      * @param provider the component provider
@@ -116,6 +127,15 @@ public class FixEngine implements Component {
         // Get event loop from provider
         this.eventLoop = provider.getComponent(NetworkEventLoop.class);
 
+        // Get clock provider from provider (use system clock if not registered)
+        ClockProvider clock = null;
+        try {
+            clock = provider.getComponent(ClockProvider.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No ClockProvider registered with provider, using system clock");
+        }
+        this.clockProvider = clock != null ? clock : ClockProvider.system();
+
         // Get log store from provider (may be null if persistence not enabled)
         LogStore store = null;
         try {
@@ -126,8 +146,17 @@ public class FixEngine implements Component {
         }
         this.logStore = store;
 
-        log.info("FIX Engine created with provider: network={}, persistence={}",
-                eventLoop != null, logStore != null);
+        // Get session scheduler from provider (optional)
+        SessionScheduler scheduler = null;
+        try {
+            scheduler = provider.getComponent(SessionScheduler.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No SessionScheduler registered with provider, using built-in scheduling");
+        }
+        this.sessionScheduler = scheduler;
+
+        log.info("FIX Engine created with provider: network={}, persistence={}, clock={}, scheduler={}",
+                eventLoop != null, logStore != null, clockProvider, sessionScheduler != null);
     }
 
     /**
@@ -139,13 +168,43 @@ public class FixEngine implements Component {
      * @param logStore the persistence store (may be null)
      */
     public FixEngine(FixEngineConfig engineConfig, NetworkEventLoop eventLoop, LogStore logStore) {
+        this(engineConfig, eventLoop, logStore, ClockProvider.system(), null);
+    }
+
+    /**
+     * Create a FIX engine with pre-created components including ClockProvider.
+     * This constructor is useful for testing with mock time.
+     *
+     * @param engineConfig the FIX engine configuration
+     * @param eventLoop the network event loop
+     * @param logStore the persistence store (may be null)
+     * @param clockProvider the clock provider for time sources
+     */
+    public FixEngine(FixEngineConfig engineConfig, NetworkEventLoop eventLoop, LogStore logStore, ClockProvider clockProvider) {
+        this(engineConfig, eventLoop, logStore, clockProvider, null);
+    }
+
+    /**
+     * Create a FIX engine with pre-created components including SessionScheduler.
+     * This constructor is useful for testing with full control over scheduling.
+     *
+     * @param engineConfig the FIX engine configuration
+     * @param eventLoop the network event loop
+     * @param logStore the persistence store (may be null)
+     * @param clockProvider the clock provider for time sources
+     * @param sessionScheduler the session scheduler (may be null for built-in scheduling)
+     */
+    public FixEngine(FixEngineConfig engineConfig, NetworkEventLoop eventLoop, LogStore logStore,
+                     ClockProvider clockProvider, SessionScheduler sessionScheduler) {
         this.engineConfig = engineConfig;
         this.componentProvider = null;
         this.config = null;
         this.eventLoop = eventLoop;
         this.logStore = logStore;
+        this.clockProvider = clockProvider != null ? clockProvider : ClockProvider.system();
+        this.sessionScheduler = sessionScheduler;
 
-        log.info("FIX Engine created with pre-built components");
+        log.info("FIX Engine created with pre-built components (scheduler={})", sessionScheduler != null);
     }
 
     /**
@@ -168,17 +227,26 @@ public class FixEngine implements Component {
             1, 1, TimeUnit.SECONDS
         );
 
-        // Start session scheduling
-        scheduleTask = scheduler.scheduleAtFixedRate(
-            this::checkSchedules,
-            0, 1, TimeUnit.SECONDS
-        );
+        // Use SessionScheduler if available, otherwise use built-in scheduling
+        if (sessionScheduler != null) {
+            // Register as listener to handle schedule events
+            sessionScheduler.addListener(scheduleListener);
+            log.info("Using SessionScheduler for session scheduling");
+        } else {
+            // Use built-in scheduling
+            // Start session scheduling
+            scheduleTask = scheduler.scheduleAtFixedRate(
+                this::checkSchedules,
+                0, 1, TimeUnit.SECONDS
+            );
 
-        // Start EOD scheduling (check every minute)
-        eodTask = scheduler.scheduleAtFixedRate(
-            this::checkEodSchedules,
-            0, 1, TimeUnit.MINUTES
-        );
+            // Start EOD scheduling (check every minute)
+            eodTask = scheduler.scheduleAtFixedRate(
+                this::checkEodSchedules,
+                0, 1, TimeUnit.MINUTES
+            );
+            log.info("Using built-in scheduling");
+        }
 
         // Start acceptor listeners (legacy mode only - sessions configured in EngineConfig)
         if (config != null) {
@@ -219,6 +287,11 @@ public class FixEngine implements Component {
         }
         if (eodTask != null) {
             eodTask.cancel(false);
+        }
+
+        // Remove listener from SessionScheduler if used
+        if (sessionScheduler != null) {
+            sessionScheduler.removeListener(scheduleListener);
         }
 
         // Logout all sessions
@@ -549,6 +622,55 @@ public class FixEngine implements Component {
 
     // ==================== Scheduling ====================
 
+    /**
+     * Handle schedule events from SessionScheduler.
+     * This method is called when using the SessionScheduler component.
+     */
+    private void onScheduleEvent(ScheduleEvent event) {
+        String sessionId = event.getSessionId();
+        FixSession session = sessions.get(sessionId);
+
+        switch (event.getType()) {
+            case SESSION_START -> {
+                log.info("[{}] Schedule event: SESSION_START", sessionId);
+                if (session == null) {
+                    // Session not yet created - this shouldn't happen normally
+                    // as sessions should be created during engine initialization
+                    log.warn("[{}] Session not found for SESSION_START event", sessionId);
+                    return;
+                }
+                SessionConfig sessionConfig = session.getConfig();
+                if (sessionConfig.isInitiator() && session.getState() == SessionState.DISCONNECTED) {
+                    connect(sessionId);
+                }
+            }
+
+            case SESSION_END -> {
+                log.info("[{}] Schedule event: SESSION_END", sessionId);
+                if (session != null && session.getState().isLoggedOn()) {
+                    session.logout("Session schedule ended");
+                }
+            }
+
+            case RESET_DUE -> {
+                log.info("[{}] Schedule event: RESET_DUE (EOD)", sessionId);
+                if (session != null) {
+                    triggerEod(session, EodEvent.Type.SCHEDULED);
+                }
+            }
+
+            case WARNING_SESSION_END -> {
+                log.debug("[{}] Schedule event: WARNING_SESSION_END - {}", sessionId, event.getMessage());
+                // Could notify listeners or log for monitoring
+            }
+
+            case WARNING_RESET -> {
+                log.debug("[{}] Schedule event: WARNING_RESET - {}", sessionId, event.getMessage());
+                // Could notify listeners or log for monitoring
+            }
+        }
+    }
+
     private void checkHeartbeats() {
         for (FixSession session : sessions.values()) {
             // Only check heartbeat for sessions that are logged on
@@ -598,7 +720,7 @@ public class FixEngine implements Component {
         FixSession session = sessions.get(sessionId);
 
         ZoneId zoneId = ZoneId.of(sessionConfig.getTimeZone());
-        LocalTime now = ZonedDateTime.now(zoneId).toLocalTime();
+        LocalTime now = ZonedDateTime.now(clockProvider.getClock().withZone(zoneId)).toLocalTime();
 
         boolean inSchedule = isInSchedule(now, startTime, endTime);
 
@@ -657,7 +779,7 @@ public class FixEngine implements Component {
 
         String sessionId = sessionConfig.getSessionId();
         ZoneId zoneId = ZoneId.of(sessionConfig.getTimeZone());
-        ZonedDateTime nowZoned = ZonedDateTime.now(zoneId);
+        ZonedDateTime nowZoned = ZonedDateTime.now(clockProvider.getClock().withZone(zoneId));
         LocalTime now = nowZoned.toLocalTime();
         LocalDate today = nowZoned.toLocalDate();
 
@@ -848,6 +970,36 @@ public class FixEngine implements Component {
      */
     public LogStore getLogStore() {
         return logStore;
+    }
+
+    /**
+     * Get the clock provider.
+     */
+    public ClockProvider getClockProvider() {
+        return clockProvider;
+    }
+
+    /**
+     * Get the session scheduler (may be null if using built-in scheduling).
+     */
+    public SessionScheduler getSessionScheduler() {
+        return sessionScheduler;
+    }
+
+    /**
+     * Associate a session with a schedule in the SessionScheduler.
+     * This is a convenience method that delegates to the SessionScheduler.
+     *
+     * @param sessionId the session identifier
+     * @param scheduleName the name of the schedule to associate
+     * @throws IllegalStateException if no SessionScheduler is configured
+     * @throws IllegalArgumentException if the schedule doesn't exist
+     */
+    public void associateSessionWithSchedule(String sessionId, String scheduleName) {
+        if (sessionScheduler == null) {
+            throw new IllegalStateException("No SessionScheduler configured");
+        }
+        sessionScheduler.associateSession(sessionId, scheduleName);
     }
 
     /**

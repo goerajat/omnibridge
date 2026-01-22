@@ -1,7 +1,6 @@
 package com.fixengine.engine.config;
 
-import com.fixengine.message.Clock;
-import com.fixengine.message.SystemClock;
+import com.fixengine.config.ClockProvider;
 
 import java.time.LocalTime;
 
@@ -60,8 +59,8 @@ public class SessionConfig {
     // Ring buffer capacity for outgoing messages (must be power of 2)
     private int ringBufferCapacity = 1048576; // 1MB default
 
-    // Clock for time sources (allows testing with mock clocks)
-    private Clock clock = SystemClock.INSTANCE;
+    // Clock provider for time sources (allows testing with mock clocks)
+    private ClockProvider clockProvider = ClockProvider.system();
 
     // ==================== Builder ====================
 
@@ -204,11 +203,11 @@ public class SessionConfig {
             return this;
         }
 
-        public Builder clock(Clock clock) {
-            if (clock == null) {
-                throw new IllegalArgumentException("Clock cannot be null");
+        public Builder clockProvider(ClockProvider clockProvider) {
+            if (clockProvider == null) {
+                throw new IllegalArgumentException("ClockProvider cannot be null");
             }
-            config.clock = clock;
+            config.clockProvider = clockProvider;
             return this;
         }
 
@@ -347,12 +346,12 @@ public class SessionConfig {
     }
 
     /**
-     * Get the clock used for timestamps and timing.
+     * Get the clock provider used for timestamps and timing.
      *
-     * @return the clock instance
+     * @return the clock provider instance
      */
-    public Clock getClock() {
-        return clock;
+    public ClockProvider getClockProvider() {
+        return clockProvider;
     }
 
     /**
