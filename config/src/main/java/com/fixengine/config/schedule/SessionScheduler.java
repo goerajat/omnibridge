@@ -87,13 +87,29 @@ public class SessionScheduler implements Component {
 
     /**
      * Internal state tracking for each session.
+     * Optimized to cache computed values and minimize object allocation.
      */
     private static class SessionState {
+        // Persistent state
         boolean wasActive = false;
         boolean resetTriggeredToday = false;
-        ZonedDateTime lastResetDate = null;
-        ZonedDateTime lastWarningEnd = null;
-        ZonedDateTime lastWarningReset = null;
+        java.time.LocalDate lastResetDate = null;  // Use LocalDate (cheaper than ZonedDateTime)
+        long lastWarningEndEpoch = 0;    // Use epoch seconds instead of ZonedDateTime
+        long lastWarningResetEpoch = 0;  // Use epoch seconds instead of ZonedDateTime
+
+        // Cached values for current check cycle (avoid recomputation)
+        TimeWindow cachedActiveWindow;
+        long cachedEndTimeEpoch;      // Epoch seconds
+        long cachedResetTimeEpoch;    // Epoch seconds
+
+        // Next event tracking for skip optimization
+        long nextEventEpochSecond = 0;
+
+        void clearCachedValues() {
+            cachedActiveWindow = null;
+            cachedEndTimeEpoch = 0;
+            cachedResetTimeEpoch = 0;
+        }
     }
 
     /**
@@ -279,24 +295,83 @@ public class SessionScheduler implements Component {
 
     /**
      * Check all session schedules and emit events.
+     * Optimized to batch sessions by schedule and minimize redundant computations.
      */
     private void checkSchedules() {
-        ZonedDateTime currentTime = now();
+        if (sessionToSchedule.isEmpty()) {
+            return;
+        }
 
-        for (Map.Entry<String, String> entry : sessionToSchedule.entrySet()) {
-            String sessionId = entry.getKey();
-            String scheduleName = entry.getValue();
+        // Get current time once for entire check cycle
+        final ZonedDateTime currentTime = now();
+        final long currentEpochSecond = currentTime.toEpochSecond();
+        final java.time.LocalDate today = currentTime.toLocalDate();
 
-            try {
-                checkSession(sessionId, scheduleName, currentTime);
-            } catch (Exception e) {
-                log.error("Error checking schedule for session {}: {}", sessionId, e.getMessage(), e);
+        // Group sessions by schedule to share computation
+        // Use a simple array-based approach to avoid map allocation on hot path
+        for (Map.Entry<String, SessionSchedule> scheduleEntry : schedules.entrySet()) {
+            String scheduleName = scheduleEntry.getKey();
+            SessionSchedule schedule = scheduleEntry.getValue();
+
+            if (!schedule.isEnabled()) {
+                continue;
+            }
+
+            // Compute active window ONCE per schedule (not per session)
+            TimeWindow activeWindow = schedule.getActiveWindow(currentTime);
+            boolean isActive = (activeWindow != null);
+
+            // Pre-compute end time and reset time if active (shared across sessions)
+            long endTimeEpoch = 0;
+            long resetTimeEpoch = 0;
+            if (isActive && activeWindow != null) {
+                ZonedDateTime endTime = computeEndTimeDirectly(activeWindow, currentTime, schedule.getTimezone());
+                endTimeEpoch = endTime != null ? endTime.toEpochSecond() : 0;
+
+                if (schedule.getResetSchedule().isEnabled()) {
+                    // Look back by tolerance window to find reset time (matches shouldResetNow behavior)
+                    ZonedDateTime lookbackTime = currentTime.minusMinutes(resetToleranceMinutes);
+                    ZonedDateTime resetTime = schedule.getResetSchedule()
+                            .getNextResetTime(lookbackTime, endTime, schedule.getTimezone());
+                    resetTimeEpoch = resetTime != null ? resetTime.toEpochSecond() : 0;
+                }
+            }
+
+            // Process all sessions using this schedule with pre-computed values
+            for (Map.Entry<String, String> sessionEntry : sessionToSchedule.entrySet()) {
+                if (!scheduleName.equals(sessionEntry.getValue())) {
+                    continue;
+                }
+
+                String sessionId = sessionEntry.getKey();
+                try {
+                    checkSessionOptimized(sessionId, scheduleName, schedule,
+                            currentTime, currentEpochSecond, today,
+                            isActive, activeWindow, endTimeEpoch, resetTimeEpoch);
+                } catch (Exception e) {
+                    log.error("Error checking schedule for session {}: {}", sessionId, e.getMessage(), e);
+                }
             }
         }
     }
 
     /**
-     * Check a single session's schedule.
+     * Compute end time directly from active window without redundant getActiveWindow calls.
+     */
+    private ZonedDateTime computeEndTimeDirectly(TimeWindow window, ZonedDateTime now, java.time.ZoneId zone) {
+        if (window == null) {
+            return null;
+        }
+        ZonedDateTime zonedNow = now.withZoneSameInstant(zone);
+        java.time.LocalDate endDate = zonedNow.toLocalDate();
+        if (window.isOvernight()) {
+            endDate = endDate.plusDays(1);
+        }
+        return ZonedDateTime.of(endDate, window.getEndTime(), zone);
+    }
+
+    /**
+     * Check a single session's schedule (legacy method for backward compatibility).
      */
     private void checkSession(String sessionId, String scheduleName, ZonedDateTime now) {
         SessionSchedule schedule = schedules.get(scheduleName);
@@ -304,87 +379,158 @@ public class SessionScheduler implements Component {
             return;
         }
 
+        TimeWindow activeWindow = schedule.getActiveWindow(now);
+        boolean isActive = (activeWindow != null);
+        long currentEpochSecond = now.toEpochSecond();
+        java.time.LocalDate today = now.toLocalDate();
+
+        long endTimeEpoch = 0;
+        long resetTimeEpoch = 0;
+        if (isActive) {
+            ZonedDateTime endTime = computeEndTimeDirectly(activeWindow, now, schedule.getTimezone());
+            endTimeEpoch = endTime != null ? endTime.toEpochSecond() : 0;
+            if (schedule.getResetSchedule().isEnabled()) {
+                // Look back by tolerance window to find reset time (matches shouldResetNow behavior)
+                ZonedDateTime lookbackTime = now.minusMinutes(resetToleranceMinutes);
+                ZonedDateTime resetTime = schedule.getResetSchedule()
+                        .getNextResetTime(lookbackTime, endTime, schedule.getTimezone());
+                resetTimeEpoch = resetTime != null ? resetTime.toEpochSecond() : 0;
+            }
+        }
+
+        checkSessionOptimized(sessionId, scheduleName, schedule,
+                now, currentEpochSecond, today,
+                isActive, activeWindow, endTimeEpoch, resetTimeEpoch);
+    }
+
+    /**
+     * Optimized session check using pre-computed values.
+     * This avoids redundant schedule lookups and time computations.
+     */
+    private void checkSessionOptimized(String sessionId, String scheduleName,
+                                        SessionSchedule schedule,
+                                        ZonedDateTime now, long currentEpochSecond,
+                                        java.time.LocalDate today,
+                                        boolean isActive, TimeWindow activeWindow,
+                                        long endTimeEpoch, long resetTimeEpoch) {
         SessionState state = sessionStates.get(sessionId);
         if (state == null) {
             state = new SessionState();
             sessionStates.put(sessionId, state);
         }
 
-        boolean isActive = schedule.shouldBeActive(now);
+        // Cache values for this check cycle
+        state.cachedActiveWindow = activeWindow;
+        state.cachedEndTimeEpoch = endTimeEpoch;
+        state.cachedResetTimeEpoch = resetTimeEpoch;
 
         // Check for session start
         if (isActive && !state.wasActive) {
-            ZonedDateTime startTime = schedule.getActiveWindow(now) != null
-                    ? now : null;
-            emitEvent(ScheduleEvent.sessionStart(sessionId, scheduleName, now, startTime));
+            emitEvent(ScheduleEvent.sessionStart(sessionId, scheduleName, now, now));
             state.wasActive = true;
-            state.resetTriggeredToday = false; // Reset the daily flag
+            state.resetTriggeredToday = false;
+            // Update next event time
+            state.nextEventEpochSecond = Math.min(
+                    endTimeEpoch > 0 ? endTimeEpoch : Long.MAX_VALUE,
+                    resetTimeEpoch > 0 ? resetTimeEpoch : Long.MAX_VALUE);
         }
 
         // Check for session end
         if (!isActive && state.wasActive) {
             emitEvent(ScheduleEvent.sessionEnd(sessionId, scheduleName, now, now));
             state.wasActive = false;
+            // Compute next start time for skip optimization
+            ZonedDateTime nextStart = schedule.getNextStartTime(now);
+            state.nextEventEpochSecond = nextStart != null ? nextStart.toEpochSecond() : Long.MAX_VALUE;
         }
 
-        // Check for warnings (only if active)
+        // Check for warnings and reset (only if active)
         if (isActive) {
-            checkWarnings(sessionId, scheduleName, schedule, state, now);
-        }
+            checkWarningsOptimized(sessionId, scheduleName, state, now, currentEpochSecond,
+                    endTimeEpoch, resetTimeEpoch);
 
-        // Check for reset
-        if (isActive && !state.resetTriggeredToday) {
-            if (schedule.shouldResetNow(now, resetToleranceMinutes)) {
-                ZonedDateTime resetTime = schedule.getNextResetTime(now);
-                emitEvent(ScheduleEvent.resetDue(sessionId, scheduleName, now, resetTime));
-                state.resetTriggeredToday = true;
-                state.lastResetDate = now;
+            // Check for reset using epoch comparison (faster than Duration)
+            // Original logic: fire when resetTime <= now < resetTime + tolerance
+            if (!state.resetTriggeredToday && resetTimeEpoch > 0) {
+                long secondsSinceReset = currentEpochSecond - resetTimeEpoch;
+                // Within tolerance window: at or after reset time, but before tolerance expires
+                if (secondsSinceReset >= 0 && secondsSinceReset < resetToleranceMinutes * 60L) {
+                    ZonedDateTime resetTime = ZonedDateTime.ofInstant(
+                            java.time.Instant.ofEpochSecond(resetTimeEpoch),
+                            schedule.getTimezone());
+                    emitEvent(ScheduleEvent.resetDue(sessionId, scheduleName, now, resetTime));
+                    state.resetTriggeredToday = true;
+                    state.lastResetDate = today;
+                }
             }
         }
 
-        // Reset daily flag at midnight (or when date changes)
-        if (state.lastResetDate != null &&
-            !now.toLocalDate().equals(state.lastResetDate.toLocalDate())) {
+        // Reset daily flag at midnight (use LocalDate comparison - no object allocation)
+        if (state.lastResetDate != null && !today.equals(state.lastResetDate)) {
             state.resetTriggeredToday = false;
         }
     }
 
     /**
-     * Check and emit warning events.
+     * Check and emit warning events using epoch-based comparisons.
+     * Uses pre-computed end/reset times to avoid redundant calculations.
      */
-    private void checkWarnings(String sessionId, String scheduleName,
-                               SessionSchedule schedule, SessionState state, ZonedDateTime now) {
-        // Warning before session end
-        if (warningMinutesBeforeEnd > 0) {
-            ZonedDateTime endTime = schedule.getCurrentWindowEndTime(now);
-            if (endTime != null) {
-                long minutesUntilEnd = java.time.Duration.between(now, endTime).toMinutes();
-                if (minutesUntilEnd > 0 && minutesUntilEnd <= warningMinutesBeforeEnd) {
-                    // Only emit once per end time
-                    if (state.lastWarningEnd == null || !state.lastWarningEnd.equals(endTime)) {
-                        emitEvent(ScheduleEvent.warningSessionEnd(
-                                sessionId, scheduleName, now, endTime, minutesUntilEnd));
-                        state.lastWarningEnd = endTime;
-                    }
+    private void checkWarningsOptimized(String sessionId, String scheduleName,
+                                         SessionState state, ZonedDateTime now,
+                                         long currentEpochSecond,
+                                         long endTimeEpoch, long resetTimeEpoch) {
+        // Warning before session end (using epoch seconds - no Duration allocation)
+        if (warningMinutesBeforeEnd > 0 && endTimeEpoch > 0) {
+            long secondsUntilEnd = endTimeEpoch - currentEpochSecond;
+            long minutesUntilEnd = secondsUntilEnd / 60;
+
+            if (minutesUntilEnd > 0 && minutesUntilEnd <= warningMinutesBeforeEnd) {
+                // Only emit once per end time (compare epoch instead of ZonedDateTime)
+                if (state.lastWarningEndEpoch != endTimeEpoch) {
+                    ZonedDateTime endTime = ZonedDateTime.ofInstant(
+                            java.time.Instant.ofEpochSecond(endTimeEpoch),
+                            now.getZone());
+                    emitEvent(ScheduleEvent.warningSessionEnd(
+                            sessionId, scheduleName, now, endTime, minutesUntilEnd));
+                    state.lastWarningEndEpoch = endTimeEpoch;
                 }
             }
         }
 
-        // Warning before reset
-        if (warningMinutesBeforeReset > 0 && !state.resetTriggeredToday) {
-            ZonedDateTime resetTime = schedule.getNextResetTime(now);
-            if (resetTime != null) {
-                long minutesUntilReset = java.time.Duration.between(now, resetTime).toMinutes();
-                if (minutesUntilReset > 0 && minutesUntilReset <= warningMinutesBeforeReset) {
-                    // Only emit once per reset time
-                    if (state.lastWarningReset == null || !state.lastWarningReset.equals(resetTime)) {
-                        emitEvent(ScheduleEvent.warningReset(
-                                sessionId, scheduleName, now, resetTime, minutesUntilReset));
-                        state.lastWarningReset = resetTime;
-                    }
+        // Warning before reset (using epoch seconds)
+        if (warningMinutesBeforeReset > 0 && !state.resetTriggeredToday && resetTimeEpoch > 0) {
+            long secondsUntilReset = resetTimeEpoch - currentEpochSecond;
+            long minutesUntilReset = secondsUntilReset / 60;
+
+            if (minutesUntilReset > 0 && minutesUntilReset <= warningMinutesBeforeReset) {
+                // Only emit once per reset time
+                if (state.lastWarningResetEpoch != resetTimeEpoch) {
+                    ZonedDateTime resetTime = ZonedDateTime.ofInstant(
+                            java.time.Instant.ofEpochSecond(resetTimeEpoch),
+                            now.getZone());
+                    emitEvent(ScheduleEvent.warningReset(
+                            sessionId, scheduleName, now, resetTime, minutesUntilReset));
+                    state.lastWarningResetEpoch = resetTimeEpoch;
                 }
             }
         }
+    }
+
+    /**
+     * Check and emit warning events (legacy method).
+     * @deprecated Use checkWarningsOptimized for better performance
+     */
+    @SuppressWarnings("unused")
+    private void checkWarnings(String sessionId, String scheduleName,
+                               SessionSchedule schedule, SessionState state, ZonedDateTime now) {
+        long currentEpochSecond = now.toEpochSecond();
+        ZonedDateTime endTime = schedule.getCurrentWindowEndTime(now);
+        long endTimeEpoch = endTime != null ? endTime.toEpochSecond() : 0;
+        ZonedDateTime resetTime = schedule.getNextResetTime(now);
+        long resetTimeEpoch = resetTime != null ? resetTime.toEpochSecond() : 0;
+
+        checkWarningsOptimized(sessionId, scheduleName, state, now, currentEpochSecond,
+                endTimeEpoch, resetTimeEpoch);
     }
 
     /**
