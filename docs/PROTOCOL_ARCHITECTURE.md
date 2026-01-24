@@ -23,10 +23,14 @@ This document describes the architecture, design patterns, and code structure us
    - [6.9 Configuration Loading](#69-configuration-loading)
    - [6.10 Complete Configuration Example](#610-complete-configuration-example)
    - [6.11 Creating a New Component](#611-creating-a-new-component)
-7. [Testing Infrastructure](#7-testing-infrastructure)
-8. [Multi-Version Protocol Support](#8-multi-version-protocol-support)
-9. [Creating a New Protocol](#9-creating-a-new-protocol)
-10. [Performance Considerations](#10-performance-considerations)
+7. [Admin API](#7-admin-api)
+   - [7.1 REST API](#71-rest-api)
+   - [7.2 WebSocket API](#72-websocket-api)
+   - [7.3 Configuration](#73-configuration)
+8. [Testing Infrastructure](#8-testing-infrastructure)
+9. [Multi-Version Protocol Support](#9-multi-version-protocol-support)
+10. [Creating a New Protocol](#10-creating-a-new-protocol)
+11. [Performance Considerations](#11-performance-considerations)
 
 ---
 
@@ -1663,9 +1667,273 @@ my-component {
 
 ---
 
-## 7. Testing Infrastructure
+## 7. Admin API
 
-### 7.1 Test Script Structure
+The admin module exposes `SessionManagementService` through REST and WebSocket APIs using Javalin as the HTTP server. This enables external monitoring and control of all protocol sessions.
+
+### Architecture
+
+```
+SessionManagementService
+         │
+         ├──► SessionRoutes (REST API)
+         │         │
+         │         └──► /api/sessions/*
+         │
+         └──► SessionStateWebSocket (WebSocket)
+                   │
+                   ├──► /ws/sessions
+                   │
+                   └──► implements SessionStateChangeListener
+                              │
+                              └──► Real-time state change broadcasts
+```
+
+### 7.1 REST API
+
+**Base path**: `/api/sessions` (configurable via `admin.context-path`)
+
+#### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/sessions` | List all sessions |
+| `GET` | `/sessions/stats` | Get statistics (total, connected, loggedOn, byProtocol) |
+| `GET` | `/sessions/{id}` | Get session details (includes sequence numbers, addresses) |
+| `POST` | `/sessions/{id}/enable` | Enable a session |
+| `POST` | `/sessions/{id}/disable` | Disable a session |
+| `PUT` | `/sessions/{id}/sequence` | Set sequence numbers |
+| `POST` | `/sessions/enable-all` | Enable all sessions |
+| `POST` | `/sessions/disable-all` | Disable all sessions |
+| `GET` | `/sessions/protocol/{type}` | Filter by protocol (FIX, OUCH) |
+| `GET` | `/sessions/connected` | Get connected sessions |
+| `GET` | `/sessions/logged-on` | Get logged-on sessions |
+| `GET` | `/health` | Health check endpoint |
+
+#### Example Responses
+
+**List Sessions** (`GET /api/sessions`):
+```json
+[
+  {
+    "sessionId": "CLIENT->EXCHANGE",
+    "sessionName": "Trading Client",
+    "protocolType": "FIX",
+    "state": "LOGGED_ON",
+    "connected": true,
+    "loggedOn": true,
+    "enabled": true
+  }
+]
+```
+
+**Session Statistics** (`GET /api/sessions/stats`):
+```json
+{
+  "total": 4,
+  "connected": 2,
+  "loggedOn": 2,
+  "byProtocol": {
+    "FIX": 2,
+    "OUCH": 2
+  }
+}
+```
+
+**Session Details** (`GET /api/sessions/{id}`):
+```json
+{
+  "sessionId": "CLIENT->EXCHANGE",
+  "sessionName": "Trading Client",
+  "protocolType": "FIX",
+  "state": "LOGGED_ON",
+  "connected": true,
+  "loggedOn": true,
+  "enabled": true,
+  "incomingSeqNum": 42,
+  "outgoingSeqNum": 38,
+  "connectionAddress": "/192.168.1.100:9876",
+  "connectedAddress": "/192.168.1.50:54321"
+}
+```
+
+**Set Sequence Numbers** (`PUT /api/sessions/{id}/sequence`):
+```json
+// Request
+{ "incomingSeqNum": 100, "outgoingSeqNum": 100 }
+
+// Response
+{
+  "success": true,
+  "sessionId": "CLIENT->EXCHANGE",
+  "incomingSeqNum": 100,
+  "outgoingSeqNum": 100
+}
+```
+
+### 7.2 WebSocket API
+
+**Endpoint**: `/ws/sessions` (configurable via `admin.websocket.path`)
+
+The WebSocket API provides real-time session state updates. `SessionStateWebSocket` implements `SessionStateChangeListener` to receive notifications from `SessionManagementService`.
+
+#### Connection Flow
+
+1. **Client connects** → Receives `INITIAL_STATE` with all current sessions
+2. **State changes** → Server broadcasts `STATE_CHANGE` to all clients
+3. **Session registered** → Server broadcasts `SESSION_REGISTERED`
+4. **Session unregistered** → Server broadcasts `SESSION_UNREGISTERED`
+5. **Client sends "ping"** → Server responds with `{"type":"PONG"}`
+
+#### Message Types
+
+**INITIAL_STATE** (sent immediately on connection):
+```json
+{
+  "type": "INITIAL_STATE",
+  "timestamp": "2026-01-24T10:30:00Z",
+  "sessions": [
+    {
+      "sessionId": "CLIENT->EXCHANGE",
+      "sessionName": "Trading Client",
+      "protocolType": "FIX",
+      "state": "LOGGED_ON",
+      "connected": true,
+      "loggedOn": true,
+      "enabled": true
+    }
+  ],
+  "stats": {
+    "total": 2,
+    "connected": 1,
+    "loggedOn": 1
+  }
+}
+```
+
+**STATE_CHANGE** (broadcast on state transitions):
+```json
+{
+  "type": "STATE_CHANGE",
+  "timestamp": "2026-01-24T10:30:05Z",
+  "sessionId": "CLIENT->EXCHANGE",
+  "sessionName": "Trading Client",
+  "protocolType": "FIX",
+  "oldState": "CONNECTING",
+  "newState": "LOGGED_ON",
+  "connected": true,
+  "loggedOn": true
+}
+```
+
+**SESSION_REGISTERED** (broadcast when session is added):
+```json
+{
+  "type": "SESSION_REGISTERED",
+  "timestamp": "2026-01-24T10:30:00Z",
+  "sessionId": "NEW-SESSION",
+  "sessionName": "New Trading Session",
+  "protocolType": "OUCH",
+  "state": "DISCONNECTED",
+  "enabled": true
+}
+```
+
+**SESSION_UNREGISTERED** (broadcast when session is removed):
+```json
+{
+  "type": "SESSION_UNREGISTERED",
+  "timestamp": "2026-01-24T10:35:00Z",
+  "sessionId": "OLD-SESSION",
+  "sessionName": "Removed Session",
+  "protocolType": "FIX"
+}
+```
+
+#### Real-Time Update Mechanism
+
+```java
+// SessionStateWebSocket registers as a listener when server starts
+@Override
+public void onServerStart() {
+    sessionService.addStateChangeListener(this);
+}
+
+// Called by SessionManagementService on any state change
+@Override
+public void onSessionStateChange(ManagedSession session,
+                                  SessionConnectionState oldState,
+                                  SessionConnectionState newState) {
+    Map<String, Object> event = new LinkedHashMap<>();
+    event.put("type", "STATE_CHANGE");
+    event.put("sessionId", session.getSessionId());
+    event.put("oldState", oldState.toString());
+    event.put("newState", newState.toString());
+    // ... additional fields
+
+    broadcast(event);  // Send to all connected WebSocket clients
+}
+```
+
+### 7.3 Configuration
+
+```hocon
+# Component definition (required for config-driven mode)
+components {
+    admin-server {
+        enabled = true
+        factory = "com.omnibridge.admin.factory.AdminServerFactory"
+        type = "com.omnibridge.admin.AdminServer"
+        dependencies = ["session-management"]
+    }
+}
+
+# Admin server settings
+admin {
+    host = "0.0.0.0"
+    port = 8080
+    context-path = "/api"
+    cors {
+        enabled = true
+        allowed-origins = ["*"]
+    }
+    websocket {
+        enabled = true
+        path = "/ws"
+    }
+}
+```
+
+#### Configuration Options
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `host` | `0.0.0.0` | Bind address |
+| `port` | `8080` | HTTP port |
+| `context-path` | `/api` | Base path for REST endpoints |
+| `cors.enabled` | `false` | Enable CORS |
+| `cors.allowed-origins` | `[]` | Allowed origins (`*` for any) |
+| `websocket.enabled` | `true` | Enable WebSocket support |
+| `websocket.path` | `/ws` | WebSocket base path |
+
+#### Disabling Admin API
+
+For latency-sensitive deployments, disable the admin server by omitting it from the components section:
+
+```hocon
+components {
+    # admin-server not included - disabled
+    clock-provider { ... }
+    network { ... }
+    fix-engine { ... }
+}
+```
+
+---
+
+## 8. Testing Infrastructure
+
+### 8.1 Test Script Structure
 
 Create scripts for each test type:
 
@@ -1683,7 +1951,7 @@ connectivity/
 └── run-session-test.sh
 ```
 
-### 7.2 Latency Test Script Template
+### 8.2 Latency Test Script Template
 
 ```bash
 #!/bin/bash
@@ -1723,7 +1991,7 @@ java $JVM_OPTS -cp "$UBER_JAR" com.example.initiator.SampleInitiator \
 kill $ACCEPTOR_PID 2>/dev/null
 ```
 
-### 7.3 Latency Tracker
+### 8.3 Latency Tracker
 
 ```java
 public class LatencyTracker {
@@ -1770,7 +2038,7 @@ public class LatencyTracker {
 }
 ```
 
-### 7.4 Session Test Framework
+### 8.4 Session Test Framework
 
 ```java
 public abstract class SessionTest {
@@ -1812,7 +2080,7 @@ public class HeartbeatTest extends SessionTest {
 }
 ```
 
-### 7.5 Reference Testing (QuickFIX/J)
+### 8.5 Reference Testing (QuickFIX/J)
 
 For FIX protocol, test against QuickFIX/J:
 
@@ -1837,9 +2105,9 @@ public class ReferenceTest {
 
 ---
 
-## 8. Multi-Version Protocol Support
+## 9. Multi-Version Protocol Support
 
-### 8.1 Version Enum
+### 9.1 Version Enum
 
 Define protocol versions with their characteristics:
 
@@ -1863,7 +2131,7 @@ public enum OuchVersion {
 }
 ```
 
-### 8.2 Version-Specific Message Classes
+### 9.2 Version-Specific Message Classes
 
 Organize by version in separate packages:
 
@@ -1892,7 +2160,7 @@ ouch/message/
         └── PegAppendage.java
 ```
 
-### 8.3 V50 Base Class with Appendages
+### 9.3 V50 Base Class with Appendages
 
 ```java
 public abstract class V50OuchMessage extends OuchMessage {
@@ -1950,7 +2218,7 @@ public abstract class V50OuchMessage extends OuchMessage {
 }
 ```
 
-### 8.4 Version-Specific Listener Callbacks
+### 9.4 Version-Specific Listener Callbacks
 
 ```java
 public interface OuchMessageListener<S> {
@@ -1969,7 +2237,7 @@ public interface OuchMessageListener<S> {
 }
 ```
 
-### 8.5 Version-Aware Dispatching
+### 9.5 Version-Aware Dispatching
 
 ```java
 private void processIncomingMessage(OuchMessage msg) {
@@ -1995,9 +2263,9 @@ private void processIncomingMessage(OuchMessage msg) {
 
 ---
 
-## 9. Creating a New Protocol
+## 10. Creating a New Protocol
 
-### 9.1 Checklist
+### 10.1 Checklist
 
 Follow these steps to implement a new exchange protocol:
 
@@ -2053,7 +2321,7 @@ Follow these steps to implement a new exchange protocol:
    - Session tests
    - Reference tests (if available)
 
-### 9.2 Example: New Binary Protocol
+### 10.2 Example: New Binary Protocol
 
 ```java
 // 1. Define message type enum
@@ -2129,30 +2397,30 @@ public class NewProtocolSession implements NetworkHandler {
 
 ---
 
-## 10. Performance Considerations
+## 11. Performance Considerations
 
-### 10.1 Zero-Copy Techniques
+### 11.1 Zero-Copy Techniques
 
 1. **Flyweight Messages**: Wrap buffers, don't copy
 2. **Ring Buffer Direct View**: ByteBuffer.slice() for socket writes
 3. **Avoid String Operations**: Use byte comparisons where possible
 4. **Pre-allocated Buffers**: Reuse buffers across messages
 
-### 10.2 Lock-Free Data Structures
+### 11.2 Lock-Free Data Structures
 
 1. **ManyToOneRingBuffer**: Multi-producer, single-consumer
 2. **AtomicReference**: State machine transitions
 3. **AtomicInteger/Long**: Sequence numbers, counters
 4. **CopyOnWriteArrayList**: Listener lists
 
-### 10.3 Memory Layout
+### 11.3 Memory Layout
 
 1. **Direct Buffers**: Use ByteBuffer.allocateDirect()
 2. **Off-Heap**: Agrona's UnsafeBuffer
 3. **Cache Alignment**: Consider field ordering
 4. **Minimize Allocations**: Object pools, ThreadLocal
 
-### 10.4 JVM Tuning
+### 11.4 JVM Tuning
 
 ```bash
 JVM_OPTS="-Xms256m -Xmx512m \
@@ -2162,7 +2430,7 @@ JVM_OPTS="-Xms256m -Xmx512m \
           -Dagrona.disable.bounds.checks=true"
 ```
 
-### 10.5 Latency Targets
+### 11.5 Latency Targets
 
 | Percentile | Target |
 |------------|--------|
@@ -2238,6 +2506,17 @@ JVM_OPTS="-Xms256m -Xmx512m \
 | OUCH Engine | OuchSessionAdapter | ManagedSession wrapper for OUCH |
 | OUCH Engine | OuchEngine | Multi-session manager |
 
+### Admin API
+
+| Module | Class | Purpose |
+|--------|-------|---------|
+| Admin | AdminServer | Javalin-based HTTP/WebSocket server |
+| Admin | AdminServerConfig | Server configuration (host, port, CORS, etc.) |
+| Admin | RouteProvider | Interface for REST route registration |
+| Admin | SessionRoutes | REST endpoints for session management |
+| Admin | WebSocketHandler | Interface for WebSocket handlers |
+| Admin | SessionStateWebSocket | Real-time session state updates via WebSocket |
+
 ### Applications
 
 | Module | Class | Purpose |
@@ -2289,10 +2568,19 @@ JVM_OPTS="-Xms256m -Xmx512m \
     LogStoreFactory.java
 
 /admin/src/main/java/com/omnibridge/admin/
-    AdminServer.java
+    AdminServer.java             # HTTP/WebSocket server component
+    config/AdminServerConfig.java
 
 /admin/src/main/java/com/omnibridge/admin/factory/
     AdminServerFactory.java
+
+/admin/src/main/java/com/omnibridge/admin/routes/
+    RouteProvider.java           # Interface for REST route providers
+    SessionRoutes.java           # Session management REST endpoints
+
+/admin/src/main/java/com/omnibridge/admin/websocket/
+    WebSocketHandler.java        # Interface for WebSocket handlers
+    SessionStateWebSocket.java   # Real-time session state updates
 
 /fix/message/src/main/java/com/omnibridge/fix/message/
     IncomingFixMessage.java, RingBufferOutgoingMessage.java, FixReader.java
@@ -2324,10 +2612,11 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
-*Document Version: 1.3*
+*Document Version: 1.4*
 *Last Updated: January 2026*
 *Changes:
+- Added Section 7: Admin API with REST and WebSocket documentation
 - Expanded Section 6 with comprehensive ComponentFactory framework documentation
 - Added config-driven component loading with dependency resolution
 - Added application lifecycle hooks (preStart/postStart) pattern
-- Updated Appendices A and B with factory classes and file paths*
+- Updated Appendices A and B with factory classes, admin classes, and file paths*
