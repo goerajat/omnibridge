@@ -81,3 +81,68 @@ Example:
 run-session-test.bat all text
 run-session-test.bat HeartbeatTest json
 ```
+
+## OUCH Latency Testing
+
+Run OUCH latency tests:
+
+```bash
+# OUCH 4.2
+run-ouch-latency-test.bat [warmup-orders] [test-orders] [rate]
+
+# OUCH 5.0
+run-ouch-latency-test-v50.bat [warmup-orders] [test-orders] [rate]
+```
+
+## Architecture Documentation
+
+**IMPORTANT**: The protocol architecture is documented in `docs/PROTOCOL_ARCHITECTURE.md`. This document serves as a template for implementing new exchange protocols.
+
+### When to Update Architecture Documentation
+
+Update `docs/PROTOCOL_ARCHITECTURE.md` when making changes to:
+
+1. **Module Structure**
+   - Adding/removing Maven modules
+   - Changing module dependencies
+   - Restructuring package layout
+
+2. **Message Encoding/Decoding**
+   - Changing flyweight patterns
+   - Adding new base message classes
+   - Modifying buffer handling
+
+3. **Network Layer**
+   - Changes to TcpChannel ring buffer mechanism
+   - NetworkEventLoop modifications
+   - New network handler patterns
+
+4. **Session Management**
+   - State machine changes
+   - New session types
+   - Scheduler modifications
+
+5. **Configuration Framework**
+   - Component lifecycle changes
+   - ComponentProvider modifications
+   - New configuration patterns
+
+6. **Multi-Version Support**
+   - Adding new protocol versions
+   - Changing version-specific dispatch patterns
+   - New appendage types
+
+7. **Testing Infrastructure**
+   - New test script patterns
+   - Test framework changes
+   - New latency tracking methods
+
+### Documentation Review Checklist
+
+When modifying the architecture, verify:
+- [ ] All new classes are documented with their purpose
+- [ ] File paths in appendices are accurate
+- [ ] Code examples reflect current implementation
+- [ ] New patterns are added to relevant sections
+- [ ] Multi-version handling is documented if applicable
+- [ ] Test procedures are updated if changed
