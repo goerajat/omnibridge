@@ -9,6 +9,7 @@ This document describes the architecture, design patterns, and code structure us
 3. [Message Encoding and Decoding](#3-message-encoding-and-decoding)
 4. [Network Layer and Ring Buffers](#4-network-layer-and-ring-buffers)
 5. [Session Management](#5-session-management)
+   - [5.5 Centralized Session Management Service](#55-centralized-session-management-service)
 6. [Configuration Framework](#6-configuration-framework)
 7. [Testing Infrastructure](#7-testing-infrastructure)
 8. [Multi-Version Protocol Support](#8-multi-version-protocol-support)
@@ -771,6 +772,259 @@ public class SessionSchedule {
 }
 ```
 
+### 5.5 Centralized Session Management Service
+
+The Session Management Service provides unified session tracking across all protocols (FIX, OUCH, etc.), enabling protocol-agnostic monitoring, control, and state change notifications.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  SessionManagementService                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ sessions: Map<String, ManagedSession>                    │    │
+│  │ listeners: List<SessionStateChangeListener>              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│         ▲                                    ▲                   │
+│         │ registerSession()                  │ registerSession() │
+│  ┌──────┴──────┐                      ┌──────┴──────┐           │
+│  │FixSession   │                      │OuchSession  │           │
+│  │  Adapter    │                      │  Adapter    │           │
+│  └──────┬──────┘                      └──────┬──────┘           │
+│         │ wraps                              │ wraps             │
+│  ┌──────┴──────┐                      ┌──────┴──────┐           │
+│  │  FixSession │                      │ OuchSession │           │
+│  └─────────────┘                      └─────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Common Session Interface
+
+The `ManagedSession` interface provides a unified API for all session types:
+
+```java
+public interface ManagedSession {
+    // Identity
+    String getSessionId();
+    String getSessionName();
+    String getProtocolType();  // "FIX", "OUCH"
+
+    // Connection State
+    boolean isConnected();
+    boolean isLoggedOn();
+    SessionConnectionState getConnectionState();
+
+    // Session Control
+    void enable();
+    void disable();
+    boolean isEnabled();
+
+    // Sequence Numbers
+    long incomingSeqNum();
+    long outgoingSeqNum();
+    void setIncomingSeqNum(long seqNum);
+    void setOutgoingSeqNum(long seqNum);
+
+    // Connection Address
+    InetSocketAddress connectionAddress();
+    InetSocketAddress connectedAddress();
+    void updateConnectionAddress(String host, int port);
+
+    // Access underlying session
+    <T> T unwrap();
+}
+```
+
+#### Unified Connection State
+
+The `SessionConnectionState` enum provides a common state model across protocols:
+
+```java
+public enum SessionConnectionState {
+    DISCONNECTED,  // Not connected
+    CONNECTING,    // Connection in progress
+    CONNECTED,     // TCP connected, not logged on
+    LOGGED_ON,     // Fully authenticated and operational
+    STOPPED;       // Terminated
+
+    public boolean isConnected();
+    public boolean isLoggedOn();
+    public boolean isTerminal();
+}
+```
+
+**State Mapping:**
+
+| FIX SessionState | SessionConnectionState |
+|------------------|------------------------|
+| CREATED, DISCONNECTED | DISCONNECTED |
+| CONNECTING | CONNECTING |
+| CONNECTED, LOGON_SENT | CONNECTED |
+| LOGGED_ON, RESENDING | LOGGED_ON |
+| LOGOUT_SENT, STOPPED | STOPPED |
+
+| OUCH SessionState | SessionConnectionState |
+|-------------------|------------------------|
+| CREATED, DISCONNECTED | DISCONNECTED |
+| CONNECTING | CONNECTING |
+| CONNECTED, LOGIN_SENT | CONNECTED |
+| LOGGED_IN | LOGGED_ON |
+| LOGOUT_SENT, STOPPED | STOPPED |
+
+#### Session Management Service Interface
+
+```java
+public interface SessionManagementService extends Component {
+    // Registration
+    void registerSession(ManagedSession session);
+    ManagedSession unregisterSession(String sessionId);
+
+    // Lookup
+    Optional<ManagedSession> getSession(String sessionId);
+    Collection<ManagedSession> getAllSessions();
+    Collection<ManagedSession> getSessionsByProtocol(String protocolType);
+    Collection<ManagedSession> getConnectedSessions();
+    Collection<ManagedSession> getLoggedOnSessions();
+
+    // Bulk Operations
+    void enableAllSessions();
+    void disableAllSessions();
+
+    // Listeners
+    void addStateChangeListener(SessionStateChangeListener listener);
+    void removeStateChangeListener(SessionStateChangeListener listener);
+
+    // Statistics
+    int getTotalSessionCount();
+    int getConnectedSessionCount();
+    int getLoggedOnSessionCount();
+}
+```
+
+#### State Change Notifications
+
+```java
+public interface SessionStateChangeListener {
+    void onSessionStateChange(ManagedSession session,
+                              SessionConnectionState oldState,
+                              SessionConnectionState newState);
+    default void onSessionRegistered(ManagedSession session) {}
+    default void onSessionUnregistered(ManagedSession session) {}
+}
+```
+
+#### Session Adapters
+
+Each protocol provides an adapter that wraps protocol-specific sessions:
+
+```java
+// FIX adapter
+public class FixSessionAdapter implements ManagedSession, SessionStateListener {
+    private final FixSession session;
+    private final DefaultSessionManagementService managementService;
+
+    @Override
+    public String getProtocolType() { return "FIX"; }
+
+    @Override
+    public long incomingSeqNum() {
+        return session.getExpectedIncomingSeqNum();
+    }
+
+    @Override
+    public long outgoingSeqNum() {
+        return session.getOutgoingSeqNum();
+    }
+
+    // Maps FIX state to common state
+    private static SessionConnectionState mapState(SessionState state) {
+        return switch (state) {
+            case CREATED, DISCONNECTED -> SessionConnectionState.DISCONNECTED;
+            case CONNECTING -> SessionConnectionState.CONNECTING;
+            case CONNECTED, LOGON_SENT -> SessionConnectionState.CONNECTED;
+            case LOGGED_ON, RESENDING -> SessionConnectionState.LOGGED_ON;
+            case LOGOUT_SENT, STOPPED -> SessionConnectionState.STOPPED;
+        };
+    }
+}
+
+// OUCH adapter
+public class OuchSessionAdapter implements ManagedSession, OuchSession.SessionStateListener {
+    private final OuchSession session;
+
+    @Override
+    public String getProtocolType() { return "OUCH"; }
+
+    // OUCH uses single sequence number
+    @Override
+    public long incomingSeqNum() { return outgoingSeqNum(); }
+}
+```
+
+#### Engine Integration
+
+Engines automatically register sessions with the management service if available:
+
+```java
+public class FixEngine {
+    private SessionManagementService sessionManagementService;
+
+    // From ComponentProvider in constructor
+    try {
+        this.sessionManagementService = provider.getComponent(SessionManagementService.class);
+    } catch (IllegalArgumentException e) {
+        // Optional dependency
+    }
+
+    public FixSession createSession(SessionConfig config) {
+        FixSession session = new FixSession(config, logStore);
+        // ... setup listeners ...
+
+        // Register with management service
+        if (sessionManagementService != null) {
+            DefaultSessionManagementService defaultService =
+                (sessionManagementService instanceof DefaultSessionManagementService)
+                ? (DefaultSessionManagementService) sessionManagementService : null;
+            FixSessionAdapter adapter = new FixSessionAdapter(session, defaultService);
+            sessionManagementService.registerSession(adapter);
+        }
+
+        return session;
+    }
+}
+```
+
+#### Usage Example
+
+```java
+// Create and configure service
+DefaultSessionManagementService sessionService = new DefaultSessionManagementService();
+sessionService.initialize();
+sessionService.startActive();
+
+// Register with engines
+fixEngine.setSessionManagementService(sessionService);
+ouchEngine.setSessionManagementService(sessionService);
+
+// Listen for state changes
+sessionService.addStateChangeListener((session, oldState, newState) -> {
+    log.info("[{}] {} state: {} -> {}",
+        session.getProtocolType(),
+        session.getSessionId(),
+        oldState,
+        newState);
+});
+
+// Query sessions
+Collection<ManagedSession> allSessions = sessionService.getAllSessions();
+Collection<ManagedSession> fixSessions = sessionService.getSessionsByProtocol("FIX");
+Collection<ManagedSession> loggedOn = sessionService.getLoggedOnSessions();
+
+// Access underlying session
+ManagedSession managed = sessionService.getSession("sender-target").orElseThrow();
+FixSession fixSession = managed.unwrap();
+```
+
 ---
 
 ## 6. Configuration Framework
@@ -1424,6 +1678,11 @@ JVM_OPTS="-Xms256m -Xmx512m \
 | Config | Component | Lifecycle interface |
 | Config | ComponentProvider | Dependency injection |
 | Config | SessionScheduler | Session timing |
+| Config | SessionManagementService | Unified session registry interface |
+| Config | DefaultSessionManagementService | Thread-safe session management impl |
+| Config | ManagedSession | Protocol-agnostic session interface |
+| Config | SessionConnectionState | Common session state enum |
+| Config | SessionStateChangeListener | State change notifications |
 | Network | NetworkEventLoop | NIO event loop |
 | Network | TcpChannel | Per-connection ring buffer |
 | Network | NetworkHandler | I/O callbacks |
@@ -1432,10 +1691,12 @@ JVM_OPTS="-Xms256m -Xmx512m \
 | FIX Message | IncomingFixMessage | Flyweight parser |
 | FIX Message | RingBufferOutgoingMessage | Zero-copy encoder |
 | FIX Engine | FixSession | Session state machine |
+| FIX Engine | FixSessionAdapter | ManagedSession wrapper for FIX |
 | FIX Engine | FixEngine | Multi-session manager |
 | OUCH Message | OuchMessage | Base flyweight |
 | OUCH Message | V42*/V50* | Version-specific messages |
 | OUCH Engine | OuchSession | Session state machine |
+| OUCH Engine | OuchSessionAdapter | ManagedSession wrapper for OUCH |
 | OUCH Engine | OuchEngine | Multi-session manager |
 
 ---
@@ -1445,6 +1706,13 @@ JVM_OPTS="-Xms256m -Xmx512m \
 ```
 /config/src/main/java/com/fixengine/config/
     ConfigLoader.java, Component.java, ComponentProvider.java
+
+/config/src/main/java/com/fixengine/config/session/
+    SessionManagementService.java      # Service interface
+    DefaultSessionManagementService.java # Thread-safe implementation
+    ManagedSession.java                # Unified session interface
+    SessionConnectionState.java        # Common state enum
+    SessionStateChangeListener.java    # State change notifications
 
 /network/src/main/java/com/fixengine/network/
     NetworkEventLoop.java, TcpChannel.java, NetworkHandler.java
@@ -1456,14 +1724,18 @@ JVM_OPTS="-Xms256m -Xmx512m \
     IncomingFixMessage.java, RingBufferOutgoingMessage.java, FixReader.java
 
 /fix/engine/src/main/java/com/fixengine/engine/
-    FixEngine.java, session/FixSession.java
+    FixEngine.java
+    session/FixSession.java
+    session/FixSessionAdapter.java     # ManagedSession adapter
 
 /ouch/message/src/main/java/com/fixengine/ouch/message/
     OuchMessage.java, OuchVersion.java
     v42/*.java, v50/*.java
 
 /ouch/engine/src/main/java/com/fixengine/ouch/engine/
-    OuchEngine.java, session/OuchSession.java
+    OuchEngine.java
+    session/OuchSession.java
+    session/OuchSessionAdapter.java    # ManagedSession adapter
 
 /apps/common/src/main/java/
     LatencyTracker.java, ApplicationBase.java
@@ -1471,5 +1743,6 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Last Updated: January 2026*
+*Changes: Added Section 5.5 - Centralized Session Management Service*

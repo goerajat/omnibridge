@@ -7,6 +7,8 @@ import com.fixengine.config.provider.ComponentProvider;
 import com.fixengine.config.schedule.ScheduleEvent;
 import com.fixengine.config.schedule.ScheduleListener;
 import com.fixengine.config.schedule.SessionScheduler;
+import com.fixengine.config.session.DefaultSessionManagementService;
+import com.fixengine.config.session.SessionManagementService;
 import com.fixengine.engine.config.EngineConfig;
 import com.fixengine.engine.config.EngineSessionConfig;
 import com.fixengine.engine.config.FixEngineConfig;
@@ -14,6 +16,7 @@ import com.fixengine.engine.config.SessionConfig;
 import com.fixengine.engine.session.EodEvent;
 import com.fixengine.engine.session.EodEventListener;
 import com.fixengine.engine.session.FixSession;
+import com.fixengine.engine.session.FixSessionAdapter;
 import com.fixengine.engine.session.MessageListener;
 import com.fixengine.engine.session.SessionState;
 import com.fixengine.engine.session.SessionStateListener;
@@ -55,6 +58,7 @@ public class FixEngine implements Component {
     private final LogStore logStore;
     private final ClockProvider clockProvider;
     private final SessionScheduler sessionScheduler;
+    private SessionManagementService sessionManagementService;
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
     private final Map<String, FixSession> sessions = new ConcurrentHashMap<>();
@@ -155,8 +159,15 @@ public class FixEngine implements Component {
         }
         this.sessionScheduler = scheduler;
 
-        log.info("FIX Engine created with provider: network={}, persistence={}, clock={}, scheduler={}",
-                eventLoop != null, logStore != null, clockProvider, sessionScheduler != null);
+        // Get session management service from provider (optional)
+        try {
+            this.sessionManagementService = provider.getComponent(SessionManagementService.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No SessionManagementService registered with provider");
+        }
+
+        log.info("FIX Engine created with provider: network={}, persistence={}, clock={}, scheduler={}, sessionMgmt={}",
+                eventLoop != null, logStore != null, clockProvider, sessionScheduler != null, sessionManagementService != null);
     }
 
     /**
@@ -368,6 +379,16 @@ public class FixEngine implements Component {
         }
 
         sessions.put(sessionId, session);
+
+        // Register with session management service if available
+        if (sessionManagementService != null) {
+            DefaultSessionManagementService defaultService =
+                    (sessionManagementService instanceof DefaultSessionManagementService)
+                    ? (DefaultSessionManagementService) sessionManagementService : null;
+            FixSessionAdapter adapter = new FixSessionAdapter(session, defaultService);
+            sessionManagementService.registerSession(adapter);
+        }
+
         log.info("Session created: {}", sessionId);
 
         return session;
@@ -984,6 +1005,23 @@ public class FixEngine implements Component {
      */
     public SessionScheduler getSessionScheduler() {
         return sessionScheduler;
+    }
+
+    /**
+     * Get the session management service (may be null if not configured).
+     */
+    public SessionManagementService getSessionManagementService() {
+        return sessionManagementService;
+    }
+
+    /**
+     * Set the session management service.
+     * This should be called before creating any sessions.
+     *
+     * @param service the session management service
+     */
+    public void setSessionManagementService(SessionManagementService service) {
+        this.sessionManagementService = service;
     }
 
     /**

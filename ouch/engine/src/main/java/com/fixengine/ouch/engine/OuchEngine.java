@@ -6,6 +6,8 @@ import com.fixengine.config.ComponentState;
 import com.fixengine.config.schedule.ScheduleEvent;
 import com.fixengine.config.schedule.ScheduleListener;
 import com.fixengine.config.schedule.SessionScheduler;
+import com.fixengine.config.session.DefaultSessionManagementService;
+import com.fixengine.config.session.SessionManagementService;
 import com.fixengine.network.NetworkEventLoop;
 import com.fixengine.network.NetworkHandler;
 import com.fixengine.network.TcpAcceptor;
@@ -14,6 +16,7 @@ import com.fixengine.ouch.engine.config.OuchEngineConfig;
 import org.agrona.DirectBuffer;
 import com.fixengine.ouch.engine.config.OuchSessionConfig;
 import com.fixengine.ouch.engine.session.OuchSession;
+import com.fixengine.ouch.engine.session.OuchSessionAdapter;
 import com.fixengine.ouch.engine.session.SessionState;
 import com.fixengine.ouch.message.OuchMessage;
 import com.fixengine.persistence.LogStore;
@@ -65,6 +68,7 @@ public class OuchEngine implements Component, ScheduleListener {
     private LogStore logStore;
     private SessionScheduler scheduler;
     private ClockProvider clockProvider;
+    private SessionManagementService sessionManagementService;
 
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
     private volatile boolean running = false;
@@ -106,6 +110,23 @@ public class OuchEngine implements Component, ScheduleListener {
         this.clockProvider = clockProvider;
     }
 
+    /**
+     * Set the session management service.
+     * This should be called before creating any sessions.
+     *
+     * @param service the session management service
+     */
+    public void setSessionManagementService(SessionManagementService service) {
+        this.sessionManagementService = service;
+    }
+
+    /**
+     * Get the session management service (may be null if not configured).
+     */
+    public SessionManagementService getSessionManagementService() {
+        return sessionManagementService;
+    }
+
     // =====================================================
     // Session Management
     // =====================================================
@@ -135,6 +156,16 @@ public class OuchEngine implements Component, ScheduleListener {
         session.addMessageListener(this::onSessionMessage);
 
         sessions.put(sessionId, session);
+
+        // Register with session management service if available
+        if (sessionManagementService != null) {
+            DefaultSessionManagementService defaultService =
+                    (sessionManagementService instanceof DefaultSessionManagementService)
+                    ? (DefaultSessionManagementService) sessionManagementService : null;
+            OuchSessionAdapter adapter = new OuchSessionAdapter(session, defaultService);
+            sessionManagementService.registerSession(adapter);
+        }
+
         log.info("Created OUCH session: {} (protocol: {})", sessionId, sessionConfig.getProtocolVersion());
 
         return session;
