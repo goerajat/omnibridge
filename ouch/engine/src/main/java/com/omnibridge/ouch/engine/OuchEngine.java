@@ -3,6 +3,7 @@ package com.omnibridge.ouch.engine;
 import com.omnibridge.config.ClockProvider;
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
+import com.omnibridge.config.provider.ComponentProvider;
 import com.omnibridge.config.schedule.ScheduleEvent;
 import com.omnibridge.config.schedule.ScheduleListener;
 import com.omnibridge.config.schedule.SessionScheduler;
@@ -59,6 +60,7 @@ public class OuchEngine implements Component, ScheduleListener {
     private static final Logger log = LoggerFactory.getLogger(OuchEngine.class);
 
     private final OuchEngineConfig config;
+    private final ComponentProvider componentProvider;
     private final Map<String, OuchSession> sessions = new ConcurrentHashMap<>();
     private final Map<Integer, TcpAcceptor> acceptors = new ConcurrentHashMap<>();
     private final List<GlobalStateListener> stateListeners = new CopyOnWriteArrayList<>();
@@ -78,6 +80,7 @@ public class OuchEngine implements Component, ScheduleListener {
      */
     public OuchEngine(OuchEngineConfig config) {
         this.config = Objects.requireNonNull(config, "config is required");
+        this.componentProvider = null;
     }
 
     /**
@@ -85,6 +88,61 @@ public class OuchEngine implements Component, ScheduleListener {
      */
     public OuchEngine() {
         this(new OuchEngineConfig());
+    }
+
+    /**
+     * Create an OUCH engine using the provider pattern.
+     * The provider is used to access NetworkEventLoop, LogStore, ClockProvider,
+     * SessionScheduler, and SessionManagementService.
+     *
+     * @param config the OUCH engine configuration
+     * @param provider the component provider
+     */
+    public OuchEngine(OuchEngineConfig config, ComponentProvider provider) {
+        this.config = Objects.requireNonNull(config, "config is required");
+        this.componentProvider = Objects.requireNonNull(provider, "provider is required");
+
+        // Get network event loop from provider
+        try {
+            this.networkEventLoop = provider.getComponent(NetworkEventLoop.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No NetworkEventLoop registered with provider");
+        }
+
+        // Get clock provider from provider (use system clock if not registered)
+        try {
+            this.clockProvider = provider.getComponent(ClockProvider.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No ClockProvider registered with provider, using system clock");
+            this.clockProvider = ClockProvider.system();
+        }
+
+        // Get log store from provider (may be null if persistence not enabled)
+        try {
+            this.logStore = provider.getComponent(LogStore.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No LogStore registered with provider");
+        }
+
+        // Get session scheduler from provider (optional)
+        try {
+            this.scheduler = provider.getComponent(SessionScheduler.class);
+            if (this.scheduler != null) {
+                this.scheduler.addListener(this);
+            }
+        } catch (IllegalArgumentException e) {
+            log.debug("No SessionScheduler registered with provider");
+        }
+
+        // Get session management service from provider (optional)
+        try {
+            this.sessionManagementService = provider.getComponent(SessionManagementService.class);
+        } catch (IllegalArgumentException e) {
+            log.debug("No SessionManagementService registered with provider");
+        }
+
+        log.info("OUCH Engine created with provider: network={}, persistence={}, clock={}, scheduler={}, sessionMgmt={}",
+                networkEventLoop != null, logStore != null, clockProvider, scheduler != null, sessionManagementService != null);
     }
 
     // =====================================================
@@ -166,6 +224,12 @@ public class OuchEngine implements Component, ScheduleListener {
             sessionManagementService.registerSession(adapter);
         }
 
+        // Associate with schedule if configured
+        if (scheduler != null && sessionConfig.getScheduleName() != null) {
+            scheduler.associateSession(sessionId, sessionConfig.getScheduleName());
+            log.info("Associated OUCH session '{}' with schedule '{}'", sessionId, sessionConfig.getScheduleName());
+        }
+
         log.info("Created OUCH session: {} (protocol: {})", sessionId, sessionConfig.getProtocolVersion());
 
         return session;
@@ -236,6 +300,25 @@ public class OuchEngine implements Component, ScheduleListener {
             session.stop();
             log.info("Removed OUCH session: {}", sessionId);
         }
+    }
+
+    /**
+     * Create all sessions defined in the OuchEngineConfig.
+     * This is typically called automatically during engine initialization.
+     *
+     * @return list of created sessions
+     */
+    public List<OuchSession> createSessionsFromConfig() {
+        List<OuchSession> createdSessions = new java.util.ArrayList<>();
+        for (OuchSessionConfig sessionConfig : config.getSessions()) {
+            try {
+                OuchSession session = createSession(sessionConfig);
+                createdSessions.add(session);
+            } catch (Exception e) {
+                log.error("Failed to create session: {}", sessionConfig.getSessionId(), e);
+            }
+        }
+        return createdSessions;
     }
 
     // =====================================================
@@ -319,6 +402,10 @@ public class OuchEngine implements Component, ScheduleListener {
 
     @Override
     public void initialize() {
+        if (componentState != ComponentState.UNINITIALIZED) {
+            throw new IllegalStateException("Cannot initialize from state: " + componentState);
+        }
+
         if (networkEventLoop == null) {
             try {
                 networkEventLoop = new NetworkEventLoop("ouch-io");
@@ -326,8 +413,12 @@ public class OuchEngine implements Component, ScheduleListener {
                 throw new RuntimeException("Failed to create network event loop", e);
             }
         }
+
+        // Create sessions from config
+        createSessionsFromConfig();
+
         componentState = ComponentState.INITIALIZED;
-        log.info("OUCH Engine initialized");
+        log.info("OUCH Engine initialized with {} sessions", sessions.size());
     }
 
     @Override
@@ -437,6 +528,64 @@ public class OuchEngine implements Component, ScheduleListener {
     @Override
     public ComponentState getState() {
         return componentState;
+    }
+
+    /**
+     * Get the engine configuration.
+     */
+    public OuchEngineConfig getConfig() {
+        return config;
+    }
+
+    /**
+     * Get the component provider.
+     */
+    public ComponentProvider getComponentProvider() {
+        return componentProvider;
+    }
+
+    /**
+     * Get the network event loop.
+     */
+    public NetworkEventLoop getNetworkEventLoop() {
+        return networkEventLoop;
+    }
+
+    /**
+     * Get the log store.
+     */
+    public LogStore getLogStore() {
+        return logStore;
+    }
+
+    /**
+     * Get the clock provider.
+     */
+    public ClockProvider getClockProvider() {
+        return clockProvider;
+    }
+
+    /**
+     * Get the session scheduler.
+     */
+    public SessionScheduler getScheduler() {
+        return scheduler;
+    }
+
+    /**
+     * Associate a session with a schedule in the SessionScheduler.
+     * This is a convenience method that delegates to the SessionScheduler.
+     *
+     * @param sessionId the session identifier
+     * @param scheduleName the name of the schedule to associate
+     * @throws IllegalStateException if no SessionScheduler is configured
+     * @throws IllegalArgumentException if the schedule doesn't exist
+     */
+    public void associateSessionWithSchedule(String sessionId, String scheduleName) {
+        if (scheduler == null) {
+            throw new IllegalStateException("No SessionScheduler configured");
+        }
+        scheduler.associateSession(sessionId, scheduleName);
     }
 
     // =====================================================

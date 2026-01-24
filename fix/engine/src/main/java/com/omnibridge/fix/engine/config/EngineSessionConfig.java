@@ -38,6 +38,7 @@ public final class EngineSessionConfig {
     private final int maxMessageLength;
     private final int maxTagNumber;
     private final String persistencePath;
+    private final String scheduleName;
 
     private EngineSessionConfig(Builder builder) {
         this.sessionName = builder.sessionName;
@@ -62,6 +63,7 @@ public final class EngineSessionConfig {
         this.maxMessageLength = builder.maxMessageLength;
         this.maxTagNumber = builder.maxTagNumber;
         this.persistencePath = builder.persistencePath;
+        this.scheduleName = builder.scheduleName;
     }
 
     /**
@@ -104,6 +106,9 @@ public final class EngineSessionConfig {
         }
         if (config.hasPath("persistence-path")) {
             builder.persistencePath(config.getString("persistence-path"));
+        }
+        if (config.hasPath("schedule")) {
+            builder.scheduleName(config.getString("schedule"));
         }
 
         return builder.build();
@@ -198,6 +203,13 @@ public final class EngineSessionConfig {
     }
 
     /**
+     * Get the schedule name for SessionScheduler association.
+     */
+    public Optional<String> getScheduleName() {
+        return Optional.ofNullable(scheduleName);
+    }
+
+    /**
      * Get the session ID (SenderCompID->TargetCompID).
      */
     public String getSessionId() {
@@ -231,6 +243,7 @@ public final class EngineSessionConfig {
         private int maxMessageLength = 4096;
         private int maxTagNumber = 1000;
         private String persistencePath;
+        private String scheduleName;
 
         private Builder() {}
 
@@ -341,6 +354,11 @@ public final class EngineSessionConfig {
 
         public Builder persistencePath(String persistencePath) {
             this.persistencePath = persistencePath;
+            return this;
+        }
+
+        public Builder scheduleName(String scheduleName) {
+            this.scheduleName = scheduleName;
             return this;
         }
 

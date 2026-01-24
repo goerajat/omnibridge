@@ -1,9 +1,15 @@
 package com.omnibridge.apps.common;
 
+import com.omnibridge.admin.AdminServer;
+import com.omnibridge.admin.config.AdminServerConfig;
+import com.omnibridge.admin.routes.SessionRoutes;
+import com.omnibridge.admin.websocket.SessionStateWebSocket;
 import com.omnibridge.config.ClockProvider;
 import com.omnibridge.config.provider.DefaultComponentProvider;
 import com.omnibridge.config.schedule.SchedulerConfig;
 import com.omnibridge.config.schedule.SessionScheduler;
+import com.omnibridge.config.session.DefaultSessionManagementService;
+import com.omnibridge.config.session.SessionManagementService;
 import com.omnibridge.fix.engine.FixEngine;
 import com.omnibridge.fix.engine.config.FixEngineConfig;
 import com.omnibridge.fix.engine.session.FixSession;
@@ -11,7 +17,6 @@ import com.omnibridge.network.NetworkEventLoop;
 import com.omnibridge.network.config.NetworkConfig;
 import com.omnibridge.ouch.engine.OuchEngine;
 import com.omnibridge.ouch.engine.config.OuchEngineConfig;
-import com.omnibridge.ouch.engine.config.OuchSessionConfig;
 import com.omnibridge.ouch.engine.session.OuchSession;
 import com.omnibridge.persistence.LogStore;
 import com.omnibridge.persistence.config.PersistenceConfig;
@@ -127,6 +132,30 @@ public abstract class ApplicationBase implements Callable<Integer> {
                 return scheduler;
             });
         }
+
+        // Register SessionManagementService and AdminServer if admin is enabled
+        boolean adminEnabled = config.hasPath("admin.enabled") && config.getBoolean("admin.enabled");
+        if (adminEnabled) {
+            // Register SessionManagementService factory
+            provider.register(SessionManagementService.class, (name, cfg, p) -> {
+                return new DefaultSessionManagementService();
+            });
+
+            // Register AdminServer factory
+            provider.register(AdminServer.class, (name, cfg, p) -> {
+                AdminServerConfig adminConfig = AdminServerConfig.fromConfig(cfg);
+                SessionManagementService sessionService = p.getComponent(SessionManagementService.class);
+
+                AdminServer server = new AdminServer(adminConfig);
+                server.addRouteProvider(new SessionRoutes(sessionService));
+                server.addWebSocketHandler(new SessionStateWebSocket(sessionService));
+
+                return server;
+            });
+
+            log.info("Admin API enabled on port {}",
+                    config.hasPath("admin.port") ? config.getInt("admin.port") : 8080);
+        }
     }
 
     /**
@@ -139,30 +168,20 @@ public abstract class ApplicationBase implements Callable<Integer> {
             return new FixEngine(engineConfig, p);
         });
 
-        // Get engine (this triggers creation of all dependencies)
+        // Create engine (triggers factory, but doesn't initialize yet)
         FixEngine engine = provider.getComponent(FixEngine.class);
-        List<FixSession> sessions = engine.createSessionsFromConfig();
+
+        // Initialize components (this calls engine.initialize() which creates sessions)
+        provider.initialize();
+
+        // Get sessions (created by engine.initialize(), with schedules automatically associated)
+        List<FixSession> sessions = engine.getAllSessions();
 
         if (sessions.isEmpty()) {
             log.error("No sessions configured");
             return 1;
         }
 
-        // Associate sessions with schedules if SessionScheduler is configured
-        if (engine.getSessionScheduler() != null) {
-            var associations = SchedulerConfig.getSessionScheduleAssociations(config);
-            for (var entry : associations.entrySet()) {
-                String sessionName = entry.getKey();
-                String scheduleName = entry.getValue();
-                for (FixSession session : sessions) {
-                    if (sessionName.equals(session.getConfig().getSessionName())) {
-                        engine.associateSessionWithSchedule(session.getConfig().getSessionId(), scheduleName);
-                        log.info("Associated session '{}' with schedule '{}'", sessionName, scheduleName);
-                        break;
-                    }
-                }
-            }
-        }
 
         // Let subclass configure listeners
         configureFix(engine, sessions);
@@ -174,8 +193,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
             shutdown();
         }));
 
-        // Initialize and start components
-        provider.initialize();
+        // Start components
         provider.start();
 
         // Run application-specific logic
@@ -186,50 +204,21 @@ public abstract class ApplicationBase implements Callable<Integer> {
      * Initialize and run an OUCH engine application.
      */
     private int initializeAndRunOuch(Config config) throws Exception {
-        // Parse OUCH engine config
-        Config ouchConfig = config.hasPath("ouch-engine") ? config.getConfig("ouch-engine") : config;
-        OuchEngineConfig engineConfig = OuchEngineConfig.fromConfig(ouchConfig);
+        // Register OuchEngine factory
+        provider.register(OuchEngine.class, (name, cfg, p) -> {
+            Config ouchConfig = cfg.hasPath("ouch-engine") ? cfg.getConfig("ouch-engine") : cfg;
+            OuchEngineConfig engineConfig = OuchEngineConfig.fromConfig(ouchConfig);
+            return new OuchEngine(engineConfig, p);
+        });
 
-        // Create engine
-        OuchEngine engine = new OuchEngine(engineConfig);
+        // Create engine (triggers factory, but doesn't initialize yet)
+        OuchEngine engine = provider.getComponent(OuchEngine.class);
 
-        // Set up dependencies from provider
-        try {
-            NetworkEventLoop eventLoop = provider.getComponent(NetworkEventLoop.class);
-            engine.setNetworkEventLoop(eventLoop);
-        } catch (Exception e) {
-            // Create default network event loop
-            NetworkEventLoop eventLoop = new NetworkEventLoop("ouch-io");
-            engine.setNetworkEventLoop(eventLoop);
-        }
+        // Initialize components (this calls engine.initialize() which creates sessions)
+        provider.initialize();
 
-        try {
-            LogStore logStore = provider.getComponent(LogStore.class);
-            engine.setLogStore(logStore);
-        } catch (Exception e) {
-            // LogStore is optional
-        }
-
-        try {
-            SessionScheduler scheduler = provider.getComponent(SessionScheduler.class);
-            engine.setScheduler(scheduler);
-        } catch (Exception e) {
-            // Scheduler is optional
-        }
-
-        try {
-            ClockProvider clock = provider.getComponent(ClockProvider.class);
-            engine.setClockProvider(clock);
-        } catch (Exception e) {
-            // ClockProvider is optional
-        }
-
-        // Create sessions from config
-        List<OuchSession> sessions = new java.util.ArrayList<>();
-        for (OuchSessionConfig sessionConfig : engineConfig.getSessions()) {
-            OuchSession session = engine.createSession(sessionConfig);
-            sessions.add(session);
-        }
+        // Get sessions (created by engine.initialize())
+        List<OuchSession> sessions = new java.util.ArrayList<>(engine.getSessions());
 
         if (sessions.isEmpty()) {
             log.error("No OUCH sessions configured");
@@ -243,29 +232,14 @@ public abstract class ApplicationBase implements Callable<Integer> {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Shutdown signal received");
             running = false;
-            shutdownOuch(engine);
+            shutdown();
         }));
 
-        // Initialize and start engine
-        engine.initialize();
-        engine.start();
+        // Start components
+        provider.start();
 
         // Run application-specific logic
         return runOuch(engine, sessions);
-    }
-
-    /**
-     * Shutdown OUCH engine specifically.
-     */
-    private void shutdownOuch(OuchEngine engine) {
-        if (engine != null) {
-            try {
-                engine.stop();
-            } catch (Exception e) {
-                log.warn("Error stopping OUCH engine: {}", e.getMessage());
-            }
-        }
-        shutdown();
     }
 
     /**

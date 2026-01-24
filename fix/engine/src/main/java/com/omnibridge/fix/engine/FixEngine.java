@@ -402,7 +402,21 @@ public class FixEngine implements Component {
      * @return the created FixSession
      */
     public FixSession createSession(EngineSessionConfig engineSessionConfig) {
-        return createSession(convertToSessionConfig(engineSessionConfig));
+        FixSession session = createSession(convertToSessionConfig(engineSessionConfig));
+
+        // Associate with schedule if configured
+        engineSessionConfig.getScheduleName().ifPresent(scheduleName -> {
+            if (sessionScheduler != null) {
+                sessionScheduler.associateSession(session.getConfig().getSessionId(), scheduleName);
+                log.info("Associated FIX session '{}' with schedule '{}'",
+                        session.getConfig().getSessionId(), scheduleName);
+            } else {
+                log.warn("Schedule '{}' specified for session '{}' but no SessionScheduler is configured",
+                        scheduleName, session.getConfig().getSessionId());
+            }
+        });
+
+        return session;
     }
 
     /**

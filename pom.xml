@@ -17,6 +17,8 @@
         <module>config</module>
         <module>network</module>
         <module>persistence</module>
+        <!-- Admin API (Javalin-based) -->
+        <module>admin</module>
         <!-- FIX protocol modules -->
         <module>fix</module>
         <!-- OUCH protocol modules -->

@@ -13,7 +13,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -305,38 +304,5 @@ public class SchedulerConfig {
 
     public int getWarningMinutesBeforeReset() {
         return warningMinutesBeforeReset;
-    }
-
-    /**
-     * Get session-to-schedule associations from config.
-     *
-     * <p>Expected format in HOCON:</p>
-     * <pre>{@code
-     * fix-engine.sessions {
-     *   my-session {
-     *     scheduler = "us-equity"
-     *     ...
-     *   }
-     * }
-     * }</pre>
-     *
-     * @param config the root config
-     * @return map of session name to schedule name
-     */
-    public static Map<String, String> getSessionScheduleAssociations(Config config) {
-        Map<String, String> associations = new java.util.HashMap<>();
-
-        if (config.hasPath("fix-engine.sessions")) {
-            Config sessionsConfig = config.getConfig("fix-engine.sessions");
-            for (String sessionName : sessionsConfig.root().keySet()) {
-                Config sessionConfig = sessionsConfig.getConfig(sessionName);
-                if (sessionConfig.hasPath("scheduler")) {
-                    String schedulerName = sessionConfig.getString("scheduler");
-                    associations.put(sessionName, schedulerName);
-                }
-            }
-        }
-
-        return associations;
     }
 }

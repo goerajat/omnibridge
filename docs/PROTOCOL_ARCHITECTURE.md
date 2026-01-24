@@ -10,6 +10,7 @@ This document describes the architecture, design patterns, and code structure us
 4. [Network Layer and Ring Buffers](#4-network-layer-and-ring-buffers)
 5. [Session Management](#5-session-management)
    - [5.5 Centralized Session Management Service](#55-centralized-session-management-service)
+   - [5.6 Session Schedule Association](#56-session-schedule-association)
 6. [Configuration Framework](#6-configuration-framework)
 7. [Testing Infrastructure](#7-testing-infrastructure)
 8. [Multi-Version Protocol Support](#8-multi-version-protocol-support)
@@ -1025,6 +1026,130 @@ ManagedSession managed = sessionService.getSession("sender-target").orElseThrow(
 FixSession fixSession = managed.unwrap();
 ```
 
+### 5.6 Session Schedule Association
+
+Sessions can be associated with schedules defined in `SessionScheduler`. This enables automatic session start/stop based on time windows and end-of-day sequence resets.
+
+#### Unified Configuration Pattern
+
+Both FIX and OUCH sessions use the same pattern: specify the schedule name directly in the session configuration.
+
+**FIX Session Configuration:**
+```hocon
+fix-engine {
+    sessions = [
+        {
+            session-name = "BROKER-EXCHANGE"
+            sender-comp-id = "BROKER"
+            target-comp-id = "EXCHANGE"
+            role = "initiator"
+            host = "exchange.example.com"
+            port = 9876
+            schedule = "us-equities"  # Associates with named schedule
+        }
+    ]
+}
+```
+
+**OUCH Session Configuration:**
+```hocon
+ouch-engine {
+    sessions = [
+        {
+            session-id = "OUCH-NASDAQ"
+            host = "ouch.nasdaq.com"
+            port = 9200
+            schedule = "us-equities"  # Associates with named schedule
+        }
+    ]
+}
+```
+
+**Schedule Definition:**
+```hocon
+schedulers {
+    schedules {
+        us-equities {
+            start-time = "09:30:00"
+            end-time = "16:00:00"
+            time-zone = "America/New_York"
+            reset-time = "17:00:00"
+        }
+    }
+}
+```
+
+#### Automatic Association During Session Creation
+
+When sessions are created via `createSession()`, the engine automatically associates them with the specified schedule:
+
+```java
+// In FixEngine.createSession(EngineSessionConfig)
+public FixSession createSession(EngineSessionConfig config) {
+    FixSession session = createSession(convertToSessionConfig(config));
+
+    // Automatic schedule association
+    config.getScheduleName().ifPresent(scheduleName -> {
+        if (sessionScheduler != null) {
+            sessionScheduler.associateSession(session.getConfig().getSessionId(), scheduleName);
+            log.info("Associated FIX session '{}' with schedule '{}'",
+                    session.getConfig().getSessionId(), scheduleName);
+        }
+    });
+
+    return session;
+}
+
+// In OuchEngine.createSession(OuchSessionConfig)
+public OuchSession createSession(OuchSessionConfig config) {
+    OuchSession session = new OuchSession(...);
+    sessions.put(sessionId, session);
+
+    // Automatic schedule association
+    if (scheduler != null && config.getScheduleName() != null) {
+        scheduler.associateSession(sessionId, config.getScheduleName());
+        log.info("Associated OUCH session '{}' with schedule '{}'",
+                sessionId, config.getScheduleName());
+    }
+
+    return session;
+}
+```
+
+#### Schedule Events
+
+Both engines implement `ScheduleListener` to handle schedule events:
+
+| Event | FIX Behavior | OUCH Behavior |
+|-------|--------------|---------------|
+| `SESSION_START` | Connect initiator sessions | Connect initiator sessions |
+| `SESSION_END` | Send Logout, disconnect | Disconnect |
+| `RESET_DUE` | Reset sequence numbers, trigger EOD event | Log event (OUCH has no sequence reset) |
+| `WARNING_SESSION_END` | Log warning | Log warning |
+| `WARNING_RESET` | Log warning | Log warning |
+
+#### Programmatic Schedule Association
+
+Sessions can also be associated programmatically after creation:
+
+```java
+// For FIX sessions
+fixEngine.associateSessionWithSchedule("SENDER->TARGET", "us-equities");
+
+// For OUCH sessions
+ouchEngine.associateSessionWithSchedule("OUCH-NASDAQ", "us-equities");
+```
+
+#### Implementation Notes
+
+1. **Optional Dependency**: Engines work without `SessionScheduler`. If no scheduler is configured:
+   - Schedule names in session configs are ignored
+   - A warning is logged if a schedule is specified but no scheduler exists
+
+2. **Built-in vs External Scheduling**: FIX sessions also support built-in scheduling via `start-time`/`end-time` fields in `SessionConfig`. The `SessionScheduler` provides more flexibility with named schedules, multiple time windows, and centralized management.
+
+3. **Session Creation Order**: Sessions must be created after the `SessionScheduler` is available. When using `ComponentProvider`, ensure the scheduler factory is registered before the engine factory.
+
 ---
 
 ## 6. Configuration Framework
@@ -1743,6 +1868,6 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
-*Document Version: 1.1*
+*Document Version: 1.2*
 *Last Updated: January 2026*
-*Changes: Added Section 5.5 - Centralized Session Management Service*
+*Changes: Added Section 5.6 - Session Schedule Association (unified scheduling pattern for FIX and OUCH)*

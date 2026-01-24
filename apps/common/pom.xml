@@ -41,6 +41,13 @@
             <artifactId>ouch-engine</artifactId>
         </dependency>
 
+        <!-- Admin API -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>admin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>ch.qos.logback</groupId>
