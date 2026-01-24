@@ -104,8 +104,8 @@ JVM_OPTS="$JVM_OPTS -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN"
 
 # Show usage if no arguments
 if [ $# -eq 0 ]; then
-    exec java $JVM_OPTS -cp "$CP" com.fixengine.persistence.cli.LogViewer --help
+    exec java $JVM_OPTS -cp "$CP" com.omnibridge.persistence.cli.LogViewer --help
 fi
 
 # Run the log viewer
-exec java $JVM_OPTS -cp "$CP" com.fixengine.persistence.cli.LogViewer "$@"
+exec java $JVM_OPTS -cp "$CP" com.omnibridge.persistence.cli.LogViewer "$@"

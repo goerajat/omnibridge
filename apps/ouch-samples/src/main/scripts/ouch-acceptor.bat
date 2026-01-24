@@ -15,6 +15,6 @@ set JAVA_OPTS=%JAVA_OPTS% -XX:+UseG1GC
 set JAVA_OPTS=%JAVA_OPTS% -Dlogback.configurationFile=%BASE_DIR%\conf\logback.xml
 
 REM Run acceptor
-java %JAVA_OPTS% -cp "%CLASSPATH%" com.fixengine.apps.ouch.acceptor.SampleOuchAcceptor %*
+java %JAVA_OPTS% -cp "%CLASSPATH%" com.omnibridge.apps.ouch.acceptor.SampleOuchAcceptor %*
 
 endlocal

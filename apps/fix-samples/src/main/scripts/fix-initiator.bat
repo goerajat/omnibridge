@@ -36,6 +36,6 @@ set JVM_OPTS=%JVM_OPTS% -Xlog:gc*,gc+age=trace,gc+heap=debug,safepoint:file=%GC_
 REM Additional low-latency tuning
 set JVM_OPTS=%JVM_OPTS% -XX:+AlwaysPreTouch -XX:-UseBiasedLocking
 
-java %JVM_OPTS% -cp "%CP%" com.fixengine.apps.fix.initiator.SampleInitiator %*
+java %JVM_OPTS% -cp "%CP%" com.omnibridge.apps.fix.initiator.SampleInitiator %*
 
 endlocal

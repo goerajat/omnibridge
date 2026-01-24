@@ -52,7 +52,7 @@ echo Starting FIX Acceptor in latency mode (background)...
 echo Acceptor log: %ACCEPTOR_LOG%
 
 REM Start acceptor in background with latency mode, redirect output to log
-start "%ACCEPTOR_TITLE%" /min cmd /c "java %JVM_OPTS% -cp "%CP%" com.fixengine.apps.fix.acceptor.SampleAcceptor -c latency-acceptor.conf --latency --fill-rate 1.0 > "%ACCEPTOR_LOG%" 2>&1"
+start "%ACCEPTOR_TITLE%" /min cmd /c "java %JVM_OPTS% -cp "%CP%" com.omnibridge.apps.fix.acceptor.SampleAcceptor -c latency-acceptor.conf --latency --fill-rate 1.0 > "%ACCEPTOR_LOG%" 2>&1"
 
 REM Wait for acceptor to start
 echo Waiting for acceptor to initialize...
@@ -76,7 +76,7 @@ echo ============================================================
 echo.
 
 REM Run initiator in foreground with latency mode, tee output to log and console
-java %JVM_OPTS% -cp "%CP%" com.fixengine.apps.fix.initiator.SampleInitiator -c latency-initiator.conf --latency %* 2>&1 | powershell -Command "$input | Tee-Object -FilePath '%INITIATOR_LOG%'"
+java %JVM_OPTS% -cp "%CP%" com.omnibridge.apps.fix.initiator.SampleInitiator -c latency-initiator.conf --latency %* 2>&1 | powershell -Command "$input | Tee-Object -FilePath '%INITIATOR_LOG%'"
 set INITIATOR_EXIT_CODE=%errorlevel%
 
 echo.

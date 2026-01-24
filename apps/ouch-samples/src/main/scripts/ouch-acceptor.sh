@@ -13,4 +13,4 @@ JAVA_OPTS="$JAVA_OPTS -XX:+UseG1GC"
 JAVA_OPTS="$JAVA_OPTS -Dlogback.configurationFile=$BASE_DIR/conf/logback.xml"
 
 # Run acceptor
-exec java $JAVA_OPTS -cp "$CLASSPATH" com.fixengine.apps.ouch.acceptor.SampleOuchAcceptor "$@"
+exec java $JAVA_OPTS -cp "$CLASSPATH" com.omnibridge.apps.ouch.acceptor.SampleOuchAcceptor "$@"

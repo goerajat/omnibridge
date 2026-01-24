@@ -96,11 +96,11 @@ set "JVM_OPTS=%JVM_OPTS% -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN"
 
 REM Show usage if no arguments
 if "%~1"=="" (
-    java %JVM_OPTS% -cp "%CP%" com.fixengine.persistence.cli.LogViewer --help
+    java %JVM_OPTS% -cp "%CP%" com.omnibridge.persistence.cli.LogViewer --help
     exit /b 0
 )
 
 REM Run the log viewer
-java %JVM_OPTS% -cp "%CP%" com.fixengine.persistence.cli.LogViewer %*
+java %JVM_OPTS% -cp "%CP%" com.omnibridge.persistence.cli.LogViewer %*
 
 endlocal

@@ -55,4 +55,4 @@ JVM_OPTS="$JVM_OPTS -XX:-UseBiasedLocking"
 JVM_OPTS="$JVM_OPTS -XX:+UseNUMA"
 
 # Run the initiator
-exec java $JVM_OPTS -cp "$CP" com.fixengine.apps.fix.initiator.SampleInitiator "$@"
+exec java $JVM_OPTS -cp "$CP" com.omnibridge.apps.fix.initiator.SampleInitiator "$@"

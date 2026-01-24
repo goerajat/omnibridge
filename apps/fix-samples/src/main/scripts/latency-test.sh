@@ -86,7 +86,7 @@ echo "Starting FIX Acceptor in latency mode (background)..."
 echo "  Busy-spin: enabled, CPU affinity: 4"
 echo "Acceptor log: $ACCEPTOR_LOG"
 java $JVM_OPTS $ACCEPTOR_GC_OPTS $ACCEPTOR_NET_OPTS -cp "$CP" \
-    com.fixengine.apps.fix.acceptor.SampleAcceptor \
+    com.omnibridge.apps.fix.acceptor.SampleAcceptor \
     --latency \
     --fill-rate 1.0 > "$ACCEPTOR_LOG" 2>&1 &
 ACCEPTOR_PID=$!
@@ -110,7 +110,7 @@ echo
 # Run initiator in foreground with latency mode
 set +e
 java $JVM_OPTS $INITIATOR_GC_OPTS $INITIATOR_NET_OPTS -cp "$CP" \
-    com.fixengine.apps.fix.initiator.SampleInitiator \
+    com.omnibridge.apps.fix.initiator.SampleInitiator \
     --latency \
     "$@"
 INITIATOR_EXIT_CODE=$?
