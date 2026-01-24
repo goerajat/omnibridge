@@ -86,7 +86,7 @@ sleep 2
 echo ""
 echo "Starting OUCH 5.0 Initiator in latency mode..."
 echo ""
-java $JVM_OPTS -cp "$UBER_JAR" com.fixengine.apps.ouch.initiator.SampleOuchInitiator \
+java $JVM_OPTS -cp "$UBER_JAR" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator \
     -c ouch-initiator-v50.conf \
     --latency \
     --warmup-orders $WARMUP_ORDERS \

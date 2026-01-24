@@ -18,13 +18,13 @@
     </appender>
 
     <!-- FIX Engine logging -->
-    <logger name="com.fixengine" level="WARN"/>
+    <logger name="com.omnibridge" level="WARN"/>
 
     <!-- Network I/O logging (can be very verbose) -->
-    <logger name="com.fixengine.network" level="WARN"/>
+    <logger name="com.omnibridge.network" level="WARN"/>
 
     <!-- Session logging -->
-    <logger name="com.fixengine.engine.session" level="WARN"/>
+    <logger name="com.omnibridge.fix.engine.session" level="WARN"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

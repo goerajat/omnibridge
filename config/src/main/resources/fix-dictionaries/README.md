@@ -253,7 +253,7 @@ To generate dictionary files from the official FIX Repository:
 ```bash
 # From the connectivity project root
 mvn exec:java -pl fix-config \
-  -Dexec.mainClass="com.fixengine.config.dictionary.FixDictionaryGenerator" \
+  -Dexec.mainClass="com.omnibridge.config.dictionary.FixDictionaryGenerator" \
   -Dexec.args="/path/to/fix_repository ./output FIX.4.2 FIX.4.4"
 ```
 

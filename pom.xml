@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.fixengine</groupId>
+    <groupId>com.omnibridge</groupId>
     <artifactId>connectivity</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -49,67 +49,67 @@
         <dependencies>
             <!-- Internal modules -->
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>dictionary</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>config</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>network</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>persistence</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>message</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>session-tester</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>reference-tester</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>ouch-message</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>ouch-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>apps-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>fix-samples</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.fixengine</groupId>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>ouch-samples</artifactId>
                 <version>${project.version}</version>
             </dependency>

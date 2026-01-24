@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.fixengine</groupId>
+        <groupId>com.omnibridge</groupId>
         <artifactId>apps</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -17,27 +17,27 @@
     <dependencies>
         <!-- Core modules -->
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>config</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>network</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>persistence</artifactId>
         </dependency>
 
         <!-- FIX Engine -->
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>engine</artifactId>
         </dependency>
 
         <!-- OUCH Engine -->
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>ouch-engine</artifactId>
         </dependency>
 

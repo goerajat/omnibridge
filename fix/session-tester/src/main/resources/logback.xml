@@ -6,8 +6,8 @@
         </encoder>
     </appender>
 
-    <logger name="com.fixengine" level="INFO"/>
-    <logger name="com.fixengine.tester" level="INFO"/>
+    <logger name="com.omnibridge" level="INFO"/>
+    <logger name="com.omnibridge.fix.tester" level="INFO"/>
 
     <root level="WARN">
         <appender-ref ref="CONSOLE"/>

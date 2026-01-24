@@ -38,7 +38,7 @@ Broadcasts events when session state changes:
 ### Key Files
 
 ```
-fix-admin-api/src/main/java/com/fixengine/admin/
+fix-admin-api/src/main/java/com/omnibridge/admin/
 ├── FixAdminApplication.java      # Spring Boot entry point
 ├── config/
 │   ├── EngineConfig.java         # Creates FIX engine & sample sessions

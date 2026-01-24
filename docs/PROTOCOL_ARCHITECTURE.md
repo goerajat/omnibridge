@@ -49,19 +49,19 @@ This document describes the architecture, design patterns, and code structure us
 connectivity/
 ├── pom.xml                          # Root POM with dependency management
 ├── config/                          # Configuration framework
-│   └── src/main/java/com/fixengine/config/
+│   └── src/main/java/com/omnibridge/config/
 │       ├── ConfigLoader.java        # HOCON configuration loading
 │       ├── Component.java           # Lifecycle interface
 │       ├── ComponentProvider.java   # Dependency injection
 │       └── schedule/                # Session scheduling
 ├── network/                         # Network I/O layer
-│   └── src/main/java/com/fixengine/network/
+│   └── src/main/java/com/omnibridge/network/
 │       ├── NetworkEventLoop.java    # NIO event loop
 │       ├── TcpChannel.java          # Per-connection channel with ring buffer
 │       ├── TcpAcceptor.java         # Server socket acceptor
 │       └── NetworkHandler.java      # Callback interface
 ├── persistence/                     # Message logging
-│   └── src/main/java/com/fixengine/persistence/
+│   └── src/main/java/com/omnibridge/persistence/
 │       ├── LogStore.java            # Persistence interface
 │       ├── MemoryMappedLogStore.java # Chronicle Queue implementation
 │       └── LogEntry.java            # Message wrapper
@@ -125,7 +125,7 @@ Each protocol follows this pattern:
 <!-- Protocol parent POM (e.g., fix/pom.xml) -->
 <project>
     <parent>
-        <groupId>com.fixengine</groupId>
+        <groupId>com.omnibridge</groupId>
         <artifactId>connectivity</artifactId>
     </parent>
     <artifactId>fix</artifactId>
@@ -1704,35 +1704,35 @@ JVM_OPTS="-Xms256m -Xmx512m \
 ## Appendix B: File Paths Quick Reference
 
 ```
-/config/src/main/java/com/fixengine/config/
+/config/src/main/java/com/omnibridge/config/
     ConfigLoader.java, Component.java, ComponentProvider.java
 
-/config/src/main/java/com/fixengine/config/session/
+/config/src/main/java/com/omnibridge/config/session/
     SessionManagementService.java      # Service interface
     DefaultSessionManagementService.java # Thread-safe implementation
     ManagedSession.java                # Unified session interface
     SessionConnectionState.java        # Common state enum
     SessionStateChangeListener.java    # State change notifications
 
-/network/src/main/java/com/fixengine/network/
+/network/src/main/java/com/omnibridge/network/
     NetworkEventLoop.java, TcpChannel.java, NetworkHandler.java
 
-/persistence/src/main/java/com/fixengine/persistence/
+/persistence/src/main/java/com/omnibridge/persistence/
     LogStore.java, MemoryMappedLogStore.java
 
-/fix/message/src/main/java/com/fixengine/message/
+/fix/message/src/main/java/com/omnibridge/message/
     IncomingFixMessage.java, RingBufferOutgoingMessage.java, FixReader.java
 
-/fix/engine/src/main/java/com/fixengine/engine/
+/fix/engine/src/main/java/com/omnibridge/engine/
     FixEngine.java
     session/FixSession.java
     session/FixSessionAdapter.java     # ManagedSession adapter
 
-/ouch/message/src/main/java/com/fixengine/ouch/message/
+/ouch/message/src/main/java/com/omnibridge/ouch/message/
     OuchMessage.java, OuchVersion.java
     v42/*.java, v50/*.java
 
-/ouch/engine/src/main/java/com/fixengine/ouch/engine/
+/ouch/engine/src/main/java/com/omnibridge/ouch/engine/
     OuchEngine.java
     session/OuchSession.java
     session/OuchSessionAdapter.java    # ManagedSession adapter

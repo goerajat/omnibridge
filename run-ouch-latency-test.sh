@@ -99,7 +99,7 @@ echo "Starting OUCH Initiator in latency mode..."
 echo ""
 
 TEST_EXIT_CODE=0
-java $JVM_OPTS -cp "$UBER_JAR" com.fixengine.apps.ouch.initiator.SampleOuchInitiator --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+java $JVM_OPTS -cp "$UBER_JAR" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
 
 echo "=========================================================================="
 if [ $TEST_EXIT_CODE -eq 0 ]; then

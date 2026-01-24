@@ -77,7 +77,7 @@ REM Run initiator in latency mode (use -cp to specify different main class)
 echo.
 echo Starting FIX Initiator in latency mode...
 echo.
-java %JVM_OPTS% -cp "%UBER_JAR%" com.fixengine.apps.fix.initiator.SampleInitiator -c "%CONFIG_DIR%\latency-initiator.conf" --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
+java %JVM_OPTS% -cp "%UBER_JAR%" com.omnibridge.apps.fix.initiator.SampleInitiator -c "%CONFIG_DIR%\latency-initiator.conf" --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
 

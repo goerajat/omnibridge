@@ -98,7 +98,7 @@ echo "Starting FIX Initiator in latency mode..."
 echo ""
 
 TEST_EXIT_CODE=0
-java $JVM_OPTS -cp "$UBER_JAR" com.fixengine.apps.fix.initiator.SampleInitiator -c "$CONFIG_DIR/latency-initiator.conf" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+java $JVM_OPTS -cp "$UBER_JAR" com.omnibridge.apps.fix.initiator.SampleInitiator -c "$CONFIG_DIR/latency-initiator.conf" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
 
 echo "=========================================================================="
 if [ $TEST_EXIT_CODE -eq 0 ]; then

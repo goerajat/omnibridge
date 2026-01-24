@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.omnibridge</groupId>
+        <artifactId>connectivity</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>build-tools</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Build Tools - Integration Test Runner</name>
+    <description>Maven module for running integration tests (reference, session, latency)</description>
+
+    <!--
+        This module runs integration tests using the test scripts.
+        It depends on sample-apps, session-tester, and reference-tester being built.
+
+        Usage:
+          mvn verify -Pintegration-tests           # Run all integration tests
+          mvn verify -Pintegration-tests -Dit.type=session   # Session tests only
+          mvn verify -Pintegration-tests -Dit.type=reference # Reference tests only
+          mvn verify -Pintegration-tests -Dit.type=latency   # Latency tests only
+
+          mvn install -Pintegration-tests    # Build and run all integration tests
+    -->
+
+    <properties>
+        <!-- Default test type: all -->
+        <it.type>all</it.type>
+        <!-- Latency test parameters -->
+        <latency.warmup>1000</latency.warmup>
+        <latency.orders>100</latency.orders>
+        <latency.rate>100</latency.rate>
+        <!-- Run integration tests by default -->
+        <skipIntegrationTests>false</skipIntegrationTests>
+    </properties>
+
+    <dependencies>
+        <!-- Depend on the modules that need to be built first -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>fix-samples</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>session-tester</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>reference-tester</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Compile the test runner -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+
+            <!-- Create executable jar -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.omnibridge.build.IntegrationTestRunner</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!-- Run integration tests during verify phase -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.1</version>
+                <executions>
+                    <execution>
+                        <id>run-integration-tests</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipIntegrationTests}</skip>
+                            <mainClass>com.omnibridge.build.IntegrationTestRunner</mainClass>
+                            <arguments>
+                                <argument>${it.type}</argument>
+                                <argument>--warmup</argument>
+                                <argument>${latency.warmup}</argument>
+                                <argument>--orders</argument>
+                                <argument>${latency.orders}</argument>
+                                <argument>--rate</argument>
+                                <argument>${latency.rate}</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Integration tests profile - enables running tests -->
+        <profile>
+            <id>integration-tests</id>
+            <properties>
+                <skipIntegrationTests>false</skipIntegrationTests>
+            </properties>
+        </profile>
+
+        <!-- Run only reference tests -->
+        <profile>
+            <id>reference-tests</id>
+            <properties>
+                <skipIntegrationTests>false</skipIntegrationTests>
+                <it.type>reference</it.type>
+            </properties>
+        </profile>
+
+        <!-- Run only session tests -->
+        <profile>
+            <id>session-tests</id>
+            <properties>
+                <skipIntegrationTests>false</skipIntegrationTests>
+                <it.type>session</it.type>
+            </properties>
+        </profile>
+
+        <!-- Run only latency tests -->
+        <profile>
+            <id>latency-tests</id>
+            <properties>
+                <skipIntegrationTests>false</skipIntegrationTests>
+                <it.type>latency</it.type>
+            </properties>
+        </profile>
+    </profiles>
+</project>

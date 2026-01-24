@@ -78,7 +78,7 @@ REM Run OUCH initiator in latency mode
 echo.
 echo Starting OUCH Initiator in latency mode...
 echo.
-java %JVM_OPTS% -cp "%UBER_JAR%" com.fixengine.apps.ouch.initiator.SampleOuchInitiator --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
+java %JVM_OPTS% -cp "%UBER_JAR%" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
 

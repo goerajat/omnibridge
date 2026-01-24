@@ -72,7 +72,7 @@ Start the sample initiator to connect to an acceptor:
 ```bash
 cd fix-sample-apps
 java -cp target/fix-sample-apps-1.0.0-SNAPSHOT-all.jar \
-  com.fixengine.samples.initiator.SampleInitiator \
+  com.omnibridge.samples.initiator.SampleInitiator \
   --host localhost --port 9880
 ```
 

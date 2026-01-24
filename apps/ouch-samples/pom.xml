@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.fixengine</groupId>
+        <groupId>com.omnibridge</groupId>
         <artifactId>apps</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -17,14 +17,14 @@
     <dependencies>
         <!-- Common application base -->
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>apps-common</artifactId>
             <version>${project.version}</version>
         </dependency>
 
         <!-- OUCH Engine -->
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>ouch-engine</artifactId>
         </dependency>
 
@@ -63,7 +63,7 @@
                             <classifier>acceptor</classifier>
                             <archive>
                                 <manifest>
-                                    <mainClass>com.fixengine.apps.ouch.acceptor.SampleOuchAcceptor</mainClass>
+                                    <mainClass>com.omnibridge.apps.ouch.acceptor.SampleOuchAcceptor</mainClass>
                                 </manifest>
                             </archive>
                         </configuration>
@@ -77,7 +77,7 @@
                             <classifier>initiator</classifier>
                             <archive>
                                 <manifest>
-                                    <mainClass>com.fixengine.apps.ouch.initiator.SampleOuchInitiator</mainClass>
+                                    <mainClass>com.omnibridge.apps.ouch.initiator.SampleOuchInitiator</mainClass>
                                 </manifest>
                             </archive>
                         </configuration>
@@ -99,7 +99,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.fixengine.apps.ouch.acceptor.SampleOuchAcceptor</mainClass>
+                                    <mainClass>com.omnibridge.apps.ouch.acceptor.SampleOuchAcceptor</mainClass>
                                 </transformer>
                             </transformers>
                             <shadedArtifactAttached>true</shadedArtifactAttached>

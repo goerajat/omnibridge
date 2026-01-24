@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.fixengine</groupId>
+    <groupId>com.omnibridge</groupId>
     <artifactId>admin-api</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <name>FIX Admin API</name>
@@ -45,7 +45,7 @@
 
         <!-- FIX Engine -->
         <dependency>
-            <groupId>com.fixengine</groupId>
+            <groupId>com.omnibridge</groupId>
             <artifactId>engine</artifactId>
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
