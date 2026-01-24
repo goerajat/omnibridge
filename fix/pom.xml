@@ -19,7 +19,6 @@
         <module>dictionary</module>
         <module>message</module>
         <module>engine</module>
-        <module>sample-apps</module>
         <module>session-tester</module>
         <module>reference-tester</module>
         <module>admin-api</module>

@@ -10,8 +10,8 @@ REM ==========================================================================
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
-set UBER_JAR=fix\sample-apps\target\sample-apps-1.0.0-SNAPSHOT-all.jar
-set CONFIG_DIR=fix\sample-apps\src\main\resources
+set UBER_JAR=apps\fix-samples\target\fix-samples-1.0.0-SNAPSHOT-all.jar
+set CONFIG_DIR=apps\fix-samples\src\main\resources
 
 REM Check if uber jar exists
 if not exist "%UBER_JAR%" (
@@ -77,7 +77,7 @@ REM Run initiator in latency mode (use -cp to specify different main class)
 echo.
 echo Starting FIX Initiator in latency mode...
 echo.
-java %JVM_OPTS% -cp "%UBER_JAR%" com.fixengine.samples.initiator.SampleInitiator -c "%CONFIG_DIR%\latency-initiator.conf" --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
+java %JVM_OPTS% -cp "%UBER_JAR%" com.fixengine.apps.fix.initiator.SampleInitiator -c "%CONFIG_DIR%\latency-initiator.conf" --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
 

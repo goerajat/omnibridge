@@ -9,8 +9,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-UBER_JAR="fix/sample-apps/target/sample-apps-1.0.0-SNAPSHOT-all.jar"
-CONFIG_DIR="fix/sample-apps/src/main/resources"
+UBER_JAR="apps/fix-samples/target/fix-samples-1.0.0-SNAPSHOT-all.jar"
+CONFIG_DIR="apps/fix-samples/src/main/resources"
 
 # Check if uber jar exists
 if [ ! -f "$UBER_JAR" ]; then
@@ -98,7 +98,7 @@ echo "Starting FIX Initiator in latency mode..."
 echo ""
 
 TEST_EXIT_CODE=0
-java $JVM_OPTS -cp "$UBER_JAR" com.fixengine.samples.initiator.SampleInitiator -c "$CONFIG_DIR/latency-initiator.conf" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+java $JVM_OPTS -cp "$UBER_JAR" com.fixengine.apps.fix.initiator.SampleInitiator -c "$CONFIG_DIR/latency-initiator.conf" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
 
 echo "=========================================================================="
 if [ $TEST_EXIT_CODE -eq 0 ]; then

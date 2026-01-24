@@ -10,9 +10,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-ACCEPTOR_JAR="fix/sample-apps/target/sample-apps-1.0.0-SNAPSHOT-all.jar"
+ACCEPTOR_JAR="apps/fix-samples/target/fix-samples-1.0.0-SNAPSHOT-all.jar"
 TESTER_JAR="fix/reference-tester/target/reference-tester-1.0.0-SNAPSHOT-all.jar"
-CONFIG_DIR="fix/sample-apps/src/main/resources"
+CONFIG_DIR="apps/fix-samples/src/main/resources"
 
 # Check if jars exist
 if [ ! -f "$ACCEPTOR_JAR" ]; then
