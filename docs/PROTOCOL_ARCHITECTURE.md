@@ -23,6 +23,7 @@ This document describes the architecture, design patterns, and code structure us
    - [6.9 Configuration Loading](#69-configuration-loading)
    - [6.10 Complete Configuration Example](#610-complete-configuration-example)
    - [6.11 Creating a New Component](#611-creating-a-new-component)
+   - [6.12 Base Components Configuration](#612-base-components-configuration)
 7. [Admin API](#7-admin-api)
    - [7.1 REST API](#71-rest-api)
    - [7.2 WebSocket API](#72-websocket-api)
@@ -1665,6 +1666,93 @@ my-component {
 }
 ```
 
+### 6.12 Base Components Configuration
+
+The framework provides a base `components.conf` file that defines all available components. Application configs include this file and override only what they need.
+
+**Location:** `apps/common/src/main/resources/components.conf`
+
+#### Available Components
+
+| Component | Factory | Type | Dependencies |
+|-----------|---------|------|--------------|
+| `clock-provider` | `ClockProviderFactory` | `ClockProvider` | none |
+| `network` | `NetworkEventLoopFactory` | `NetworkEventLoop` | clock-provider |
+| `persistence` | `LogStoreFactory` | `LogStore` | clock-provider |
+| `session-scheduler` | `SessionSchedulerFactory` | `SessionScheduler` | clock-provider |
+| `session-management` | `SessionManagementServiceFactory` | `SessionManagementService` | none |
+| `fix-engine` | `FixEngineFactory` | `FixEngine` | network, clock-provider, persistence, session-management |
+| `ouch-engine` | `OuchEngineFactory` | `OuchEngine` | network, clock-provider, session-management |
+| `admin-server` | `AdminServerFactory` | `AdminServer` | session-management |
+
+#### Usage Pattern
+
+Application configs include the base config and override enabled flags:
+
+```hocon
+# Include base component definitions
+include "components.conf"
+
+# Override: disable components not needed for this application
+components {
+    fix-engine.enabled = false      # OUCH-only application
+    persistence.enabled = false     # No message logging needed
+    session-scheduler.enabled = false
+}
+
+# Application-specific configuration
+network {
+    name = "my-app-network"
+}
+
+admin {
+    port = 8081
+}
+
+ouch-engine {
+    sessions = [
+        {
+            session-id = "CLIENT"
+            host = "localhost"
+            port = 9200
+            # ...
+        }
+    ]
+}
+```
+
+#### Example: Minimal Latency Test Config
+
+For latency-sensitive applications, disable all non-essential components:
+
+```hocon
+include "components.conf"
+
+components {
+    # Keep only essential components
+    persistence.enabled = false
+    session-scheduler.enabled = false
+    session-management.enabled = false
+    admin-server.enabled = false
+    ouch-engine.enabled = false  # FIX-only test
+}
+
+# Optimized network settings
+network {
+    name = "latency-test-loop"
+    read-buffer-size = 131072
+    write-buffer-size = 131072
+    select-timeout-ms = 1
+}
+```
+
+#### Benefits
+
+- **Centralized definitions**: Factory classes, types, and dependencies defined once
+- **Reduced duplication**: Application configs are shorter and cleaner
+- **Consistency**: All apps use the same component definitions
+- **Easy onboarding**: New apps just include and override
+
 ---
 
 ## 7. Admin API
@@ -2608,13 +2696,17 @@ JVM_OPTS="-Xms256m -Xmx512m \
 /apps/common/src/main/java/com/omnibridge/apps/common/
     ApplicationBase.java        # Application lifecycle hooks
     LatencyTracker.java
+
+/apps/common/src/main/resources/
+    components.conf             # Base component definitions for all apps
 ```
 
 ---
 
-*Document Version: 1.4*
+*Document Version: 1.5*
 *Last Updated: January 2026*
 *Changes:
+- Added Section 6.12: Base Components Configuration (components.conf)
 - Added Section 7: Admin API with REST and WebSocket documentation
 - Expanded Section 6 with comprehensive ComponentFactory framework documentation
 - Added config-driven component loading with dependency resolution
