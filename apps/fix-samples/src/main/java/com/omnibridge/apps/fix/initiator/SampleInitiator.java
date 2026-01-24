@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit;
  * Sample FIX initiator (trading client).
  * Connects to a FIX acceptor and allows sending orders.
  * Supports interactive mode, auto mode, and latency testing mode.
+ *
+ * <p>Supports both config-driven mode (with components section in config)
+ * and legacy mode (without components section).</p>
  */
 @Command(name = "sample-initiator", description = "Sample FIX initiator (trading client)")
 public class SampleInitiator extends ApplicationBase {
@@ -62,13 +65,51 @@ public class SampleInitiator extends ApplicationBase {
         return configFiles;
     }
 
+    // ==================== Config-Driven Mode ====================
+
     @Override
-    protected EngineType getEngineType() {
-        return EngineType.FIX;
+    protected void preStart() throws Exception {
+        // Get engine from provider after it's initialized
+        FixEngine engine = provider.getComponent(FixEngine.class);
+        List<FixSession> sessions = engine.getAllSessions();
+
+        if (sessions.isEmpty()) {
+            log.error("No sessions configured");
+            running = false;
+            return;
+        }
+
+        // Configure listeners before components are started
+        configureEngine(engine, sessions);
     }
 
     @Override
-    protected void configureFix(FixEngine engine, List<FixSession> sessions) {
+    protected void postStart() throws Exception {
+        // Get engine from provider
+        FixEngine engine = provider.getComponent(FixEngine.class);
+        List<FixSession> sessions = engine.getAllSessions();
+
+        if (sessions.isEmpty()) {
+            return;
+        }
+
+        // Run initiator logic (message sending)
+        runInitiatorLogic(engine, sessions);
+
+        // Signal shutdown after initiator logic completes
+        running = false;
+    }
+
+    @Override
+    protected void awaitShutdown() throws InterruptedException {
+        // For initiator, postStart runs the test logic and sets running=false when done
+        // Just wait for running to become false
+        while (running) {
+            Thread.sleep(100);
+        }
+    }
+
+    private void configureEngine(FixEngine engine, List<FixSession> sessions) {
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency tracking mode enabled - log level set to ERROR");
@@ -87,8 +128,7 @@ public class SampleInitiator extends ApplicationBase {
         engine.addMessageListener(messageListener);
     }
 
-    @Override
-    protected int runFix(FixEngine engine, List<FixSession> sessions) throws Exception {
+    private void runInitiatorLogic(FixEngine engine, List<FixSession> sessions) throws Exception {
         FixSession session = sessions.get(0);
 
         // Connect to acceptor
@@ -103,7 +143,7 @@ public class SampleInitiator extends ApplicationBase {
 
         if (!logonLatch.await(30, TimeUnit.SECONDS)) {
             System.err.println("Timeout waiting for logon");
-            return 1;
+            return;
         }
 
         if (latencyMode) {
@@ -128,7 +168,23 @@ public class SampleInitiator extends ApplicationBase {
         // Logout gracefully
         session.logout("User requested logout");
         Thread.sleep(1000);
+    }
 
+    // ==================== Legacy Mode ====================
+
+    @Override
+    protected EngineType getEngineType() {
+        return EngineType.FIX;
+    }
+
+    @Override
+    protected void configureFix(FixEngine engine, List<FixSession> sessions) {
+        configureEngine(engine, sessions);
+    }
+
+    @Override
+    protected int runFix(FixEngine engine, List<FixSession> sessions) throws Exception {
+        runInitiatorLogic(engine, sessions);
         return 0;
     }
 

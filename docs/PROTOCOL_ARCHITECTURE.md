@@ -12,6 +12,17 @@ This document describes the architecture, design patterns, and code structure us
    - [5.5 Centralized Session Management Service](#55-centralized-session-management-service)
    - [5.6 Session Schedule Association](#56-session-schedule-association)
 6. [Configuration Framework](#6-configuration-framework)
+   - [6.1 Component Lifecycle](#61-component-lifecycle)
+   - [6.2 LifeCycleComponent](#62-lifecyclecomponent)
+   - [6.3 ComponentFactory Interface](#63-componentfactory-interface)
+   - [6.4 Creating a ComponentFactory](#64-creating-a-componentfactory)
+   - [6.5 Factory Naming Convention](#65-factory-naming-convention)
+   - [6.6 ComponentProvider and Registry](#66-componentprovider-and-registry)
+   - [6.7 Config-Driven Component Loading](#67-config-driven-component-loading)
+   - [6.8 Application Lifecycle Hooks](#68-application-lifecycle-hooks)
+   - [6.9 Configuration Loading](#69-configuration-loading)
+   - [6.10 Complete Configuration Example](#610-complete-configuration-example)
+   - [6.11 Creating a New Component](#611-creating-a-new-component)
 7. [Testing Infrastructure](#7-testing-infrastructure)
 8. [Multi-Version Protocol Support](#8-multi-version-protocol-support)
 9. [Creating a New Protocol](#9-creating-a-new-protocol)
@@ -1154,61 +1165,327 @@ ouchEngine.associateSessionWithSchedule("OUCH-NASDAQ", "us-equities");
 
 ## 6. Configuration Framework
 
+The configuration framework provides lightweight dependency injection, component lifecycle management, and config-driven component instantiation. It supports both programmatic registration and declarative HOCON-based configuration.
+
 ### 6.1 Component Lifecycle
 
-All major components implement the Component interface:
+All major components implement the `Component` interface, which supports High Availability (HA) patterns with ACTIVE/STANDBY states:
 
 ```java
 public interface Component {
-    enum State {
-        UNINITIALIZED,
-        INITIALIZED,
-        ACTIVE,
-        STANDBY,
-        STOPPED
-    }
-
-    void initialize() throws Exception;
-    void startActive() throws Exception;
-    void startStandby() throws Exception;
-    void stop() throws Exception;
-    State getState();
+    void initialize() throws Exception;   // Load resources, validate config
+    void startActive() throws Exception;  // Begin processing
+    void startStandby() throws Exception; // Ready but not processing (HA)
+    void becomeActive() throws Exception; // Transition from standby to active
+    void becomeStandby() throws Exception; // Transition from active to standby
+    void stop();                           // Release all resources
+    String getName();
+    ComponentState getState();
 }
 ```
 
-### 6.2 ComponentProvider
+**Lifecycle State Transitions:**
 
-Dependency injection without heavy frameworks:
+```
+UNINITIALIZED ──► INITIALIZED ──► ACTIVE ◄──► STANDBY
+                       │              │           │
+                       └──────────────┴───────────┴──► STOPPED
+```
+
+### 6.2 LifeCycleComponent
+
+`LifeCycleComponent` orchestrates the lifecycle of multiple components, ensuring proper initialization order and reverse-order shutdown:
 
 ```java
-public interface ComponentProvider {
-    <T> T getComponent(Class<T> type);
-    <T> T getComponent(String name, Class<T> type);
-    void register(Class<?> type, ComponentFactory<?> factory);
-}
+public class LifeCycleComponent implements Component {
+    private final List<Component> components = new ArrayList<>();
 
-public class DefaultComponentProvider implements ComponentProvider {
-    private final Map<Class<?>, Object> components = new ConcurrentHashMap<>();
-    private final Map<Class<?>, ComponentFactory<?>> factories = new ConcurrentHashMap<>();
-    private final Config config;
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T> T getComponent(Class<T> type) {
-        return (T) components.computeIfAbsent(type, this::createComponent);
+    public LifeCycleComponent addComponent(Component component) {
+        components.add(component);
+        return this;
     }
 
-    private Object createComponent(Class<?> type) {
-        ComponentFactory<?> factory = factories.get(type);
-        if (factory == null) {
-            throw new IllegalArgumentException("No factory for: " + type);
+    @Override
+    public void initialize() throws Exception {
+        // Initialize in registration order
+        for (Component component : components) {
+            component.initialize();
         }
-        return factory.create(type.getSimpleName(), config, this);
+    }
+
+    @Override
+    public void stop() {
+        // Stop in reverse order for graceful shutdown
+        for (int i = components.size() - 1; i >= 0; i--) {
+            components.get(i).stop();
+        }
     }
 }
 ```
 
-### 6.3 Configuration Loading
+### 6.3 ComponentFactory Interface
+
+The `ComponentFactory` interface defines how components are created:
+
+```java
+@FunctionalInterface
+public interface ComponentFactory<T extends Component> {
+    /**
+     * Create a component instance.
+     *
+     * @param name the component name (may be null)
+     * @param config the typesafe config
+     * @param provider access to other components
+     * @return the created component
+     */
+    T create(String name, Config config, ComponentProvider provider) throws Exception;
+}
+```
+
+### 6.4 Creating a ComponentFactory
+
+Each component module provides a factory class following a consistent pattern:
+
+**Simple Factory (no dependencies):**
+
+```java
+public class ClockProviderFactory implements ComponentFactory<ClockProvider> {
+    @Override
+    public ClockProvider create(String name, Config config, ComponentProvider provider) {
+        return ClockProvider.system();
+    }
+}
+```
+
+**Factory with Configuration:**
+
+```java
+public class NetworkEventLoopFactory implements ComponentFactory<NetworkEventLoop> {
+    @Override
+    public NetworkEventLoop create(String name, Config config, ComponentProvider provider)
+            throws IOException {
+        NetworkConfig networkConfig = NetworkConfig.fromConfig(config.getConfig("network"));
+        return new NetworkEventLoop(networkConfig, provider);
+    }
+}
+```
+
+**Factory with Dependencies:**
+
+```java
+public class SessionSchedulerFactory implements ComponentFactory<SessionScheduler> {
+    @Override
+    public SessionScheduler create(String name, Config config, ComponentProvider provider) {
+        // Get dependency from provider
+        ClockProvider clock = provider.getComponent(ClockProvider.class);
+        SessionScheduler scheduler = new SessionScheduler(clock);
+
+        if (config.hasPath("schedulers")) {
+            SchedulerConfig schedulerConfig = SchedulerConfig.fromConfig(config);
+            schedulerConfig.applyTo(scheduler);
+        }
+
+        return scheduler;
+    }
+}
+```
+
+**Factory with Multiple Dependencies:**
+
+```java
+public class AdminServerFactory implements ComponentFactory<AdminServer> {
+    @Override
+    public AdminServer create(String name, Config config, ComponentProvider provider) {
+        AdminServerConfig adminConfig = AdminServerConfig.fromConfig(config);
+        SessionManagementService sessionService = provider.getComponent(SessionManagementService.class);
+
+        AdminServer server = new AdminServer(name != null ? name : "admin-server", adminConfig);
+        server.addRouteProvider(new SessionRoutes(sessionService));
+        server.addWebSocketHandler(new SessionStateWebSocket(sessionService));
+
+        return server;
+    }
+}
+```
+
+### 6.5 Factory Naming Convention
+
+Factories follow a strict naming convention for auto-discovery:
+
+| Component Type | Factory Class | Location |
+|----------------|---------------|----------|
+| `ClockProvider` | `ClockProviderFactory` | `config/factory/` |
+| `NetworkEventLoop` | `NetworkEventLoopFactory` | `network/factory/` |
+| `LogStore` | `LogStoreFactory` | `persistence/factory/` |
+| `SessionScheduler` | `SessionSchedulerFactory` | `config/factory/` |
+| `SessionManagementService` | `SessionManagementServiceFactory` | `config/factory/` |
+| `FixEngine` | `FixEngineFactory` | `fix/engine/factory/` |
+| `OuchEngine` | `OuchEngineFactory` | `ouch/engine/factory/` |
+| `AdminServer` | `AdminServerFactory` | `admin/factory/` |
+
+### 6.6 ComponentProvider and Registry
+
+`DefaultComponentProvider` implements both `ComponentProvider` and `ComponentRegistry`:
+
+```java
+public class DefaultComponentProvider implements ComponentProvider, ComponentRegistry {
+    private final Map<Class<? extends Component>, ComponentFactory<?>> factories;
+    private final Map<String, Component> instances;
+    private final LifeCycleComponent lifeCycle;
+
+    // Register a factory for a component type
+    public <T extends Component> void register(Class<T> type, ComponentFactory<T> factory);
+
+    // Get or create a component by type
+    public <T extends Component> T getComponent(Class<T> type);
+
+    // Get or create a component by name and type
+    public <T extends Component> T getComponent(String name, Class<T> type);
+
+    // Lifecycle management
+    public void initialize() throws Exception;
+    public void start() throws Exception;
+    public void stop();
+}
+```
+
+### 6.7 Config-Driven Component Loading
+
+Components can be defined declaratively in HOCON configuration with automatic dependency resolution:
+
+#### ComponentDefinition
+
+```java
+public class ComponentDefinition {
+    private final String name;              // Component name (key in config)
+    private final boolean enabled;          // Whether to create this component
+    private final String factoryClassName;  // Fully qualified factory class
+    private final Class<? extends Component> componentType;
+    private final List<String> dependencies; // Names of required components
+
+    public static Map<String, ComponentDefinition> loadAll(Config rootConfig);
+}
+```
+
+#### HOCON Configuration Format
+
+```hocon
+components {
+    clock-provider {
+        enabled = true
+        factory = "com.omnibridge.config.factory.ClockProviderFactory"
+        type = "com.omnibridge.config.ClockProvider"
+    }
+
+    network {
+        enabled = true
+        factory = "com.omnibridge.network.factory.NetworkEventLoopFactory"
+        type = "com.omnibridge.network.NetworkEventLoop"
+        dependencies = ["clock-provider"]
+    }
+
+    session-management {
+        enabled = true
+        factory = "com.omnibridge.config.factory.SessionManagementServiceFactory"
+        type = "com.omnibridge.config.session.SessionManagementService"
+    }
+
+    ouch-engine {
+        enabled = true
+        factory = "com.omnibridge.ouch.engine.factory.OuchEngineFactory"
+        type = "com.omnibridge.ouch.engine.OuchEngine"
+        dependencies = ["network", "clock-provider", "session-management"]
+    }
+
+    admin-server {
+        enabled = true
+        factory = "com.omnibridge.admin.factory.AdminServerFactory"
+        type = "com.omnibridge.admin.AdminServer"
+        dependencies = ["session-management"]
+    }
+}
+```
+
+#### Automatic Dependency Resolution
+
+`DefaultComponentProvider.loadComponentsFromConfig()` performs:
+
+1. **Parse definitions** - Load all component definitions from config
+2. **Filter enabled** - Only process enabled components
+3. **Topological sort** - Order by dependencies (Kahn's algorithm)
+4. **Register factories** - Instantiate factory classes via reflection
+5. **Create components** - Create all components in dependency order
+
+```java
+DefaultComponentProvider provider = DefaultComponentProvider.create(configFiles);
+provider.loadComponentsFromConfig();  // Parse, sort, register, create
+provider.initialize();                 // Initialize all components
+provider.start();                      // Start all components
+```
+
+### 6.8 Application Lifecycle Hooks
+
+`ApplicationBase` provides lifecycle hooks for applications using config-driven mode:
+
+```java
+public abstract class ApplicationBase {
+
+    /**
+     * Called before components are initialized.
+     * Register additional factories or customize configuration.
+     */
+    protected void preInitialize() throws Exception { }
+
+    /**
+     * Called after all components are initialized but before starting.
+     * Components are created but not yet active.
+     */
+    protected void postInitialize() throws Exception { }
+
+    /**
+     * Called before components are started.
+     * ADD LISTENERS HERE - before components begin processing.
+     */
+    protected void preStart() throws Exception { }
+
+    /**
+     * Called after all components are started and active.
+     * SEND MESSAGES HERE - components are now operational.
+     */
+    protected void postStart() throws Exception { }
+}
+```
+
+**Important: Listener vs Message Sending Pattern**
+
+| Hook | Purpose | Example Actions |
+|------|---------|-----------------|
+| `preStart()` | Configure components before they start | Add `SessionStateListener`, add `MessageListener` |
+| `postStart()` | Application logic after components are running | Connect sessions, send orders, run tests |
+
+**Example Implementation:**
+
+```java
+public class MyAcceptor extends ApplicationBase {
+
+    @Override
+    protected void preStart() throws Exception {
+        // Add listeners BEFORE components start
+        FixEngine engine = provider.getComponent(FixEngine.class);
+        engine.addStateListener(new MyStateListener());
+        engine.addMessageListener(new MyMessageListener());
+    }
+
+    @Override
+    protected void postStart() throws Exception {
+        // Send messages AFTER components are running
+        FixEngine engine = provider.getComponent(FixEngine.class);
+        log.info("Acceptor ready, listening for connections...");
+    }
+}
+```
+
+### 6.9 Configuration Loading
 
 ```java
 public class ConfigLoader {
@@ -1229,56 +1506,158 @@ public class ConfigLoader {
 
         return config.resolve();
     }
-
-    private static Config loadFile(String path) {
-        File file = new File(path);
-        if (file.exists()) {
-            return ConfigFactory.parseFile(file);
-        }
-        // Try classpath
-        return ConfigFactory.parseResources(path);
-    }
 }
 ```
 
-### 6.4 Sample Configuration (HOCON)
+### 6.10 Complete Configuration Example
 
 ```hocon
-ouch-engine {
-    network {
-        io-threads = 1
-        busy-spin = false
-        cpu-affinity = -1  # -1 for none, 0+ for specific core
+# Component definitions - processed in dependency order
+components {
+    clock-provider {
+        enabled = true
+        factory = "com.omnibridge.config.factory.ClockProviderFactory"
+        type = "com.omnibridge.config.ClockProvider"
     }
 
+    network {
+        enabled = true
+        factory = "com.omnibridge.network.factory.NetworkEventLoopFactory"
+        type = "com.omnibridge.network.NetworkEventLoop"
+        dependencies = ["clock-provider"]
+    }
+
+    session-management {
+        enabled = true
+        factory = "com.omnibridge.config.factory.SessionManagementServiceFactory"
+        type = "com.omnibridge.config.session.SessionManagementService"
+    }
+
+    ouch-engine {
+        enabled = true
+        factory = "com.omnibridge.ouch.engine.factory.OuchEngineFactory"
+        type = "com.omnibridge.ouch.engine.OuchEngine"
+        dependencies = ["network", "clock-provider", "session-management"]
+    }
+
+    admin-server {
+        enabled = true
+        factory = "com.omnibridge.admin.factory.AdminServerFactory"
+        type = "com.omnibridge.admin.AdminServer"
+        dependencies = ["session-management"]
+    }
+}
+
+# Network configuration
+network {
+    name = "my-network"
+    cpu-affinity = -1
+    read-buffer-size = 65536
+    write-buffer-size = 65536
+    select-timeout-ms = 100
+    busy-spin-mode = false
+}
+
+# Admin API configuration
+admin {
+    enabled = true
+    host = "0.0.0.0"
+    port = 8080
+    context-path = "/api"
+}
+
+# Engine-specific configuration
+ouch-engine {
     sessions = [
         {
             session-id = "CLIENT"
             host = "localhost"
             port = 9200
             initiator = true
-            protocol-version = "4.2"  # or "5.0"
+            protocol-version = "4.2"
             heartbeat-interval = 30
         }
     ]
 }
 
+# Persistence (optional)
 persistence {
-    enabled = true
-    path = "data/ouch"
+    enabled = false
+    path = "data/messages"
 }
 
-schedule {
-    sessions = [
-        {
-            name = "US_EQUITIES"
-            timezone = "America/New_York"
-            windows = [
-                { start = "09:30", end = "16:00", days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] }
-            ]
-            reset-time = "17:00"
+# Scheduler (optional)
+schedulers {
+    schedules {
+        us-equities {
+            start-time = "09:30:00"
+            end-time = "16:00:00"
+            time-zone = "America/New_York"
+            reset-time = "17:00:00"
         }
-    ]
+    }
+}
+```
+
+### 6.11 Creating a New Component
+
+Follow these steps when adding a new component to the framework:
+
+1. **Implement the Component interface:**
+
+```java
+public class MyComponent extends AbstractComponent {
+    private final MyConfig config;
+
+    public MyComponent(String name, MyConfig config, ComponentProvider provider) {
+        super(name);
+        this.config = config;
+    }
+
+    @Override
+    protected void doInitialize() throws Exception {
+        // Load resources
+    }
+
+    @Override
+    protected void doStartActive() throws Exception {
+        // Start processing
+    }
+
+    @Override
+    protected void doStop() {
+        // Release resources
+    }
+}
+```
+
+2. **Create the factory class:**
+
+```java
+public class MyComponentFactory implements ComponentFactory<MyComponent> {
+    @Override
+    public MyComponent create(String name, Config config, ComponentProvider provider) {
+        MyConfig myConfig = MyConfig.fromConfig(config.getConfig("my-component"));
+        return new MyComponent(name, myConfig, provider);
+    }
+}
+```
+
+3. **Add to configuration:**
+
+```hocon
+components {
+    my-component {
+        enabled = true
+        factory = "com.mycompany.MyComponentFactory"
+        type = "com.mycompany.MyComponent"
+        dependencies = ["network"]  # if any
+    }
+}
+
+my-component {
+    # Component-specific config
+    setting1 = "value"
 }
 ```
 
@@ -1797,22 +2176,57 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ## Appendix A: Key Classes Reference
 
-| Component | Class | Purpose |
-|-----------|-------|---------|
+### Core Framework
+
+| Module | Class | Purpose |
+|--------|-------|---------|
+| Config | Component | Lifecycle interface with HA support |
+| Config | ComponentState | Lifecycle state enum (UNINITIALIZED, INITIALIZED, ACTIVE, STANDBY, STOPPED) |
+| Config | ComponentFactory | Factory interface for creating components |
+| Config | ComponentProvider | Interface for accessing components |
+| Config | ComponentRegistry | Interface for registering factories |
+| Config | ComponentDefinition | Parses component definitions from HOCON |
+| Config | DefaultComponentProvider | Full implementation with config-driven loading |
+| Config | LifeCycleComponent | Orchestrates multiple component lifecycles |
+| Config | AbstractComponent | Base class for components |
 | Config | ConfigLoader | HOCON configuration loading |
-| Config | Component | Lifecycle interface |
-| Config | ComponentProvider | Dependency injection |
-| Config | SessionScheduler | Session timing |
+
+### Factory Classes
+
+| Module | Factory Class | Creates |
+|--------|---------------|---------|
+| Config | ClockProviderFactory | ClockProvider |
+| Config | SessionSchedulerFactory | SessionScheduler |
+| Config | SessionManagementServiceFactory | SessionManagementService |
+| Network | NetworkEventLoopFactory | NetworkEventLoop |
+| Persistence | LogStoreFactory | LogStore (MemoryMappedLogStore) |
+| FIX Engine | FixEngineFactory | FixEngine |
+| OUCH Engine | OuchEngineFactory | OuchEngine |
+| Admin | AdminServerFactory | AdminServer |
+
+### Session Management
+
+| Module | Class | Purpose |
+|--------|-------|---------|
+| Config | SessionScheduler | Session timing and scheduling |
 | Config | SessionManagementService | Unified session registry interface |
 | Config | DefaultSessionManagementService | Thread-safe session management impl |
 | Config | ManagedSession | Protocol-agnostic session interface |
 | Config | SessionConnectionState | Common session state enum |
 | Config | SessionStateChangeListener | State change notifications |
+
+### Network Layer
+
+| Module | Class | Purpose |
+|--------|-------|---------|
 | Network | NetworkEventLoop | NIO event loop |
 | Network | TcpChannel | Per-connection ring buffer |
 | Network | NetworkHandler | I/O callbacks |
-| Persistence | LogStore | Message logging interface |
-| Persistence | MemoryMappedLogStore | Chronicle Queue impl |
+
+### Protocol Engines
+
+| Module | Class | Purpose |
+|--------|-------|---------|
 | FIX Message | IncomingFixMessage | Flyweight parser |
 | FIX Message | RingBufferOutgoingMessage | Zero-copy encoder |
 | FIX Engine | FixSession | Session state machine |
@@ -1824,34 +2238,72 @@ JVM_OPTS="-Xms256m -Xmx512m \
 | OUCH Engine | OuchSessionAdapter | ManagedSession wrapper for OUCH |
 | OUCH Engine | OuchEngine | Multi-session manager |
 
+### Applications
+
+| Module | Class | Purpose |
+|--------|-------|---------|
+| Apps Common | ApplicationBase | Base class with lifecycle hooks |
+| Apps Common | LatencyTracker | Latency measurement utility |
+
 ---
 
 ## Appendix B: File Paths Quick Reference
 
 ```
 /config/src/main/java/com/omnibridge/config/
-    ConfigLoader.java, Component.java, ComponentProvider.java
+    Component.java              # Lifecycle interface
+    ComponentState.java         # State enum
+    ComponentFactory.java       # Factory interface
+    ComponentDefinition.java    # Config-driven component definition
+    AbstractComponent.java      # Base component implementation
+    LifeCycleComponent.java     # Multi-component orchestrator
+    ConfigLoader.java           # HOCON loading
+
+/config/src/main/java/com/omnibridge/config/provider/
+    ComponentProvider.java      # Component access interface
+    ComponentRegistry.java      # Factory registration interface
+    DefaultComponentProvider.java # Full implementation
+
+/config/src/main/java/com/omnibridge/config/factory/
+    ClockProviderFactory.java
+    SessionSchedulerFactory.java
+    SessionManagementServiceFactory.java
 
 /config/src/main/java/com/omnibridge/config/session/
-    SessionManagementService.java      # Service interface
-    DefaultSessionManagementService.java # Thread-safe implementation
-    ManagedSession.java                # Unified session interface
-    SessionConnectionState.java        # Common state enum
-    SessionStateChangeListener.java    # State change notifications
+    SessionManagementService.java
+    DefaultSessionManagementService.java
+    ManagedSession.java
+    SessionConnectionState.java
+    SessionStateChangeListener.java
 
 /network/src/main/java/com/omnibridge/network/
     NetworkEventLoop.java, TcpChannel.java, NetworkHandler.java
 
+/network/src/main/java/com/omnibridge/network/factory/
+    NetworkEventLoopFactory.java
+
 /persistence/src/main/java/com/omnibridge/persistence/
     LogStore.java, MemoryMappedLogStore.java
 
-/fix/message/src/main/java/com/omnibridge/message/
+/persistence/src/main/java/com/omnibridge/persistence/factory/
+    LogStoreFactory.java
+
+/admin/src/main/java/com/omnibridge/admin/
+    AdminServer.java
+
+/admin/src/main/java/com/omnibridge/admin/factory/
+    AdminServerFactory.java
+
+/fix/message/src/main/java/com/omnibridge/fix/message/
     IncomingFixMessage.java, RingBufferOutgoingMessage.java, FixReader.java
 
-/fix/engine/src/main/java/com/omnibridge/engine/
+/fix/engine/src/main/java/com/omnibridge/fix/engine/
     FixEngine.java
     session/FixSession.java
-    session/FixSessionAdapter.java     # ManagedSession adapter
+    session/FixSessionAdapter.java
+
+/fix/engine/src/main/java/com/omnibridge/fix/engine/factory/
+    FixEngineFactory.java
 
 /ouch/message/src/main/java/com/omnibridge/ouch/message/
     OuchMessage.java, OuchVersion.java
@@ -1860,14 +2312,22 @@ JVM_OPTS="-Xms256m -Xmx512m \
 /ouch/engine/src/main/java/com/omnibridge/ouch/engine/
     OuchEngine.java
     session/OuchSession.java
-    session/OuchSessionAdapter.java    # ManagedSession adapter
+    session/OuchSessionAdapter.java
 
-/apps/common/src/main/java/
-    LatencyTracker.java, ApplicationBase.java
+/ouch/engine/src/main/java/com/omnibridge/ouch/engine/factory/
+    OuchEngineFactory.java
+
+/apps/common/src/main/java/com/omnibridge/apps/common/
+    ApplicationBase.java        # Application lifecycle hooks
+    LatencyTracker.java
 ```
 
 ---
 
-*Document Version: 1.2*
+*Document Version: 1.3*
 *Last Updated: January 2026*
-*Changes: Added Section 5.6 - Session Schedule Association (unified scheduling pattern for FIX and OUCH)*
+*Changes:
+- Expanded Section 6 with comprehensive ComponentFactory framework documentation
+- Added config-driven component loading with dependency resolution
+- Added application lifecycle hooks (preStart/postStart) pattern
+- Updated Appendices A and B with factory classes and file paths*

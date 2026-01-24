@@ -3,7 +3,6 @@ package com.omnibridge.apps.ouch.acceptor;
 import com.omnibridge.apps.common.ApplicationBase;
 import com.omnibridge.ouch.engine.OuchEngine;
 import com.omnibridge.ouch.engine.session.OuchSession;
-import com.omnibridge.ouch.engine.session.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -11,6 +10,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -20,6 +20,9 @@ import java.util.List;
  * Uses the high-level OuchSession API and supports both OUCH 4.2 and 5.0 protocols.</p>
  *
  * <p>The protocol version is configured in the session configuration file.</p>
+ *
+ * <p>Supports both config-driven mode (with components section in config)
+ * and legacy mode (without components section).</p>
  */
 @Command(name = "ouch-acceptor", description = "Sample OUCH acceptor (exchange simulator)")
 public class SampleOuchAcceptor extends ApplicationBase {
@@ -45,13 +48,43 @@ public class SampleOuchAcceptor extends ApplicationBase {
         return configFiles;
     }
 
+    // ==================== Config-Driven Mode ====================
+
     @Override
-    protected EngineType getEngineType() {
-        return EngineType.OUCH;
+    protected void preStart() throws Exception {
+        // Get engine from provider after it's initialized
+        OuchEngine engine = provider.getComponent(OuchEngine.class);
+        Collection<OuchSession> sessions = engine.getSessions();
+
+        if (sessions.isEmpty()) {
+            log.error("No OUCH sessions configured");
+            running = false;
+            return;
+        }
+
+        // Configure listeners before components are started
+        configureEngine(engine, new ArrayList<>(sessions));
     }
 
     @Override
-    protected void configureOuch(OuchEngine engine, List<OuchSession> sessions) {
+    protected void postStart() throws Exception {
+        // Get engine from provider
+        OuchEngine engine = provider.getComponent(OuchEngine.class);
+        Collection<OuchSession> sessions = engine.getSessions();
+
+        // Display session info
+        for (OuchSession session : sessions) {
+            log.info("Session {} ready (protocol: {}, port: {})",
+                    session.getSessionId(),
+                    session.getProtocolVersion(),
+                    session.getPort());
+        }
+
+        log.info("OUCH Acceptor ready, sessions: {}",
+                sessions.stream().map(OuchSession::getSessionId).toList());
+    }
+
+    private void configureEngine(OuchEngine engine, List<OuchSession> sessions) {
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency mode enabled - log level set to ERROR");
@@ -76,6 +109,18 @@ public class SampleOuchAcceptor extends ApplicationBase {
 
         log.info("Acceptor configured with {} session(s), fill rate: {}",
                 sessions.size(), fillRate);
+    }
+
+    // ==================== Legacy Mode ====================
+
+    @Override
+    protected EngineType getEngineType() {
+        return EngineType.OUCH;
+    }
+
+    @Override
+    protected void configureOuch(OuchEngine engine, List<OuchSession> sessions) {
+        configureEngine(engine, sessions);
     }
 
     @Override

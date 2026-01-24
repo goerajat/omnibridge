@@ -13,6 +13,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +27,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>The same code works for both protocol versions because OuchSession abstracts
  * away the differences between Order Token (4.2) and UserRefNum (5.0).</p>
+ *
+ * <p>Supports both config-driven mode (with components section in config)
+ * and legacy mode (without components section).</p>
  */
 @Command(name = "ouch-initiator", description = "Sample OUCH initiator (trading client)")
 public class SampleOuchInitiator extends ApplicationBase {
@@ -64,13 +68,52 @@ public class SampleOuchInitiator extends ApplicationBase {
         return configFiles;
     }
 
+    // ==================== Config-Driven Mode ====================
+
     @Override
-    protected EngineType getEngineType() {
-        return EngineType.OUCH;
+    protected void preStart() throws Exception {
+        // Get engine from provider after it's initialized
+        OuchEngine engine = provider.getComponent(OuchEngine.class);
+        Collection<OuchSession> sessions = engine.getSessions();
+
+        if (sessions.isEmpty()) {
+            log.error("No OUCH sessions configured");
+            running = false;
+            return;
+        }
+
+        // Configure listeners before components are started
+        configureEngine(engine, new ArrayList<>(sessions));
     }
 
     @Override
-    protected void configureOuch(OuchEngine engine, List<OuchSession> sessions) {
+    protected void postStart() throws Exception {
+        // Get engine from provider
+        OuchEngine engine = provider.getComponent(OuchEngine.class);
+        Collection<OuchSession> sessions = engine.getSessions();
+
+        if (sessions.isEmpty()) {
+            return;
+        }
+
+        List<OuchSession> sessionList = new ArrayList<>(sessions);
+
+        // Run initiator logic (message sending)
+        runInitiatorLogic(engine, sessionList);
+
+        // Signal shutdown after initiator logic completes
+        running = false;
+    }
+
+    @Override
+    protected void awaitShutdown() throws InterruptedException {
+        // For initiator, postStart runs the test logic and sets running=false when done
+        while (running) {
+            Thread.sleep(100);
+        }
+    }
+
+    private void configureEngine(OuchEngine engine, List<OuchSession> sessions) {
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency mode enabled - log level set to ERROR");
@@ -100,11 +143,10 @@ public class SampleOuchInitiator extends ApplicationBase {
         }
     }
 
-    @Override
-    protected int runOuch(OuchEngine engine, List<OuchSession> sessions) throws Exception {
+    private void runInitiatorLogic(OuchEngine engine, List<OuchSession> sessions) throws Exception {
         if (sessions.isEmpty()) {
             log.error("No sessions configured");
-            return 1;
+            return;
         }
 
         OuchSession session = sessions.get(0);
@@ -122,12 +164,12 @@ public class SampleOuchInitiator extends ApplicationBase {
 
         if (!loginLatch.await(30, TimeUnit.SECONDS)) {
             System.err.println("Timeout waiting for login");
-            return 1;
+            return;
         }
 
         if (session.getState() != SessionState.LOGGED_IN) {
             log.error("Failed to log in - session state: {}", session.getState());
-            return 1;
+            return;
         }
 
         if (latencyMode) {
@@ -149,9 +191,27 @@ public class SampleOuchInitiator extends ApplicationBase {
         // Disconnect gracefully
         session.disconnect();
         Thread.sleep(1000);
+    }
 
+    // ==================== Legacy Mode ====================
+
+    @Override
+    protected EngineType getEngineType() {
+        return EngineType.OUCH;
+    }
+
+    @Override
+    protected void configureOuch(OuchEngine engine, List<OuchSession> sessions) {
+        configureEngine(engine, sessions);
+    }
+
+    @Override
+    protected int runOuch(OuchEngine engine, List<OuchSession> sessions) throws Exception {
+        runInitiatorLogic(engine, sessions);
         return 0;
     }
+
+    // ==================== Test Modes ====================
 
     private void runLatencyTest(OuchSession session) throws InterruptedException {
         if (latencyMode) {

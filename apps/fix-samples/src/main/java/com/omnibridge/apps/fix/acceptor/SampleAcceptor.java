@@ -15,6 +15,9 @@ import java.util.List;
 /**
  * Sample FIX acceptor (exchange simulator).
  * Accepts incoming FIX connections and simulates order handling.
+ *
+ * <p>Supports both config-driven mode (with components section in config)
+ * and legacy mode (without components section).</p>
  */
 @Command(name = "sample-acceptor", description = "Sample FIX acceptor (exchange simulator)")
 public class SampleAcceptor extends ApplicationBase {
@@ -38,13 +41,35 @@ public class SampleAcceptor extends ApplicationBase {
         return configFiles;
     }
 
+    // ==================== Config-Driven Mode ====================
+
     @Override
-    protected EngineType getEngineType() {
-        return EngineType.FIX;
+    protected void preStart() throws Exception {
+        // Get engine from provider after it's initialized
+        FixEngine engine = provider.getComponent(FixEngine.class);
+        List<FixSession> sessions = engine.getAllSessions();
+
+        if (sessions.isEmpty()) {
+            log.error("No sessions configured");
+            running = false;
+            return;
+        }
+
+        // Configure listeners before components are started
+        configureEngine(engine, sessions);
     }
 
     @Override
-    protected void configureFix(FixEngine engine, List<FixSession> sessions) {
+    protected void postStart() throws Exception {
+        // Get engine from provider
+        FixEngine engine = provider.getComponent(FixEngine.class);
+        List<FixSession> sessions = engine.getAllSessions();
+
+        log.info("FIX Acceptor ready, sessions: {}",
+                sessions.stream().map(s -> s.getConfig().getSessionId()).toList());
+    }
+
+    private void configureEngine(FixEngine engine, List<FixSession> sessions) {
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency mode enabled - log level set to ERROR");
@@ -55,6 +80,18 @@ public class SampleAcceptor extends ApplicationBase {
         engine.addMessageListener(messageListener);
 
         log.info("Acceptor configured with fill rate: {}", fillRate);
+    }
+
+    // ==================== Legacy Mode ====================
+
+    @Override
+    protected EngineType getEngineType() {
+        return EngineType.FIX;
+    }
+
+    @Override
+    protected void configureFix(FixEngine engine, List<FixSession> sessions) {
+        configureEngine(engine, sessions);
     }
 
     @Override

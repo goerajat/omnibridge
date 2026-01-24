@@ -32,23 +32,41 @@ import java.util.concurrent.Callable;
 /**
  * Base class for applications providing common initialization and lifecycle management.
  *
- * <p>Supports both FIX and OUCH protocol engines through a unified interface.
- * Subclasses should:</p>
+ * <p>Supports two modes of operation:</p>
  * <ul>
- *   <li>Define command-line options using picocli annotations</li>
- *   <li>Implement {@link #getConfigFiles()} to return config file paths</li>
- *   <li>Implement {@link #getEngineType()} to specify FIX or OUCH</li>
- *   <li>Override the appropriate configure and run methods for their engine type</li>
+ *   <li><b>Config-driven mode</b>: When a "components" section exists in the configuration,
+ *       components are automatically registered and created based on the config.
+ *       Use lifecycle hooks: {@link #preInitialize()}, {@link #postInitialize()},
+ *       {@link #preStart()}, {@link #postStart()}.</li>
+ *   <li><b>Legacy mode</b>: When no "components" section exists, uses the engine-type
+ *       based approach with {@link #configureFix}/{@link #configureOuch} and
+ *       {@link #runFix}/{@link #runOuch} methods.</li>
  * </ul>
  *
- * <p>For FIX applications, override:</p>
+ * <p>For config-driven applications (recommended):</p>
+ * <pre>{@code
+ * public class MyApp extends ApplicationBase {
+ *     protected void postStart() throws Exception {
+ *         FixEngine engine = provider.getComponent(FixEngine.class);
+ *         // Add listeners, run app logic
+ *     }
+ *
+ *     protected List<String> getConfigFiles() {
+ *         return List.of("my-app.conf");
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>For legacy FIX applications, override:</p>
  * <ul>
+ *   <li>{@link #getEngineType()} to return {@link EngineType#FIX}</li>
  *   <li>{@link #configureFix(FixEngine, List)}</li>
  *   <li>{@link #runFix(FixEngine, List)}</li>
  * </ul>
  *
- * <p>For OUCH applications, override:</p>
+ * <p>For legacy OUCH applications, override:</p>
  * <ul>
+ *   <li>{@link #getEngineType()} to return {@link EngineType#OUCH}</li>
  *   <li>{@link #configureOuch(OuchEngine, List)}</li>
  *   <li>{@link #runOuch(OuchEngine, List)}</li>
  * </ul>
@@ -58,7 +76,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
     private static final Logger log = LoggerFactory.getLogger(ApplicationBase.class);
 
     /**
-     * Engine types supported by the application base.
+     * Engine types supported by the application base (for legacy mode).
      */
     public enum EngineType {
         FIX,
@@ -79,20 +97,12 @@ public abstract class ApplicationBase implements Callable<Integer> {
             provider = DefaultComponentProvider.create(configFiles);
             Config config = provider.getConfig();
 
-            // Register common factories
-            registerCommonFactories(config);
-
-            // Register engine-specific factories and run
-            EngineType engineType = getEngineType();
-            int result;
-
-            switch (engineType) {
-                case FIX -> result = initializeAndRunFix(config);
-                case OUCH -> result = initializeAndRunOuch(config);
-                default -> throw new IllegalStateException("Unknown engine type: " + engineType);
+            // Check if config-driven mode is enabled
+            if (config.hasPath("components")) {
+                return runConfigDriven();
+            } else {
+                return runLegacy(config);
             }
-
-            return result;
 
         } catch (Exception e) {
             log.error("Error in application", e);
@@ -101,8 +111,127 @@ public abstract class ApplicationBase implements Callable<Integer> {
         }
     }
 
+    // ==================== Config-Driven Mode ====================
+
     /**
-     * Register factories common to both FIX and OUCH engines.
+     * Run using config-driven component registration.
+     */
+    private int runConfigDriven() throws Exception {
+        try {
+            // 1. Load components from config (auto-registers factories and creates components)
+            provider.loadComponentsFromConfig();
+
+            // 2. Allow subclass to register additional components or customize
+            preInitialize();
+
+            // 3. Initialize all components
+            provider.initialize();
+            postInitialize();
+
+            // 4. Register shutdown hook
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                log.info("Shutdown signal received");
+                running = false;
+            }));
+
+            // 5. Start all components
+            preStart();
+            provider.start();
+            postStart();
+
+            // 6. Wait for shutdown signal
+            awaitShutdown();
+
+            return 0;
+        } finally {
+            shutdown();
+        }
+    }
+
+    /**
+     * Called before components are initialized.
+     * Subclass can register additional factories or customize configuration.
+     *
+     * @throws Exception if an error occurs
+     */
+    protected void preInitialize() throws Exception {
+        // Override in subclasses
+    }
+
+    /**
+     * Called after all components are initialized but before starting.
+     * Components are created but not yet active.
+     *
+     * @throws Exception if an error occurs
+     */
+    protected void postInitialize() throws Exception {
+        // Override in subclasses
+    }
+
+    /**
+     * Called before components are started.
+     *
+     * @throws Exception if an error occurs
+     */
+    protected void preStart() throws Exception {
+        // Override in subclasses
+    }
+
+    /**
+     * Called after all components are started and active.
+     * This is where application-specific logic should run.
+     *
+     * <p>Example:</p>
+     * <pre>{@code
+     * protected void postStart() throws Exception {
+     *     FixEngine engine = provider.getComponent(FixEngine.class);
+     *     engine.addMessageListener(new MyMessageListener());
+     *     log.info("Application ready");
+     * }
+     * }</pre>
+     *
+     * @throws Exception if an error occurs
+     */
+    protected void postStart() throws Exception {
+        // Override in subclasses
+    }
+
+    /**
+     * Wait for shutdown signal.
+     * Default implementation waits for the running flag to become false.
+     *
+     * @throws InterruptedException if interrupted while waiting
+     */
+    protected void awaitShutdown() throws InterruptedException {
+        while (running) {
+            Thread.sleep(1000);
+        }
+    }
+
+    // ==================== Legacy Mode ====================
+
+    /**
+     * Run using legacy engine-type based approach.
+     */
+    private int runLegacy(Config config) throws Exception {
+        // Register common factories
+        registerCommonFactories(config);
+
+        // Register engine-specific factories and run
+        EngineType engineType = getEngineType();
+        int result;
+
+        switch (engineType) {
+            case FIX -> result = initializeAndRunFix(config);
+            case OUCH -> result = initializeAndRunOuch(config);
+            default -> throw new IllegalStateException("Unknown engine type: " + engineType);
+        }
+
+        return result;
+    }
+
+    /**
+     * Register factories common to both FIX and OUCH engines (legacy mode).
      */
     private void registerCommonFactories(Config config) {
         // Register ClockProvider factory (system clock by default)
@@ -159,7 +288,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
     }
 
     /**
-     * Initialize and run a FIX engine application.
+     * Initialize and run a FIX engine application (legacy mode).
      */
     private int initializeAndRunFix(Config config) throws Exception {
         // Register FixEngine factory
@@ -201,7 +330,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
     }
 
     /**
-     * Initialize and run an OUCH engine application.
+     * Initialize and run an OUCH engine application (legacy mode).
      */
     private int initializeAndRunOuch(Config config) throws Exception {
         // Register OuchEngine factory
@@ -242,6 +371,8 @@ public abstract class ApplicationBase implements Callable<Integer> {
         return runOuch(engine, sessions);
     }
 
+    // ==================== Abstract/Hook Methods ====================
+
     /**
      * Get the list of configuration files to load.
      *
@@ -251,13 +382,17 @@ public abstract class ApplicationBase implements Callable<Integer> {
 
     /**
      * Get the engine type for this application (FIX or OUCH).
+     * Only used in legacy mode (when no "components" section in config).
      *
      * @return the engine type
      */
-    protected abstract EngineType getEngineType();
+    protected EngineType getEngineType() {
+        // Default to FIX for backward compatibility
+        return EngineType.FIX;
+    }
 
     /**
-     * Configure the FIX engine with listeners before starting.
+     * Configure the FIX engine with listeners before starting (legacy mode).
      * Override this method for FIX applications.
      *
      * @param engine the FIX engine
@@ -268,7 +403,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
     }
 
     /**
-     * Run the FIX application logic after engine is started.
+     * Run the FIX application logic after engine is started (legacy mode).
      * Override this method for FIX applications.
      *
      * @param engine the FIX engine
@@ -282,7 +417,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
     }
 
     /**
-     * Configure the OUCH engine with listeners before starting.
+     * Configure the OUCH engine with listeners before starting (legacy mode).
      * Override this method for OUCH applications.
      *
      * @param engine the OUCH engine
@@ -293,7 +428,7 @@ public abstract class ApplicationBase implements Callable<Integer> {
     }
 
     /**
-     * Run the OUCH application logic after engine is started.
+     * Run the OUCH application logic after engine is started (legacy mode).
      * Override this method for OUCH applications.
      *
      * @param engine the OUCH engine
@@ -305,6 +440,8 @@ public abstract class ApplicationBase implements Callable<Integer> {
         // Override in OUCH subclasses
         return 0;
     }
+
+    // ==================== Utility Methods ====================
 
     /**
      * Shutdown the application and release resources.
@@ -328,6 +465,11 @@ public abstract class ApplicationBase implements Callable<Integer> {
         ch.qos.logback.classic.Logger rootLogger =
                 (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("com.fixengine");
         rootLogger.setLevel(Level.toLevel(level));
+
+        // Also set for omnibridge packages
+        ch.qos.logback.classic.Logger omnibridgeLogger =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("com.omnibridge");
+        omnibridgeLogger.setLevel(Level.toLevel(level));
     }
 
     /**
