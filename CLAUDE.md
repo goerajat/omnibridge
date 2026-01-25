@@ -94,6 +94,51 @@ run-ouch-latency-test.bat [warmup-orders] [test-orders] [rate]
 run-ouch-latency-test-v50.bat [warmup-orders] [test-orders] [rate]
 ```
 
+## OmniView - Protocol Engine Monitor
+
+OmniView is a web-based monitoring application for FIX/OUCH protocol engine applications.
+
+### Building OmniView
+
+```bash
+# Build with Maven (includes frontend build)
+cd omniview
+mvn package
+
+# Build with pre-built frontend (faster)
+cd omniview
+npm run build
+mvn package -Pskip-frontend
+```
+
+### Running OmniView
+
+```bash
+# Windows
+start-omniview.bat [port]      # Start (default port: 3000)
+stop-omniview.bat              # Stop
+
+# Linux/Mac
+./start-omniview.sh [port]     # Start (default port: 3000)
+./stop-omniview.sh             # Stop
+```
+
+### Development Mode
+
+```bash
+cd omniview
+npm install
+npm run dev    # Starts dev server on http://localhost:3000
+```
+
+### Features
+
+- Dashboard with app cards showing session health
+- Real-time session monitoring via WebSocket
+- Enable/disable session actions
+- Protocol filtering (FIX/OUCH)
+- Multi-app support with automatic reconnection
+
 ## Architecture Documentation
 
 **IMPORTANT**: The protocol architecture is documented in `docs/PROTOCOL_ARCHITECTURE.md`. This document serves as a template for implementing new exchange protocols.
