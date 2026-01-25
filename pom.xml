@@ -29,6 +29,8 @@
         <module>ilink3</module>
         <!-- Euronext Optiq protocol modules -->
         <module>optiq</module>
+        <!-- NYSE Pillar protocol modules -->
+        <module>pillar</module>
         <!-- Sample applications (FIX and OUCH) -->
         <module>apps</module>
         <!-- Build tools (integration tests) - must be last to ensure dependencies are built -->
@@ -138,6 +140,16 @@
             </dependency>
             <dependency>
                 <groupId>com.omnibridge</groupId>
+                <artifactId>pillar-message</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>pillar-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
                 <artifactId>apps-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -149,6 +161,11 @@
             <dependency>
                 <groupId>com.omnibridge</groupId>
                 <artifactId>ouch-samples</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>pillar-samples</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

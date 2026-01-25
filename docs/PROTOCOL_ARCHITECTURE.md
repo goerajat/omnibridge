@@ -97,41 +97,98 @@ connectivity/
 │   │       ├── v42/                 # OUCH 4.2 messages
 │   │       └── v50/                 # OUCH 5.0 messages with appendages
 │   └── engine/                      # Session and engine
+├── sbe/                             # SBE base classes
+│   ├── pom.xml                      # SBE parent POM
+│   ├── message/                     # Base message classes
+│   │   └── src/main/java/.../
+│   │       ├── SbeMessage.java      # Abstract base for SBE messages
+│   │       ├── SbeMessageType.java  # Message type interface
+│   │       ├── SbeSchema.java       # Schema metadata interface
+│   │       ├── SbeMessagePool.java  # Thread-local message pooling
+│   │       ├── SbeMessageReader.java # Message reader base
+│   │       └── SbeMessageFactory.java # Factory interface
+│   └── engine/                      # Engine and session base classes
+│       └── src/main/java/.../
+│           ├── SbeEngine.java       # Abstract engine base
+│           ├── session/
+│           │   ├── SbeSession.java  # Abstract session base
+│           │   └── SbeSessionState.java # Session state enum
+│           └── config/
+│               ├── SbeEngineConfig.java  # Engine config base
+│               └── SbeSessionConfig.java # Session config base
+├── ilink3/                          # CME iLink 3 protocol
+│   ├── pom.xml                      # iLink 3 parent POM
+│   ├── message/                     # iLink 3 messages (schema 8/9)
+│   │   └── src/main/java/.../
+│   │       ├── ILink3Message.java   # Base with 2-byte framing
+│   │       ├── session/             # Negotiate, Establish, Sequence
+│   │       └── order/               # NewOrderSingle, ExecutionReport
+│   └── engine/                      # Session and engine
+├── optiq/                           # Euronext Optiq protocol
+│   ├── pom.xml                      # Optiq parent POM
+│   ├── message/                     # Optiq OEG messages
+│   │   └── src/main/java/.../
+│   │       ├── OptiqMessage.java    # Base class
+│   │       ├── session/             # Logon, Logout, Heartbeat
+│   │       └── order/               # NewOrder, ExecutionReport
+│   └── engine/                      # Session and engine
+├── pillar/                          # NYSE Pillar protocol
+│   ├── pom.xml                      # Pillar parent POM
+│   ├── message/                     # Pillar binary messages
+│   │   └── src/main/java/.../
+│   │       ├── PillarMessage.java   # Base with 4-byte header, little-endian
+│   │       ├── PillarMessageType.java # Message types enum
+│   │       ├── session/             # Login, StreamAvail, Open, Heartbeat
+│   │       └── order/               # NewOrder, ExecutionReport
+│   └── engine/                      # Session and engine
+│       └── src/main/java/.../
+│           ├── PillarSession.java   # Stream-based session lifecycle
+│           ├── PillarEngine.java    # Engine for multiple sessions
+│           └── config/              # Session and engine config
 ├── apps/                            # Sample applications
 │   ├── common/                      # Shared utilities
 │   ├── fix-samples/                 # FIX acceptor/initiator
-│   └── ouch-samples/                # OUCH acceptor/initiator
+│   ├── ouch-samples/                # OUCH acceptor/initiator
+│   ├── ilink3-samples/              # CME iLink 3 acceptor/initiator
+│   ├── optiq-samples/               # Euronext Optiq acceptor/initiator
+│   └── pillar-samples/              # NYSE Pillar acceptor/initiator
 └── run-*.bat/.sh                    # Test scripts
 ```
 
 ### 2.2 Module Dependencies
 
 ```
-                    ┌─────────┐
-                    │ config  │
-                    └────┬────┘
-                         │
-              ┌──────────┼──────────┐
-              │          │          │
-         ┌────▼────┐ ┌───▼───┐ ┌────▼─────┐
-         │ network │ │persist│ │ schedule │
-         └────┬────┘ └───┬───┘ └────┬─────┘
-              │          │          │
-              └──────────┼──────────┘
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-        ┌─────▼─────┐        ┌──────▼─────┐
-        │fix/message│        │ouch/message│
-        └─────┬─────┘        └──────┬─────┘
-              │                     │
-        ┌─────▼─────┐        ┌──────▼─────┐
-        │fix/engine │        │ouch/engine │
-        └─────┬─────┘        └──────┬─────┘
-              │                     │
-        ┌─────▼─────┐        ┌──────▼──────┐
-        │fix-samples│        │ouch-samples │
-        └───────────┘        └─────────────┘
+                              ┌─────────┐
+                              │ config  │
+                              └────┬────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+               ┌────▼────┐   ┌────▼────┐   ┌────▼─────┐
+               │ network │   │ persist │   │ schedule │
+               └────┬────┘   └────┬────┘   └────┬─────┘
+                    │             │             │
+                    └─────────────┼─────────────┘
+                                  │
+         ┌────────────────────────┼────────────────────────┐
+         │              ┌─────────┴─────────┐              │
+         │              │                   │              │
+   ┌─────▼─────┐  ┌─────▼─────┐       ┌─────▼─────┐        │
+   │fix/message│  │ouch/message│      │sbe/message│        │
+   └─────┬─────┘  └─────┬─────┘       └─────┬─────┘        │
+         │              │                   │              │
+   ┌─────▼─────┐  ┌─────▼─────┐       ┌─────▼─────┐        │
+   │fix/engine │  │ouch/engine│       │sbe/engine │        │
+   └─────┬─────┘  └─────┬─────┘       └─────┬─────┘        │
+         │              │        ┌──────────┼──────────┐   │
+         │              │        │          │          │   │
+         │              │  ┌─────▼───┐ ┌────▼────┐ ┌───▼───┤
+         │              │  │ ilink3  │ │  optiq  │ │pillar │
+         │              │  └─────┬───┘ └────┬────┘ └───┬───┘
+         │              │        │          │          │
+   ┌─────▼─────┐  ┌─────▼─────┐  │          │          │
+   │fix-samples│  │ouch-samples│ ▼          ▼          ▼
+   └───────────┘  └───────────┘  (sample apps for each)
 ```
 
 ### 2.3 Maven Module Configuration
@@ -2593,6 +2650,15 @@ JVM_OPTS="-Xms256m -Xmx512m \
 | OUCH Engine | OuchSession | Session state machine |
 | OUCH Engine | OuchSessionAdapter | ManagedSession wrapper for OUCH |
 | OUCH Engine | OuchEngine | Multi-session manager |
+| SBE Message | SbeMessage | Abstract base flyweight for SBE protocols |
+| SBE Message | SbeMessageHeader | 8-byte SBE header encoding |
+| SBE Message | SbeMessageFactory | Message creation/reading interface |
+| SBE Message | SbeGroup | Repeating groups support |
+| SBE Message | SbeVarData | Variable-length data support |
+| SBE Engine | SbeSession | Abstract session base class |
+| SBE Engine | SbeSessionState | Session state enum |
+| SBE Engine | SbeSessionAdapter | ManagedSession wrapper for SBE |
+| SBE Engine | SbeEngine | Abstract multi-session manager |
 
 ### Admin API
 
@@ -2693,6 +2759,26 @@ JVM_OPTS="-Xms256m -Xmx512m \
 /ouch/engine/src/main/java/com/omnibridge/ouch/engine/factory/
     OuchEngineFactory.java
 
+/sbe/message/src/main/java/com/omnibridge/sbe/message/
+    SbeMessage.java             # Abstract base flyweight for SBE protocols
+    SbeMessageHeader.java       # 8-byte SBE message header
+    SbeMessageType.java         # Message type interface
+    SbeSchema.java              # Schema definition interface
+    SbeMessageReader.java       # Abstract message reader
+    SbeMessagePool.java         # Thread-local message pooling
+    SbeMessageFactory.java      # Factory interface
+    SbeGroup.java               # Repeating groups base class
+    SbeVarData.java             # Variable-length data utilities
+
+/sbe/engine/src/main/java/com/omnibridge/sbe/engine/
+    SbeEngine.java              # Abstract base engine
+    session/SbeSession.java     # Abstract base session
+    session/SbeSessionState.java # Session state enum
+    session/SbeSessionAdapter.java # ManagedSession wrapper
+    config/SbeSessionConfig.java # Session configuration base
+    config/SbeEngineConfig.java # Engine configuration base
+    factory/SbeEngineFactory.java # Abstract component factory
+
 /apps/common/src/main/java/com/omnibridge/apps/common/
     ApplicationBase.java        # Application lifecycle hooks
     LatencyTracker.java
@@ -2703,12 +2789,15 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
-*Document Version: 1.5*
+*Document Version: 1.6*
 *Last Updated: January 2026*
 *Changes:
+- Added SBE (Simple Binary Encoding) base module for iLink 3 and Optiq support
+- Added SBE message base classes (SbeMessage, SbeMessageHeader, SbeGroup, SbeVarData)
+- Added SBE engine base classes (SbeSession, SbeEngine, SbeSessionState)
+- Updated Appendices A and B with SBE classes and file paths
 - Added Section 6.12: Base Components Configuration (components.conf)
 - Added Section 7: Admin API with REST and WebSocket documentation
 - Expanded Section 6 with comprehensive ComponentFactory framework documentation
 - Added config-driven component loading with dependency resolution
-- Added application lifecycle hooks (preStart/postStart) pattern
-- Updated Appendices A and B with factory classes, admin classes, and file paths*
+- Added application lifecycle hooks (preStart/postStart) pattern*

@@ -10,17 +10,13 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>apps</artifactId>
+    <artifactId>pillar</artifactId>
     <packaging>pom</packaging>
-    <name>Sample Applications</name>
-    <description>Sample applications for FIX and OUCH protocols</description>
+    <name>NYSE Pillar Protocol - Parent</name>
+    <description>NYSE Pillar binary protocol implementation</description>
 
     <modules>
-        <module>common</module>
-        <module>fix-samples</module>
-        <module>ouch-samples</module>
-        <module>ilink3-samples</module>
-        <module>optiq-samples</module>
-        <module>pillar-samples</module>
+        <module>message</module>
+        <module>engine</module>
     </modules>
 </project>
