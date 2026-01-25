@@ -188,6 +188,61 @@ npm run dev    # Starts dev server on http://localhost:3000
 - Protocol filtering (FIX/OUCH)
 - Multi-app support with automatic reconnection
 
+## Sample Applications Deployment
+
+Deploy FIX and OUCH sample acceptors to a remote Linux server.
+
+### Building Sample Applications
+
+```bash
+mvn package -DskipTests   # Build all modules including sample apps
+```
+
+Distribution packages:
+- `apps/fix-samples/target/fix-samples-*-dist.tar.gz`
+- `apps/ouch-samples/target/ouch-samples-*-dist.tar.gz`
+
+### Deploying to Remote Server
+
+```bash
+# Windows
+deploy-samples.bat -i <pem-file> -u <username> -h <hostname> [options]
+
+# Linux/Mac
+./deploy-samples.sh -i <pem-file> -u <username> -h <hostname> [options]
+```
+
+Options:
+- `-i, --identity` - Path to PEM file for SSH authentication (required)
+- `-u, --user` - SSH username (required)
+- `-h, --host` - Remote hostname or IP (required)
+- `-d, --deploy-dir` - Deployment directory (default: /opt/samples)
+- `--fix-only` - Deploy only FIX acceptor
+- `--ouch-only` - Deploy only OUCH acceptor
+
+Example:
+```bash
+./deploy-samples.sh -i ~/.ssh/mykey.pem -u ubuntu -h 192.168.1.100
+```
+
+### Port Assignments
+
+| Application    | Protocol Port | Admin Port |
+|----------------|---------------|------------|
+| FIX Acceptor   | 9876          | 8081       |
+| OUCH Acceptor  | 9200          | 8082       |
+
+### Remote Management
+
+After deployment, manage acceptors via the samples.sh script:
+
+```bash
+ssh user@host '/opt/samples/samples.sh status'      # Check status
+ssh user@host '/opt/samples/samples.sh restart all' # Restart both
+ssh user@host '/opt/samples/samples.sh stop fix'    # Stop FIX only
+ssh user@host '/opt/samples/samples.sh start ouch'  # Start OUCH only
+```
+
 ## Architecture Documentation
 
 **IMPORTANT**: The protocol architecture is documented in `docs/PROTOCOL_ARCHITECTURE.md`. This document serves as a template for implementing new exchange protocols.
