@@ -101,7 +101,7 @@ OmniView is a web-based monitoring application for FIX/OUCH protocol engine appl
 ### Building OmniView
 
 ```bash
-# Build with Maven (includes frontend build)
+# Build with Maven (includes frontend build and distribution package)
 cd omniview
 mvn package
 
@@ -111,16 +111,65 @@ npm run build
 mvn package -Pskip-frontend
 ```
 
-### Running OmniView
+Build outputs:
+- `omniview/target/omniview-1.0.0-SNAPSHOT.jar` - Executable JAR
+- `omniview/target/omniview-1.0.0-SNAPSHOT-dist.tar.gz` - Distribution package (Linux)
+- `omniview/target/omniview-1.0.0-SNAPSHOT-dist.zip` - Distribution package (Windows)
+
+### Distribution Package
+
+The distribution package contains:
+```
+omniview-{version}/
+├── bin/
+│   ├── omniview.sh      # Linux/Mac management script
+│   └── omniview.bat     # Windows management script
+├── lib/
+│   └── omniview.jar     # Executable JAR
+├── conf/
+│   └── omniview.conf    # Configuration file
+└── logs/                # Log directory (created at runtime)
+```
+
+### Running OmniView (from distribution)
+
+```bash
+# Linux/Mac
+bin/omniview.sh start [port]    # Start (default port: 3000)
+bin/omniview.sh stop            # Stop
+bin/omniview.sh status          # Check status
+bin/omniview.sh restart [port]  # Restart
+
+# Windows
+bin\omniview.bat start [port]
+bin\omniview.bat stop
+bin\omniview.bat status
+bin\omniview.bat restart [port]
+```
+
+### Deploying to Remote Server
+
+Deploy OmniView to a remote Linux server:
 
 ```bash
 # Windows
-start-omniview.bat [port]      # Start (default port: 3000)
-stop-omniview.bat              # Stop
+deploy-omniview.bat -i <pem-file> -u <username> -h <hostname> [-p <port>] [-d <deploy-dir>]
 
 # Linux/Mac
-./start-omniview.sh [port]     # Start (default port: 3000)
-./stop-omniview.sh             # Stop
+./deploy-omniview.sh -i <pem-file> -u <username> -h <hostname> [-p <port>] [-d <deploy-dir>]
+```
+
+Options:
+- `-i, --identity` - Path to PEM file for SSH authentication (required)
+- `-u, --user` - SSH username (required)
+- `-h, --host` - Remote hostname or IP (required)
+- `-p, --port` - OmniView server port (default: 3000)
+- `-d, --deploy-dir` - Deployment directory (default: /opt/omniview)
+- `-s, --ssh-port` - SSH port (default: 22)
+
+Example:
+```bash
+./deploy-omniview.sh -i ~/.ssh/mykey.pem -u ubuntu -h 192.168.1.100 -p 8080
 ```
 
 ### Development Mode

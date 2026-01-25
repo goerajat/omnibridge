@@ -1,8 +1,9 @@
 # Dependencies
 node_modules
 
-# Build output
-dist
+# Build output (Vite)
+/dist
+/target
 
 # Local env files
 .env.local

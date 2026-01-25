@@ -21,6 +21,7 @@ buildNumber.properties
 .project
 .settings/
 bin/
+!**/src/dist/bin/
 
 # IDE - VS Code
 .vscode/
@@ -49,6 +50,7 @@ persistence-data/
 # Node modules (for fix-admin-ui)
 node_modules/
 dist/
+!**/src/dist/
 .npm
 .pnpm-debug.log*
 

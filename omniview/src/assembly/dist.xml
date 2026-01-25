@@ -1,0 +1,53 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 http://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>dist</id>
+    <formats>
+        <format>tar.gz</format>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>true</includeBaseDirectory>
+    <baseDirectory>omniview-${project.version}</baseDirectory>
+
+    <fileSets>
+        <!-- Include scripts with executable permissions -->
+        <fileSet>
+            <directory>src/dist/bin</directory>
+            <outputDirectory>bin</outputDirectory>
+            <includes>
+                <include>*.sh</include>
+            </includes>
+            <fileMode>0755</fileMode>
+            <lineEnding>unix</lineEnding>
+        </fileSet>
+
+        <!-- Include Windows scripts -->
+        <fileSet>
+            <directory>src/dist/bin</directory>
+            <outputDirectory>bin</outputDirectory>
+            <includes>
+                <include>*.bat</include>
+                <include>*.cmd</include>
+            </includes>
+            <lineEnding>dos</lineEnding>
+        </fileSet>
+
+        <!-- Include config directory -->
+        <fileSet>
+            <directory>src/dist/conf</directory>
+            <outputDirectory>conf</outputDirectory>
+            <includes>
+                <include>*</include>
+            </includes>
+        </fileSet>
+    </fileSets>
+
+    <files>
+        <!-- Include the shaded JAR -->
+        <file>
+            <source>target/${project.artifactId}-${project.version}.jar</source>
+            <outputDirectory>lib</outputDirectory>
+            <destName>omniview.jar</destName>
+        </file>
+    </files>
+</assembly>
