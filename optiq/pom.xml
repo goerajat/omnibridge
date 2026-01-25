@@ -10,16 +10,14 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>apps</artifactId>
+    <artifactId>optiq-parent</artifactId>
     <packaging>pom</packaging>
-    <name>Sample Applications</name>
-    <description>Sample applications for FIX and OUCH protocols</description>
+
+    <name>Euronext Optiq Protocol - Parent</name>
+    <description>Euronext Optiq protocol implementation for ultra low latency order entry on Euronext markets</description>
 
     <modules>
-        <module>common</module>
-        <module>fix-samples</module>
-        <module>ouch-samples</module>
-        <module>ilink3-samples</module>
-        <module>optiq-samples</module>
+        <module>message</module>
+        <module>engine</module>
     </modules>
 </project>

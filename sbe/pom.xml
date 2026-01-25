@@ -10,16 +10,16 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>apps</artifactId>
+    <artifactId>sbe</artifactId>
     <packaging>pom</packaging>
-    <name>Sample Applications</name>
-    <description>Sample applications for FIX and OUCH protocols</description>
+
+    <name>SBE Protocol Base</name>
+    <description>Base module for Simple Binary Encoding (SBE) protocol implementations.
+        Provides common abstractions for CME iLink 3, Euronext Optiq, and other SBE-based protocols.</description>
 
     <modules>
-        <module>common</module>
-        <module>fix-samples</module>
-        <module>ouch-samples</module>
-        <module>ilink3-samples</module>
-        <module>optiq-samples</module>
+        <module>message</module>
+        <module>engine</module>
     </modules>
+
 </project>

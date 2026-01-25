@@ -23,6 +23,12 @@
         <module>fix</module>
         <!-- OUCH protocol modules -->
         <module>ouch</module>
+        <!-- SBE protocol modules (base for iLink 3, Optiq) -->
+        <module>sbe</module>
+        <!-- CME iLink 3 protocol modules -->
+        <module>ilink3</module>
+        <!-- Euronext Optiq protocol modules -->
+        <module>optiq</module>
         <!-- Sample applications (FIX and OUCH) -->
         <module>apps</module>
         <!-- Build tools (integration tests) - must be last to ensure dependencies are built -->
@@ -98,6 +104,36 @@
             <dependency>
                 <groupId>com.omnibridge</groupId>
                 <artifactId>ouch-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>sbe-message</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>sbe-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>ilink3-message</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>ilink3-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>optiq-message</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>optiq-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
