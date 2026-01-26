@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/exchange-simulator.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/exchange-simulator.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <maxFileSize>100MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Exchange Simulator packages -->
+    <logger name="com.omnibridge.simulator" level="INFO"/>
+
+    <!-- Protocol engines -->
+    <logger name="com.omnibridge.fix" level="INFO"/>
+    <logger name="com.omnibridge.ouch" level="INFO"/>
+    <logger name="com.omnibridge.ilink3" level="INFO"/>
+    <logger name="com.omnibridge.optiq" level="INFO"/>
+    <logger name="com.omnibridge.pillar" level="INFO"/>
+
+    <!-- Network layer -->
+    <logger name="com.omnibridge.network" level="WARN"/>
+
+    <!-- Admin API -->
+    <logger name="com.omnibridge.admin" level="INFO"/>
+
+    <!-- Third party -->
+    <logger name="io.javalin" level="WARN"/>
+    <logger name="org.eclipse.jetty" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

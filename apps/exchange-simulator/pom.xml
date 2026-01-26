@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.omnibridge</groupId>
+        <artifactId>apps</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>exchange-simulator</artifactId>
+    <name>Exchange Simulator</name>
+    <description>Multi-protocol exchange simulator supporting FIX, OUCH, iLink3, Optiq, and Pillar</description>
+
+    <dependencies>
+        <!-- Simulator Core -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>exchange-simulator-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Common utilities -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>apps-common</artifactId>
+        </dependency>
+
+        <!-- FIX Engine -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>engine</artifactId>
+        </dependency>
+
+        <!-- OUCH Engine -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>ouch-engine</artifactId>
+        </dependency>
+
+        <!-- iLink3 Engine -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>ilink3-engine</artifactId>
+        </dependency>
+
+        <!-- Optiq Engine -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>optiq-engine</artifactId>
+        </dependency>
+
+        <!-- Pillar Engine -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>pillar-engine</artifactId>
+        </dependency>
+
+        <!-- Admin API -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>admin</artifactId>
+        </dependency>
+
+        <!-- CLI framework -->
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+        </dependency>
+
+        <!-- Logging -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+
+        <!-- Configuration -->
+        <dependency>
+            <groupId>com.typesafe</groupId>
+            <artifactId>config</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Create executable JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.omnibridge.simulator.ExchangeSimulator</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!-- Fat jar for distribution -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.omnibridge.simulator.ExchangeSimulator</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>reference.conf</resource>
+                                </transformer>
+                            </transformers>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>all</shadedClassifierName>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Distribution assembly -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/assembly/distribution.xml</descriptor>
+                    </descriptors>
+                    <tarLongFileMode>posix</tarLongFileMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>create-distribution</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

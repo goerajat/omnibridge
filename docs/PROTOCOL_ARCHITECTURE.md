@@ -11,6 +11,7 @@ This document describes the architecture, design patterns, and code structure us
 5. [Session Management](#5-session-management)
    - [5.5 Centralized Session Management Service](#55-centralized-session-management-service)
    - [5.6 Session Schedule Association](#56-session-schedule-association)
+   - [5.7 Multi-Session Port Sharing](#57-multi-session-port-sharing)
 6. [Configuration Framework](#6-configuration-framework)
    - [6.1 Component Lifecycle](#61-component-lifecycle)
    - [6.2 LifeCycleComponent](#62-lifecyclecomponent)
@@ -1224,6 +1225,144 @@ ouchEngine.associateSessionWithSchedule("OUCH-NASDAQ", "us-equities");
 2. **Built-in vs External Scheduling**: FIX sessions also support built-in scheduling via `start-time`/`end-time` fields in `SessionConfig`. The `SessionScheduler` provides more flexibility with named schedules, multiple time windows, and centralized management.
 
 3. **Session Creation Order**: Sessions must be created after the `SessionScheduler` is available. When using `ComponentProvider`, ensure the scheduler factory is registered before the engine factory.
+
+### 5.7 Multi-Session Port Sharing
+
+All protocol engines (FIX, OUCH, iLink3, Optiq, Pillar) support multi-session port sharing, where multiple sessions can share a single TCP acceptor port. Incoming connections are routed to the correct session based on protocol-specific identification in the initial handshake message.
+
+#### How It Works
+
+1. **Single Acceptor**: One TCP acceptor listens on the shared port
+2. **Pending Connection Handler**: New connections are buffered until the handshake message arrives
+3. **Session Routing**: The handshake message is parsed to extract the session identifier
+4. **Connection Binding**: The connection is routed to the matching session
+5. **Data Replay**: Buffered handshake data is replayed to the session
+
+#### Protocol-Specific Routing Keys
+
+| Protocol | Routing Key | Handshake Message |
+|----------|-------------|-------------------|
+| FIX | `SenderCompID:TargetCompID` | Logon (35=A) |
+| OUCH | `Username` | SoupBinTCP Login Request |
+| iLink3 | `SessionId` | Negotiate |
+| Optiq | `SessionId` | Logon |
+| Pillar | `SessionId` | Login |
+
+#### FIX Configuration Example
+
+```hocon
+fix-engine {
+    sessions = [
+        # All sessions share port 9876 - routed by CompIDs
+        {
+            port = 9876
+            sender-comp-id = "EXCH"
+            target-comp-id = "CLIENT1"
+            session-id = "FIX-1"
+            acceptor = true
+        },
+        {
+            port = 9876
+            sender-comp-id = "EXCH"
+            target-comp-id = "CLIENT2"
+            session-id = "FIX-2"
+            acceptor = true
+        }
+    ]
+}
+```
+
+#### OUCH Configuration Example
+
+```hocon
+ouch-engine {
+    sessions = [
+        # All sessions share port 9200 - routed by username
+        {
+            port = 9200
+            session-id = "OUCH-1"
+            username = "USER01"
+            acceptor = true
+        },
+        {
+            port = 9200
+            session-id = "OUCH-2"
+            username = "USER02"
+            acceptor = true
+        }
+    ]
+}
+```
+
+#### SBE Protocol Configuration (iLink3, Optiq, Pillar)
+
+```hocon
+ilink3-engine {
+    sessions = [
+        # Sessions can share ports - routed by session ID
+        { port = 9300, session-id = "ILINK-1", acceptor = true, ... },
+        { port = 9300, session-id = "ILINK-2", acceptor = true, ... }
+    ]
+}
+```
+
+#### Implementation Architecture
+
+**FIX Engine** (`FixEngine.java`):
+```java
+// Data structures for multi-session routing
+private final Map<Integer, List<FixSession>> portToSessions;
+private final Map<String, FixSession> compIdToSession;  // "theirSender:theirTarget:port" -> session
+
+// Routing method
+public FixSession findSessionByCompIds(String senderCompId, String targetCompId, int port) {
+    String routingKey = senderCompId + ":" + targetCompId + ":" + port;
+    return compIdToSession.get(routingKey);
+}
+```
+
+**OUCH Engine** (`OuchEngine.java`):
+```java
+// Data structures for multi-session routing
+private final Map<Integer, List<OuchSession>> portToSessions;
+private final Map<String, OuchSession> usernameToSession;  // "username:port" -> session
+
+// Routing method
+public OuchSession findSessionByUsername(String username, int port) {
+    String routingKey = username + ":" + port;
+    return usernameToSession.get(routingKey);
+}
+```
+
+**SBE Engine** (`SbeEngine.java`):
+```java
+// Data structures for multi-session routing
+protected final Map<Integer, List<S>> portToSessions;
+protected final Map<String, S> sessionKeyToSession;  // "routingKey:port" -> session
+
+// Extensible routing key extraction (override in subclasses)
+protected String getSessionRoutingKey(C sessionConfig) {
+    return sessionConfig.getSessionId();  // Default: use session ID
+}
+
+// Extensible handshake parsing (override in subclasses for protocol-specific logic)
+protected String extractRoutingKeyFromHandshake(DirectBuffer buffer, int offset, int length) {
+    return null;  // Default: no routing from handshake
+}
+```
+
+#### Fallback Behavior
+
+If routing key extraction fails or no matching session is found:
+1. If only one session exists on the port, the connection is routed to that session
+2. If multiple sessions exist and no match is found, the connection is rejected with a protocol-specific error message
+
+#### Benefits
+
+- **Simplified Network Configuration**: Single port for all clients reduces firewall rules
+- **Resource Efficiency**: One acceptor thread handles all sessions on a port
+- **Operational Flexibility**: Add/remove sessions without changing port assignments
+- **Exchange Compatibility**: Matches how real exchanges serve multiple clients on a single gateway port
 
 ---
 

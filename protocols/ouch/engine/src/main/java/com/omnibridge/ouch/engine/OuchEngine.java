@@ -63,6 +63,12 @@ public class OuchEngine implements Component, ScheduleListener {
     private final ComponentProvider componentProvider;
     private final Map<String, OuchSession> sessions = new ConcurrentHashMap<>();
     private final Map<Integer, TcpAcceptor> acceptors = new ConcurrentHashMap<>();
+
+    // Multi-session port sharing support:
+    // Maps port -> list of sessions sharing that port
+    private final Map<Integer, List<OuchSession>> portToSessions = new ConcurrentHashMap<>();
+    // Maps "username:port" -> session for acceptor routing
+    private final Map<String, OuchSession> usernameToSession = new ConcurrentHashMap<>();
     private final List<GlobalStateListener> stateListeners = new CopyOnWriteArrayList<>();
     private final List<GlobalMessageListener> messageListeners = new CopyOnWriteArrayList<>();
 
@@ -214,6 +220,11 @@ public class OuchEngine implements Component, ScheduleListener {
         session.addMessageListener(this::onSessionMessage);
 
         sessions.put(sessionId, session);
+
+        // Register in username lookup for multi-session acceptor routing
+        if (!sessionConfig.isInitiator()) {
+            registerSessionForAcceptorRouting(session, sessionConfig);
+        }
 
         // Register with session management service if available
         if (sessionManagementService != null) {
@@ -500,13 +511,57 @@ public class OuchEngine implements Component, ScheduleListener {
     }
 
     /**
+     * Register a session for acceptor routing in multi-session port sharing.
+     * The lookup key is "username:port".
+     */
+    private void registerSessionForAcceptorRouting(OuchSession session, OuchSessionConfig sessionConfig) {
+        int port = sessionConfig.getPort();
+        String username = sessionConfig.getUsername();
+
+        if (username != null && !username.isEmpty()) {
+            String routingKey = username + ":" + port;
+            usernameToSession.put(routingKey, session);
+            log.debug("Registered OUCH session {} for acceptor routing: {} on port {}",
+                    sessionConfig.getSessionId(), username, port);
+        }
+
+        // Track sessions per port
+        portToSessions.computeIfAbsent(port, k -> new CopyOnWriteArrayList<>()).add(session);
+    }
+
+    /**
+     * Find a session by username for acceptor routing.
+     *
+     * @param username the username from the SoupBinTCP login
+     * @param port the port the connection was received on
+     * @return the matching session, or null if not found
+     */
+    public OuchSession findSessionByUsername(String username, int port) {
+        String routingKey = username + ":" + port;
+        return usernameToSession.get(routingKey);
+    }
+
+    /**
+     * Get all sessions configured on a specific port.
+     *
+     * @param port the port number
+     * @return list of sessions on that port, or empty list if none
+     */
+    public List<OuchSession> getSessionsOnPort(int port) {
+        return portToSessions.getOrDefault(port, List.of());
+    }
+
+    /**
      * Start an acceptor for the given session.
+     * Supports multiple sessions on the same port (multi-session acceptor).
      */
     public void startAcceptor(OuchSession session) {
         int port = session.getPort();
 
         if (acceptors.containsKey(port)) {
-            // Acceptor already running on this port
+            // Acceptor already running on this port - that's OK for multi-session
+            log.debug("Acceptor already running on port {}, session {} will share it",
+                    port, session.getSessionId());
             return;
         }
 
@@ -514,9 +569,9 @@ public class OuchEngine implements Component, ScheduleListener {
             throw new IllegalStateException("Network event loop not set");
         }
 
-        log.info("Starting OUCH acceptor on port {}", port);
+        log.info("Starting OUCH acceptor on port {} (multi-session capable)", port);
 
-        TcpAcceptor acceptor = networkEventLoop.createAcceptor(port, new AcceptorHandler(session));
+        TcpAcceptor acceptor = networkEventLoop.createAcceptor(port, new MultiSessionAcceptorHandler(port));
         acceptors.put(port, acceptor);
     }
 
@@ -651,6 +706,201 @@ public class OuchEngine implements Component, ScheduleListener {
         @Override
         public void onAcceptFailed(Throwable cause) {
             log.error("Accept failed on port {}", session.getPort(), cause);
+        }
+    }
+
+    /**
+     * Multi-session acceptor handler that supports multiple OUCH sessions on a single port.
+     * Routes incoming connections to the correct session based on username in the SoupBinTCP login.
+     */
+    private class MultiSessionAcceptorHandler implements NetworkHandler {
+
+        private final int port;
+        private final Map<TcpChannel, PendingConnectionHandler> pendingConnections = new ConcurrentHashMap<>();
+
+        MultiSessionAcceptorHandler(int port) {
+            this.port = port;
+        }
+
+        @Override
+        public int getNumBytesToRead(TcpChannel channel) {
+            PendingConnectionHandler pending = pendingConnections.get(channel);
+            if (pending != null) {
+                return pending.getNumBytesToRead();
+            }
+            return NetworkHandler.DEFAULT_BYTES_TO_READ;
+        }
+
+        @Override
+        public void onConnected(TcpChannel channel) {
+            log.info("Accepted OUCH connection on port {} (multi-session), awaiting login for routing", port);
+            PendingConnectionHandler pending = new PendingConnectionHandler(channel, port, this);
+            pendingConnections.put(channel, pending);
+        }
+
+        @Override
+        public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
+            PendingConnectionHandler pending = pendingConnections.get(channel);
+            if (pending != null) {
+                return pending.onDataReceived(buffer, offset, length);
+            }
+            log.warn("Data received for unknown channel on port {}", port);
+            return length;
+        }
+
+        @Override
+        public void onDisconnected(TcpChannel channel, Throwable cause) {
+            PendingConnectionHandler pending = pendingConnections.remove(channel);
+            if (pending != null) {
+                pending.onDisconnected(cause);
+            }
+        }
+
+        @Override
+        public void onConnectFailed(String remoteAddress, Throwable cause) {
+            // Not applicable for acceptor
+        }
+
+        @Override
+        public void onAcceptFailed(Throwable cause) {
+            log.error("Accept failed on port {}", port, cause);
+        }
+
+        void removePendingConnection(TcpChannel channel) {
+            pendingConnections.remove(channel);
+        }
+    }
+
+    /**
+     * Handler for a pending OUCH connection that hasn't been routed to a session yet.
+     * Buffers incoming data until the SoupBinTCP login message is received and parsed.
+     */
+    private class PendingConnectionHandler {
+
+        // SoupBinTCP message types
+        private static final byte SOUPBIN_LOGIN_REQUEST = 'L';
+        private static final int SOUPBIN_HEADER_SIZE = 3;  // Length (2) + Type (1)
+        private static final int SOUPBIN_LOGIN_USERNAME_OFFSET = 0;
+        private static final int SOUPBIN_LOGIN_USERNAME_LENGTH = 6;
+
+        private static final int MAX_BUFFER_SIZE = 64 * 1024;
+        private static final int HEADER_SIZE = 256;
+
+        private final TcpChannel channel;
+        private final int port;
+        private final MultiSessionAcceptorHandler parentHandler;
+        private final byte[] buffer = new byte[MAX_BUFFER_SIZE];
+        private int bufferPosition = 0;
+        private OuchSession routedSession = null;
+        private boolean routingFailed = false;
+
+        PendingConnectionHandler(TcpChannel channel, int port, MultiSessionAcceptorHandler parentHandler) {
+            this.channel = channel;
+            this.port = port;
+            this.parentHandler = parentHandler;
+        }
+
+        int getNumBytesToRead() {
+            if (routedSession != null) {
+                return routedSession.getNumBytesToRead(channel);
+            }
+            return HEADER_SIZE;
+        }
+
+        int onDataReceived(DirectBuffer directBuffer, int offset, int length) {
+            if (routingFailed) {
+                return length;
+            }
+
+            if (routedSession != null) {
+                return routedSession.onDataReceived(channel, directBuffer, offset, length);
+            }
+
+            // Buffer incoming data
+            int bytesToCopy = Math.min(length, MAX_BUFFER_SIZE - bufferPosition);
+            directBuffer.getBytes(offset, buffer, bufferPosition, bytesToCopy);
+            bufferPosition += bytesToCopy;
+
+            // Try to extract username from SoupBinTCP login
+            String username = tryExtractUsername();
+            if (username != null) {
+                log.debug("Extracted username from SoupBinTCP login: {} on port {}", username, port);
+
+                // Find the matching session
+                routedSession = findSessionByUsername(username, port);
+
+                if (routedSession == null) {
+                    // Try to find any session on this port if username routing fails
+                    List<OuchSession> sessionsOnPort = getSessionsOnPort(port);
+                    if (sessionsOnPort.size() == 1) {
+                        routedSession = sessionsOnPort.get(0);
+                        log.info("Using single session {} for connection on port {} (username: {})",
+                                routedSession.getSessionId(), port, username);
+                    } else {
+                        log.error("No session configured for username: {} on port {}", username, port);
+                        routingFailed = true;
+                        channel.close();
+                        return length;
+                    }
+                }
+
+                log.info("Routing OUCH connection to session {} based on username: {}",
+                        routedSession.getSessionId(), username);
+
+                // Bind the channel to the session
+                routedSession.setChannel(channel);
+                routedSession.onConnected(channel);
+
+                // Remove from pending connections
+                parentHandler.removePendingConnection(channel);
+
+                // Replay buffered data to the session
+                if (bufferPosition > 0) {
+                    org.agrona.concurrent.UnsafeBuffer replayBuffer =
+                            new org.agrona.concurrent.UnsafeBuffer(buffer, 0, bufferPosition);
+                    routedSession.onDataReceived(channel, replayBuffer, 0, bufferPosition);
+                }
+            }
+
+            return length;
+        }
+
+        void onDisconnected(Throwable cause) {
+            if (routedSession != null) {
+                routedSession.onDisconnected(channel, cause);
+            } else {
+                log.info("Pending OUCH connection on port {} disconnected before routing: {}",
+                        port, cause != null ? cause.getMessage() : "clean disconnect");
+            }
+        }
+
+        /**
+         * Try to extract username from SoupBinTCP Login Request message.
+         * SoupBinTCP Login Request format:
+         * - Packet Length (2 bytes, big-endian)
+         * - Packet Type (1 byte, 'L' for Login Request)
+         * - Username (6 bytes, left-justified, space-padded)
+         * - Password (10 bytes)
+         * - Requested Session (10 bytes)
+         * - Requested Sequence Number (20 bytes)
+         */
+        private String tryExtractUsername() {
+            if (bufferPosition < SOUPBIN_HEADER_SIZE + SOUPBIN_LOGIN_USERNAME_LENGTH) {
+                return null;  // Not enough data
+            }
+
+            // Check if this is a Login Request
+            byte messageType = buffer[2];  // After 2-byte length
+            if (messageType != SOUPBIN_LOGIN_REQUEST) {
+                // Not a login request - might be a different message type
+                // For single-session fallback, return empty string
+                return "";
+            }
+
+            // Extract username (6 bytes starting at offset 3)
+            int usernameStart = SOUPBIN_HEADER_SIZE + SOUPBIN_LOGIN_USERNAME_OFFSET;
+            int usernameEnd = usernameStart + SOUPBIN_LOGIN_USERNAME_LENGTH;
+            return new String(buffer, usernameStart, SOUPBIN_LOGIN_USERNAME_LENGTH).trim();
         }
     }
 }

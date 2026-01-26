@@ -158,6 +158,21 @@
                 <artifactId>pillar-samples</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>admin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>exchange-simulator-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>exchange-simulator</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Logging -->
             <dependency>

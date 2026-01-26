@@ -64,6 +64,13 @@ public class FixEngine implements Component {
     private final Map<String, FixSession> sessions = new ConcurrentHashMap<>();
     private final Map<Integer, TcpAcceptor> acceptors = new ConcurrentHashMap<>();
 
+    // Multi-session port sharing support:
+    // Maps port -> list of sessions sharing that port
+    private final Map<Integer, List<FixSession>> portToSessions = new ConcurrentHashMap<>();
+    // Maps "theirSenderCompId:theirTargetCompId:port" -> session for acceptor routing
+    // (their sender = our target, their target = our sender)
+    private final Map<String, FixSession> compIdToSession = new ConcurrentHashMap<>();
+
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "FixEngine-Scheduler");
         t.setDaemon(true);
@@ -380,6 +387,11 @@ public class FixEngine implements Component {
 
         sessions.put(sessionId, session);
 
+        // Register in CompID lookup for multi-session acceptor routing
+        if (sessionConfig.isAcceptor()) {
+            registerSessionForAcceptorRouting(session, sessionConfig);
+        }
+
         // Register with session management service if available
         if (sessionManagementService != null) {
             DefaultSessionManagementService defaultService =
@@ -596,19 +608,67 @@ public class FixEngine implements Component {
     }
 
     /**
+     * Register a session for acceptor routing in multi-session port sharing.
+     * The lookup key is "theirSenderCompId:theirTargetCompId:port" where
+     * their sender = our target and their target = our sender.
+     */
+    private void registerSessionForAcceptorRouting(FixSession session, SessionConfig sessionConfig) {
+        int port = sessionConfig.getPort();
+        String ourSender = sessionConfig.getSenderCompId();
+        String ourTarget = sessionConfig.getTargetCompId();
+
+        // Key is from the client's perspective: theirSender:theirTarget:port
+        // Their sender = our target, Their target = our sender
+        String routingKey = ourTarget + ":" + ourSender + ":" + port;
+        compIdToSession.put(routingKey, session);
+
+        // Track sessions per port
+        portToSessions.computeIfAbsent(port, k -> new CopyOnWriteArrayList<>()).add(session);
+
+        log.debug("Registered session {} for acceptor routing: {} on port {}",
+                sessionConfig.getSessionId(), routingKey, port);
+    }
+
+    /**
+     * Find a session by incoming CompIDs for acceptor routing.
+     *
+     * @param incomingSenderCompId the SenderCompID from the incoming message (their sender)
+     * @param incomingTargetCompId the TargetCompID from the incoming message (their target)
+     * @param port the port the connection was received on
+     * @return the matching session, or null if not found
+     */
+    public FixSession findSessionByCompIds(String incomingSenderCompId, String incomingTargetCompId, int port) {
+        String routingKey = incomingSenderCompId + ":" + incomingTargetCompId + ":" + port;
+        return compIdToSession.get(routingKey);
+    }
+
+    /**
+     * Get all sessions configured on a specific port.
+     *
+     * @param port the port number
+     * @return list of sessions on that port, or empty list if none
+     */
+    public List<FixSession> getSessionsOnPort(int port) {
+        return portToSessions.getOrDefault(port, List.of());
+    }
+
+    /**
      * Start an acceptor for the given session configuration.
+     * Supports multiple sessions on the same port (multi-session acceptor).
      */
     private void startAcceptor(SessionConfig sessionConfig) {
         int port = sessionConfig.getPort();
 
         if (acceptors.containsKey(port)) {
-            // Acceptor already running on this port
+            // Acceptor already running on this port - that's OK for multi-session
+            log.debug("Acceptor already running on port {}, session {} will share it",
+                    port, sessionConfig.getSessionId());
             return;
         }
 
-        log.info("Starting acceptor on port {}", port);
+        log.info("Starting acceptor on port {} (multi-session capable)", port);
 
-        TcpAcceptor acceptor = eventLoop.createAcceptor(port, new AcceptorHandler(sessionConfig));
+        TcpAcceptor acceptor = eventLoop.createAcceptor(port, new MultiSessionAcceptorHandler(port));
         acceptors.put(port, acceptor);
     }
 
@@ -967,6 +1027,287 @@ public class FixEngine implements Component {
         @Override
         public void onAcceptFailed(Throwable cause) {
             log.error("Accept failed on port {}", templateConfig.getPort(), cause);
+        }
+    }
+
+    /**
+     * Multi-session acceptor handler that supports multiple FIX sessions on a single port.
+     * Routes incoming connections to the correct session based on CompIDs in the Logon message.
+     *
+     * <p>This handler creates a {@link PendingConnectionHandler} for each new connection,
+     * which buffers incoming data until the Logon message is received and parsed.
+     * Once CompIDs are extracted, the connection is routed to the appropriate session.</p>
+     */
+    private class MultiSessionAcceptorHandler implements NetworkHandler {
+
+        private final int port;
+
+        // Map of channel to pending handler (for connections not yet routed)
+        private final Map<TcpChannel, PendingConnectionHandler> pendingConnections = new ConcurrentHashMap<>();
+
+        MultiSessionAcceptorHandler(int port) {
+            this.port = port;
+        }
+
+        @Override
+        public int getNumBytesToRead(TcpChannel channel) {
+            PendingConnectionHandler pending = pendingConnections.get(channel);
+            if (pending != null) {
+                return pending.getNumBytesToRead();
+            }
+            return NetworkHandler.DEFAULT_BYTES_TO_READ;
+        }
+
+        @Override
+        public void onConnected(TcpChannel channel) {
+            log.info("Accepted connection on port {} (multi-session), awaiting Logon for routing", port);
+
+            // Create a pending connection handler to buffer data and route
+            PendingConnectionHandler pending = new PendingConnectionHandler(channel, port, this);
+            pendingConnections.put(channel, pending);
+        }
+
+        @Override
+        public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
+            PendingConnectionHandler pending = pendingConnections.get(channel);
+            if (pending != null) {
+                return pending.onDataReceived(buffer, offset, length);
+            }
+            // This shouldn't happen if the connection was properly routed
+            log.warn("Data received for unknown channel on port {}", port);
+            return length;
+        }
+
+        @Override
+        public void onDisconnected(TcpChannel channel, Throwable cause) {
+            PendingConnectionHandler pending = pendingConnections.remove(channel);
+            if (pending != null) {
+                pending.onDisconnected(cause);
+            }
+        }
+
+        @Override
+        public void onConnectFailed(String remoteAddress, Throwable cause) {
+            // Not applicable for acceptor
+        }
+
+        @Override
+        public void onAcceptFailed(Throwable cause) {
+            log.error("Accept failed on port {}", port, cause);
+        }
+
+        /**
+         * Remove a pending connection after it has been routed to a session.
+         */
+        void removePendingConnection(TcpChannel channel) {
+            pendingConnections.remove(channel);
+        }
+    }
+
+    /**
+     * Handler for a pending connection that hasn't been routed to a session yet.
+     * Buffers incoming data until the Logon message is received and parsed.
+     */
+    private class PendingConnectionHandler {
+
+        private static final byte SOH = 0x01;
+        private static final int MAX_BUFFER_SIZE = 64 * 1024;
+        private static final int HEADER_SIZE = 256; // Enough for Logon header
+
+        private final TcpChannel channel;
+        private final int port;
+        private final MultiSessionAcceptorHandler parentHandler;
+        private final byte[] buffer = new byte[MAX_BUFFER_SIZE];
+        private int bufferPosition = 0;
+        private FixSession routedSession = null;
+        private boolean routingFailed = false;
+
+        PendingConnectionHandler(TcpChannel channel, int port, MultiSessionAcceptorHandler parentHandler) {
+            this.channel = channel;
+            this.port = port;
+            this.parentHandler = parentHandler;
+        }
+
+        int getNumBytesToRead() {
+            if (routedSession != null) {
+                return routedSession.getNumBytesToRead(channel);
+            }
+            // Request enough bytes to parse the Logon header
+            return HEADER_SIZE;
+        }
+
+        int onDataReceived(DirectBuffer directBuffer, int offset, int length) {
+            if (routingFailed) {
+                return length; // Discard data after routing failure
+            }
+
+            if (routedSession != null) {
+                // Already routed - delegate to session
+                return routedSession.onDataReceived(channel, directBuffer, offset, length);
+            }
+
+            // Buffer incoming data
+            int bytesToCopy = Math.min(length, MAX_BUFFER_SIZE - bufferPosition);
+            directBuffer.getBytes(offset, buffer, bufferPosition, bytesToCopy);
+            bufferPosition += bytesToCopy;
+
+            // Try to extract CompIDs from the buffered data
+            String[] compIds = tryExtractCompIds();
+            if (compIds != null) {
+                String senderCompId = compIds[0];
+                String targetCompId = compIds[1];
+
+                log.debug("Extracted CompIDs from Logon: sender={}, target={} on port {}",
+                        senderCompId, targetCompId, port);
+
+                // Find the matching session
+                routedSession = findSessionByCompIds(senderCompId, targetCompId, port);
+
+                if (routedSession == null) {
+                    log.error("No session configured for CompIDs: sender={}, target={} on port {}",
+                            senderCompId, targetCompId, port);
+                    routingFailed = true;
+                    sendLogoutAndDisconnect(senderCompId, targetCompId,
+                            "Unknown CompID combination: " + senderCompId + "/" + targetCompId);
+                    return length;
+                }
+
+                log.info("Routing connection to session {} based on CompIDs: sender={}, target={}",
+                        routedSession.getConfig().getSessionId(), senderCompId, targetCompId);
+
+                // Bind the channel to the session
+                routedSession.setChannel(channel);
+                routedSession.onConnected(channel);
+
+                // Remove from pending connections
+                parentHandler.removePendingConnection(channel);
+
+                // Replay buffered data to the session
+                if (bufferPosition > 0) {
+                    org.agrona.concurrent.UnsafeBuffer replayBuffer =
+                            new org.agrona.concurrent.UnsafeBuffer(buffer, 0, bufferPosition);
+                    routedSession.onDataReceived(channel, replayBuffer, 0, bufferPosition);
+                }
+            }
+
+            return length;
+        }
+
+        void onDisconnected(Throwable cause) {
+            if (routedSession != null) {
+                routedSession.onDisconnected(channel, cause);
+            } else {
+                log.info("Pending connection on port {} disconnected before routing: {}",
+                        port, cause != null ? cause.getMessage() : "clean disconnect");
+            }
+        }
+
+        /**
+         * Try to extract SenderCompID and TargetCompID from the buffered Logon message.
+         * Returns [senderCompId, targetCompId] if successful, null if more data is needed.
+         */
+        private String[] tryExtractCompIds() {
+            // Look for tag 49 (SenderCompID) and tag 56 (TargetCompID) in the buffer
+            String senderCompId = extractTag(49);
+            String targetCompId = extractTag(56);
+
+            if (senderCompId != null && targetCompId != null) {
+                return new String[]{senderCompId, targetCompId};
+            }
+
+            return null;
+        }
+
+        /**
+         * Extract a tag value from the buffered data.
+         */
+        private String extractTag(int tag) {
+            // Build the tag prefix pattern: "tag="
+            String tagPrefix = tag + "=";
+            byte[] prefix = tagPrefix.getBytes();
+
+            // Search for the tag in the buffer
+            for (int i = 0; i < bufferPosition - prefix.length; i++) {
+                boolean found = true;
+                // Check if preceded by SOH or start of buffer
+                if (i > 0 && buffer[i - 1] != SOH) {
+                    continue;
+                }
+                for (int j = 0; j < prefix.length; j++) {
+                    if (buffer[i + j] != prefix[j]) {
+                        found = false;
+                        break;
+                    }
+                }
+                if (found) {
+                    // Found the tag, extract value until SOH
+                    int valueStart = i + prefix.length;
+                    int valueEnd = valueStart;
+                    while (valueEnd < bufferPosition && buffer[valueEnd] != SOH) {
+                        valueEnd++;
+                    }
+                    if (valueEnd < bufferPosition) {
+                        return new String(buffer, valueStart, valueEnd - valueStart);
+                    }
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Send a Logout message and disconnect for unknown CompID combinations.
+         */
+        private void sendLogoutAndDisconnect(String theirSender, String theirTarget, String reason) {
+            try {
+                // Build a simple Logout message
+                StringBuilder logout = new StringBuilder();
+
+                // BeginString
+                logout.append("8=FIX.4.2").append((char) SOH);
+
+                // Body (will update length later)
+                StringBuilder body = new StringBuilder();
+                body.append("35=5").append((char) SOH);  // MsgType=Logout
+                body.append("49=").append(theirTarget).append((char) SOH);  // SenderCompID (our sender = their target)
+                body.append("56=").append(theirSender).append((char) SOH);  // TargetCompID (our target = their sender)
+                body.append("34=1").append((char) SOH);  // SeqNum
+                body.append("52=").append(java.time.Instant.now().toString().replace("T", "-").replace("Z", ""))
+                        .append((char) SOH);  // SendingTime
+                body.append("58=").append(reason).append((char) SOH);  // Text
+
+                // BodyLength
+                logout.append("9=").append(body.length()).append((char) SOH);
+
+                // Append body
+                logout.append(body);
+
+                // Calculate checksum
+                String msgWithoutChecksum = logout.toString();
+                int checksum = 0;
+                for (int i = 0; i < msgWithoutChecksum.length(); i++) {
+                    checksum += msgWithoutChecksum.charAt(i);
+                }
+                checksum = checksum % 256;
+
+                // Append checksum
+                logout.append("10=").append(String.format("%03d", checksum)).append((char) SOH);
+
+                // Send the message
+                byte[] logoutBytes = logout.toString().getBytes();
+                channel.writeRaw(logoutBytes, 0, logoutBytes.length);
+
+                log.info("Sent Logout for unknown CompIDs: {}", reason);
+            } catch (Exception e) {
+                log.error("Error sending Logout for unknown CompIDs", e);
+            } finally {
+                // Disconnect after a short delay
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                channel.close();
+            }
         }
     }
 

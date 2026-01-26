@@ -63,6 +63,12 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
     protected final ComponentProvider componentProvider;
     protected final Map<String, S> sessions = new ConcurrentHashMap<>();
     protected final Map<Integer, TcpAcceptor> acceptors = new ConcurrentHashMap<>();
+
+    // Multi-session port sharing support:
+    // Maps port -> list of sessions sharing that port
+    protected final Map<Integer, List<S>> portToSessions = new ConcurrentHashMap<>();
+    // Maps "sessionKey:port" -> session for acceptor routing (key format is protocol-specific)
+    protected final Map<String, S> sessionKeyToSession = new ConcurrentHashMap<>();
     protected final List<GlobalStateListener<S>> stateListeners = new CopyOnWriteArrayList<>();
     protected final List<GlobalMessageListener<S>> messageListeners = new CopyOnWriteArrayList<>();
 
@@ -239,6 +245,11 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
         session.addMessageListener((s, msg) -> onSessionMessage(session, msg));
 
         sessions.put(sessionId, session);
+
+        // Register for multi-session acceptor routing
+        if (!sessionConfig.isInitiator()) {
+            registerSessionForAcceptorRouting(session, sessionConfig);
+        }
 
         // Register with session management service if available
         if (sessionManagementService != null) {
@@ -440,7 +451,78 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
     // =====================================================
 
     /**
+     * Register a session for acceptor routing in multi-session port sharing.
+     * Subclasses can override {@link #getSessionRoutingKey(SbeSessionConfig)} to customize the key.
+     */
+    protected void registerSessionForAcceptorRouting(S session, C sessionConfig) {
+        int port = sessionConfig.getPort();
+        String routingKey = getSessionRoutingKey(sessionConfig);
+
+        if (routingKey != null && !routingKey.isEmpty()) {
+            String fullKey = routingKey + ":" + port;
+            sessionKeyToSession.put(fullKey, session);
+            log.debug("Registered {} session {} for acceptor routing: {} on port {}",
+                    getEngineName(), sessionConfig.getSessionId(), routingKey, port);
+        }
+
+        // Track sessions per port
+        portToSessions.computeIfAbsent(port, k -> new CopyOnWriteArrayList<>()).add(session);
+    }
+
+    /**
+     * Get the routing key for a session. This key is used to route incoming connections
+     * to the correct session in multi-session port sharing mode.
+     * <p>
+     * Default implementation uses the session ID. Subclasses can override this
+     * to use protocol-specific identifiers (e.g., firmId for iLink3, logicalAccessId for Optiq).
+     *
+     * @param sessionConfig the session configuration
+     * @return the routing key, or null if no routing is possible
+     */
+    protected String getSessionRoutingKey(C sessionConfig) {
+        return sessionConfig.getSessionId();
+    }
+
+    /**
+     * Find a session by routing key for acceptor routing.
+     *
+     * @param routingKey the routing key extracted from the handshake message
+     * @param port the port the connection was received on
+     * @return the matching session, or null if not found
+     */
+    public S findSessionByRoutingKey(String routingKey, int port) {
+        String fullKey = routingKey + ":" + port;
+        return sessionKeyToSession.get(fullKey);
+    }
+
+    /**
+     * Get all sessions configured on a specific port.
+     *
+     * @param port the port number
+     * @return list of sessions on that port, or empty list if none
+     */
+    public List<S> getSessionsOnPort(int port) {
+        return portToSessions.getOrDefault(port, List.of());
+    }
+
+    /**
+     * Extract the routing key from the initial handshake data.
+     * Subclasses should override this to parse protocol-specific handshake messages.
+     * <p>
+     * Default implementation returns null (no routing possible from handshake).
+     *
+     * @param buffer the buffer containing handshake data
+     * @param offset the offset in the buffer
+     * @param length the length of data
+     * @return the routing key, or null if not yet determinable
+     */
+    protected String extractRoutingKeyFromHandshake(DirectBuffer buffer, int offset, int length) {
+        return null;
+    }
+
+    /**
      * Starts an acceptor for the given session.
+     * Supports multiple sessions on the same port (multi-session acceptor).
      *
      * @param session the session to accept connections for
      */
@@ -448,6 +530,9 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
         int port = session.getPort();
 
         if (acceptors.containsKey(port)) {
+            // Acceptor already running on this port - that's OK for multi-session
+            log.debug("Acceptor already running on port {}, session {} will share it",
+                    port, session.getSessionId());
             return;
         }
 
@@ -455,9 +540,9 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
             throw new IllegalStateException("Network event loop not set");
         }
 
-        log.info("Starting {} acceptor on port {}", getEngineName(), port);
+        log.info("Starting {} acceptor on port {} (multi-session capable)", getEngineName(), port);
 
-        TcpAcceptor acceptor = networkEventLoop.createAcceptor(port, new AcceptorHandler(session));
+        TcpAcceptor acceptor = networkEventLoop.createAcceptor(port, new MultiSessionAcceptorHandler(port));
         acceptors.put(port, acceptor);
     }
 
@@ -654,6 +739,194 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
         @Override
         public void onAcceptFailed(Throwable cause) {
             log.error("Accept failed on port {}", session.getPort(), cause);
+        }
+    }
+
+    /**
+     * Multi-session acceptor handler that supports multiple SBE sessions on a single port.
+     * Routes incoming connections to the correct session based on handshake message content.
+     */
+    private class MultiSessionAcceptorHandler implements NetworkHandler {
+
+        private final int port;
+        private final Map<TcpChannel, PendingConnectionHandler> pendingConnections = new ConcurrentHashMap<>();
+
+        MultiSessionAcceptorHandler(int port) {
+            this.port = port;
+        }
+
+        @Override
+        public int getNumBytesToRead(TcpChannel channel) {
+            PendingConnectionHandler pending = pendingConnections.get(channel);
+            if (pending != null) {
+                return pending.getNumBytesToRead();
+            }
+            return NetworkHandler.DEFAULT_BYTES_TO_READ;
+        }
+
+        @Override
+        public void onConnected(TcpChannel channel) {
+            log.info("Accepted {} connection on port {} (multi-session), awaiting handshake for routing",
+                    getEngineName(), port);
+            PendingConnectionHandler pending = new PendingConnectionHandler(channel, port, this);
+            pendingConnections.put(channel, pending);
+        }
+
+        @Override
+        public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
+            PendingConnectionHandler pending = pendingConnections.get(channel);
+            if (pending != null) {
+                return pending.onDataReceived(buffer, offset, length);
+            }
+            log.warn("Data received for unknown channel on port {}", port);
+            return length;
+        }
+
+        @Override
+        public void onDisconnected(TcpChannel channel, Throwable cause) {
+            PendingConnectionHandler pending = pendingConnections.remove(channel);
+            if (pending != null) {
+                pending.onDisconnected(cause);
+            }
+        }
+
+        @Override
+        public void onConnectFailed(String remoteAddress, Throwable cause) {
+            // Not applicable for acceptor
+        }
+
+        @Override
+        public void onAcceptFailed(Throwable cause) {
+            log.error("Accept failed on port {}", port, cause);
+        }
+
+        void removePendingConnection(TcpChannel channel) {
+            pendingConnections.remove(channel);
+        }
+    }
+
+    /**
+     * Handler for a pending SBE connection that hasn't been routed to a session yet.
+     * Buffers incoming data until the handshake message is received and parsed.
+     */
+    private class PendingConnectionHandler {
+
+        private static final int MAX_BUFFER_SIZE = 64 * 1024;
+        private static final int HEADER_SIZE = 256;
+
+        private final TcpChannel channel;
+        private final int port;
+        private final MultiSessionAcceptorHandler parentHandler;
+        private final byte[] buffer = new byte[MAX_BUFFER_SIZE];
+        private int bufferPosition = 0;
+        private S routedSession = null;
+        private boolean routingFailed = false;
+
+        PendingConnectionHandler(TcpChannel channel, int port, MultiSessionAcceptorHandler parentHandler) {
+            this.channel = channel;
+            this.port = port;
+            this.parentHandler = parentHandler;
+        }
+
+        int getNumBytesToRead() {
+            if (routedSession != null) {
+                return routedSession.getNumBytesToRead(channel);
+            }
+            return HEADER_SIZE;
+        }
+
+        int onDataReceived(DirectBuffer directBuffer, int offset, int length) {
+            if (routingFailed) {
+                return length;
+            }
+
+            if (routedSession != null) {
+                return routedSession.onDataReceived(channel, directBuffer, offset, length);
+            }
+
+            // Buffer incoming data
+            int bytesToCopy = Math.min(length, MAX_BUFFER_SIZE - bufferPosition);
+            directBuffer.getBytes(offset, buffer, bufferPosition, bytesToCopy);
+            bufferPosition += bytesToCopy;
+
+            // Try to extract routing key from buffered handshake data
+            org.agrona.concurrent.UnsafeBuffer bufferWrapper =
+                    new org.agrona.concurrent.UnsafeBuffer(buffer, 0, bufferPosition);
+            String routingKey = extractRoutingKeyFromHandshake(bufferWrapper, 0, bufferPosition);
+
+            if (routingKey != null) {
+                log.debug("Extracted routing key from {} handshake: {} on port {}",
+                        getEngineName(), routingKey, port);
+
+                // Find the matching session
+                routedSession = findSessionByRoutingKey(routingKey, port);
+
+                if (routedSession == null) {
+                    // Try to find any session on this port if routing key lookup fails
+                    List<S> sessionsOnPort = getSessionsOnPort(port);
+                    if (sessionsOnPort.size() == 1) {
+                        routedSession = sessionsOnPort.get(0);
+                        log.info("Using single session {} for connection on port {} (routing key: {})",
+                                routedSession.getSessionId(), port, routingKey);
+                    } else {
+                        log.error("No {} session configured for routing key: {} on port {}",
+                                getEngineName(), routingKey, port);
+                        routingFailed = true;
+                        channel.close();
+                        return length;
+                    }
+                }
+
+                log.info("Routing {} connection to session {} based on routing key: {}",
+                        getEngineName(), routedSession.getSessionId(), routingKey);
+
+                // Bind the channel to the session
+                routedSession.setChannel(channel);
+                routedSession.onConnected(channel);
+
+                // Remove from pending connections
+                parentHandler.removePendingConnection(channel);
+
+                // Replay buffered data to the session
+                if (bufferPosition > 0) {
+                    org.agrona.concurrent.UnsafeBuffer replayBuffer =
+                            new org.agrona.concurrent.UnsafeBuffer(buffer, 0, bufferPosition);
+                    routedSession.onDataReceived(channel, replayBuffer, 0, bufferPosition);
+                }
+            } else {
+                // If we can't determine the routing key, fall back to single session on port
+                List<S> sessionsOnPort = getSessionsOnPort(port);
+                if (sessionsOnPort.size() == 1) {
+                    routedSession = sessionsOnPort.get(0);
+                    log.info("Using single session {} for connection on port {} (no routing key)",
+                            routedSession.getSessionId(), port);
+
+                    // Bind the channel to the session
+                    routedSession.setChannel(channel);
+                    routedSession.onConnected(channel);
+
+                    // Remove from pending connections
+                    parentHandler.removePendingConnection(channel);
+
+                    // Replay buffered data to the session
+                    if (bufferPosition > 0) {
+                        org.agrona.concurrent.UnsafeBuffer replayBuffer =
+                                new org.agrona.concurrent.UnsafeBuffer(buffer, 0, bufferPosition);
+                        routedSession.onDataReceived(channel, replayBuffer, 0, bufferPosition);
+                    }
+                }
+            }
+
+            return length;
+        }
+
+        void onDisconnected(Throwable cause) {
+            if (routedSession != null) {
+                routedSession.onDisconnected(channel, cause);
+            } else {
+                log.info("Pending {} connection on port {} disconnected before routing: {}",
+                        getEngineName(), port, cause != null ? cause.getMessage() : "clean disconnect");
+            }
         }
     }
 }

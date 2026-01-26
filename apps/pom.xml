@@ -12,8 +12,8 @@
 
     <artifactId>apps</artifactId>
     <packaging>pom</packaging>
-    <name>Sample Applications</name>
-    <description>Sample applications for FIX and OUCH protocols</description>
+    <name>Applications</name>
+    <description>Sample applications and exchange simulator for protocol engines</description>
 
     <modules>
         <module>common</module>
@@ -22,5 +22,7 @@
         <module>ilink3-samples</module>
         <module>optiq-samples</module>
         <module>pillar-samples</module>
+        <module>exchange-simulator-core</module>
+        <module>exchange-simulator</module>
     </modules>
 </project>
