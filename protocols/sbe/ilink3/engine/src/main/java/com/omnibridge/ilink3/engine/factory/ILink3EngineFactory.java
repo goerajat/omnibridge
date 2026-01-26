@@ -3,16 +3,29 @@ package com.omnibridge.ilink3.engine.factory;
 import com.omnibridge.config.provider.ComponentProvider;
 import com.omnibridge.ilink3.engine.ILink3Engine;
 import com.omnibridge.ilink3.engine.config.ILink3EngineConfig;
+import com.omnibridge.sbe.engine.factory.SbeEngineFactory;
 import com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Factory for creating iLink 3 engine instances.
+ * Extends SbeEngineFactory for component lifecycle integration.
  */
-public class ILink3EngineFactory {
+public class ILink3EngineFactory extends SbeEngineFactory<ILink3Engine> {
 
     private static final Logger log = LoggerFactory.getLogger(ILink3EngineFactory.class);
+
+    @Override
+    protected String getConfigPath() {
+        return "ilink3-engine";
+    }
+
+    @Override
+    protected ILink3Engine createEngine(Config config, ComponentProvider provider) {
+        ILink3EngineConfig engineConfig = ILink3EngineConfig.fromConfig(config);
+        return new ILink3Engine(engineConfig, provider);
+    }
 
     /**
      * Creates an iLink 3 engine from HOCON configuration.
