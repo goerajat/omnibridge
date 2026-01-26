@@ -13,7 +13,7 @@ set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
 set ACCEPTOR_JAR=apps\fix-samples\target\fix-samples-1.0.0-SNAPSHOT-all.jar
-set TESTER_JAR=fix\session-tester\target\session-tester-1.0.0-SNAPSHOT-all.jar
+set TESTER_JAR=protocols\fix\session-tester\target\session-tester-1.0.0-SNAPSHOT-all.jar
 set CONFIG_DIR=apps\fix-samples\src\main\resources
 
 REM Check if jars exist

@@ -6,21 +6,17 @@
 
     <parent>
         <groupId>com.omnibridge</groupId>
-        <artifactId>connectivity</artifactId>
+        <artifactId>sbe</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>fix</artifactId>
+    <artifactId>pillar</artifactId>
     <packaging>pom</packaging>
-    <name>FIX Protocol</name>
-    <description>FIX protocol implementation modules</description>
+    <name>NYSE Pillar Protocol - Parent</name>
+    <description>NYSE Pillar binary protocol implementation</description>
 
     <modules>
-        <module>dictionary</module>
         <module>message</module>
         <module>engine</module>
-        <module>session-tester</module>
-        <module>reference-tester</module>
-        <module>admin-api</module>
     </modules>
 </project>

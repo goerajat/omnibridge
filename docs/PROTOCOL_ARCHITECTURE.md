@@ -172,13 +172,15 @@ connectivity/
                                   │
          ┌────────────────────────┼────────────────────────┐
          │              ┌─────────┴─────────┐              │
-         │              │                   │              │
+         │              │    protocols/     │              │
    ┌─────▼─────┐  ┌─────▼─────┐       ┌─────▼─────┐        │
-   │fix/message│  │ouch/message│      │sbe/message│        │
+   │   fix/    │  │   ouch/   │       │   sbe/    │        │
+   │  message  │  │  message  │       │  message  │        │
    └─────┬─────┘  └─────┬─────┘       └─────┬─────┘        │
          │              │                   │              │
    ┌─────▼─────┐  ┌─────▼─────┐       ┌─────▼─────┐        │
-   │fix/engine │  │ouch/engine│       │sbe/engine │        │
+   │   fix/    │  │   ouch/   │       │   sbe/    │        │
+   │  engine   │  │  engine   │       │  engine   │        │
    └─────┬─────┘  └─────┬─────┘       └─────┬─────┘        │
          │              │        ┌──────────┼──────────┐   │
          │              │        │          │          │   │
@@ -1381,8 +1383,8 @@ Factories follow a strict naming convention for auto-discovery:
 | `LogStore` | `LogStoreFactory` | `persistence/factory/` |
 | `SessionScheduler` | `SessionSchedulerFactory` | `config/factory/` |
 | `SessionManagementService` | `SessionManagementServiceFactory` | `config/factory/` |
-| `FixEngine` | `FixEngineFactory` | `fix/engine/factory/` |
-| `OuchEngine` | `OuchEngineFactory` | `ouch/engine/factory/` |
+| `FixEngine` | `FixEngineFactory` | `protocols/fix/engine/factory/` |
+| `OuchEngine` | `OuchEngineFactory` | `protocols/ouch/engine/factory/` |
 | `AdminServer` | `AdminServerFactory` | `admin/factory/` |
 
 ### 6.6 ComponentProvider and Registry
@@ -2281,7 +2283,7 @@ public enum OuchVersion {
 Organize by version in separate packages:
 
 ```
-ouch/message/
+protocols/ouch/message/
 ├── OuchMessage.java           # Abstract base
 ├── OuchVersion.java           # Version enum
 ├── OuchMessageType.java       # Message type enum
@@ -2736,30 +2738,30 @@ JVM_OPTS="-Xms256m -Xmx512m \
     WebSocketHandler.java        # Interface for WebSocket handlers
     SessionStateWebSocket.java   # Real-time session state updates
 
-/fix/message/src/main/java/com/omnibridge/fix/message/
+/protocols/fix/message/src/main/java/com/omnibridge/fix/message/
     IncomingFixMessage.java, RingBufferOutgoingMessage.java, FixReader.java
 
-/fix/engine/src/main/java/com/omnibridge/fix/engine/
+/protocols/fix/engine/src/main/java/com/omnibridge/fix/engine/
     FixEngine.java
     session/FixSession.java
     session/FixSessionAdapter.java
 
-/fix/engine/src/main/java/com/omnibridge/fix/engine/factory/
+/protocols/fix/engine/src/main/java/com/omnibridge/fix/engine/factory/
     FixEngineFactory.java
 
-/ouch/message/src/main/java/com/omnibridge/ouch/message/
+/protocols/ouch/message/src/main/java/com/omnibridge/ouch/message/
     OuchMessage.java, OuchVersion.java
     v42/*.java, v50/*.java
 
-/ouch/engine/src/main/java/com/omnibridge/ouch/engine/
+/protocols/ouch/engine/src/main/java/com/omnibridge/ouch/engine/
     OuchEngine.java
     session/OuchSession.java
     session/OuchSessionAdapter.java
 
-/ouch/engine/src/main/java/com/omnibridge/ouch/engine/factory/
+/protocols/ouch/engine/src/main/java/com/omnibridge/ouch/engine/factory/
     OuchEngineFactory.java
 
-/sbe/message/src/main/java/com/omnibridge/sbe/message/
+/protocols/sbe/message/src/main/java/com/omnibridge/sbe/message/
     SbeMessage.java             # Abstract base flyweight for SBE protocols
     SbeMessageHeader.java       # 8-byte SBE message header
     SbeMessageType.java         # Message type interface
@@ -2770,7 +2772,7 @@ JVM_OPTS="-Xms256m -Xmx512m \
     SbeGroup.java               # Repeating groups base class
     SbeVarData.java             # Variable-length data utilities
 
-/sbe/engine/src/main/java/com/omnibridge/sbe/engine/
+/protocols/sbe/engine/src/main/java/com/omnibridge/sbe/engine/
     SbeEngine.java              # Abstract base engine
     session/SbeSession.java     # Abstract base session
     session/SbeSessionState.java # Session state enum
@@ -2789,10 +2791,14 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
-*Document Version: 1.6*
+*Document Version: 1.7*
 *Last Updated: January 2026*
 *Changes:
-- Added SBE (Simple Binary Encoding) base module for iLink 3 and Optiq support
+- Restructured module hierarchy: all protocols now under protocols/ directory
+  - protocols/fix/, protocols/ouch/, protocols/sbe/
+  - SBE-based protocols (ilink3, optiq, pillar) under protocols/sbe/
+- Added NYSE Pillar binary protocol implementation
+- Added SBE (Simple Binary Encoding) base module for iLink 3, Optiq, and Pillar support
 - Added SBE message base classes (SbeMessage, SbeMessageHeader, SbeGroup, SbeVarData)
 - Added SBE engine base classes (SbeSession, SbeEngine, SbeSessionState)
 - Updated Appendices A and B with SBE classes and file paths

@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 ACCEPTOR_JAR="apps/fix-samples/target/fix-samples-1.0.0-SNAPSHOT-all.jar"
-TESTER_JAR="fix/session-tester/target/session-tester-1.0.0-SNAPSHOT-all.jar"
+TESTER_JAR="protocols/fix/session-tester/target/session-tester-1.0.0-SNAPSHOT-all.jar"
 CONFIG_DIR="apps/fix-samples/src/main/resources"
 
 # Check if jars exist

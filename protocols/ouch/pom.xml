@@ -6,15 +6,15 @@
 
     <parent>
         <groupId>com.omnibridge</groupId>
-        <artifactId>connectivity</artifactId>
+        <artifactId>protocols</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>optiq-parent</artifactId>
+    <artifactId>ouch-parent</artifactId>
     <packaging>pom</packaging>
 
-    <name>Euronext Optiq Protocol - Parent</name>
-    <description>Euronext Optiq protocol implementation for ultra low latency order entry on Euronext markets</description>
+    <name>OUCH Protocol - Parent</name>
+    <description>OUCH protocol implementation for ultra low latency order entry</description>
 
     <modules>
         <module>message</module>

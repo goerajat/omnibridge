@@ -6,20 +6,18 @@
 
     <parent>
         <groupId>com.omnibridge</groupId>
-        <artifactId>connectivity</artifactId>
+        <artifactId>sbe</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>sbe</artifactId>
+    <artifactId>optiq-parent</artifactId>
     <packaging>pom</packaging>
 
-    <name>SBE Protocol Base</name>
-    <description>Base module for Simple Binary Encoding (SBE) protocol implementations.
-        Provides common abstractions for CME iLink 3, Euronext Optiq, and other SBE-based protocols.</description>
+    <name>Euronext Optiq Protocol - Parent</name>
+    <description>Euronext Optiq protocol implementation for ultra low latency order entry on Euronext markets</description>
 
     <modules>
         <module>message</module>
         <module>engine</module>
     </modules>
-
 </project>

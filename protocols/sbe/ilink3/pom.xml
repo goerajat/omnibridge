@@ -6,14 +6,15 @@
 
     <parent>
         <groupId>com.omnibridge</groupId>
-        <artifactId>connectivity</artifactId>
+        <artifactId>sbe</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>pillar</artifactId>
+    <artifactId>ilink3-parent</artifactId>
     <packaging>pom</packaging>
-    <name>NYSE Pillar Protocol - Parent</name>
-    <description>NYSE Pillar binary protocol implementation</description>
+
+    <name>CME iLink 3 Protocol - Parent</name>
+    <description>CME iLink 3 protocol implementation for ultra low latency order entry on CME Globex markets</description>
 
     <modules>
         <module>message</module>

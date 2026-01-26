@@ -6,18 +6,21 @@
 
     <parent>
         <groupId>com.omnibridge</groupId>
-        <artifactId>connectivity</artifactId>
+        <artifactId>protocols</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>ouch-parent</artifactId>
+    <artifactId>fix</artifactId>
     <packaging>pom</packaging>
-
-    <name>OUCH Protocol - Parent</name>
-    <description>OUCH protocol implementation for ultra low latency order entry</description>
+    <name>FIX Protocol</name>
+    <description>FIX protocol implementation modules</description>
 
     <modules>
+        <module>dictionary</module>
         <module>message</module>
         <module>engine</module>
+        <module>session-tester</module>
+        <module>reference-tester</module>
+        <module>admin-api</module>
     </modules>
 </project>

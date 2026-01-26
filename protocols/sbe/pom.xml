@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.omnibridge</groupId>
+        <artifactId>protocols</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sbe</artifactId>
+    <packaging>pom</packaging>
+
+    <name>SBE Protocol Base</name>
+    <description>Base module for Simple Binary Encoding (SBE) protocol implementations.
+        Provides common abstractions for CME iLink 3, Euronext Optiq, and other SBE-based protocols.</description>
+
+    <modules>
+        <!-- Base SBE classes -->
+        <module>message</module>
+        <module>engine</module>
+        <!-- SBE-based protocol implementations -->
+        <module>ilink3</module>
+        <module>optiq</module>
+        <module>pillar</module>
+    </modules>
+
+</project>
