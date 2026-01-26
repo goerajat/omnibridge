@@ -9,10 +9,10 @@ import org.eclipse.jetty.util.resource.ResourceFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -35,14 +35,11 @@ public class OmniViewServer {
     }
 
     public void start() throws Exception {
-        // Create resource handler for static files
-        ResourceHandler resourceHandler = new ResourceHandler();
-        resourceHandler.setDirAllowed(false);
-        resourceHandler.setWelcomeFiles(new String[]{"index.html"});
-
         // Try to load resources from classpath first (when running from JAR)
         URL staticUrl = getClass().getClassLoader().getResource("static");
         Resource baseResource;
+
+        ResourceHandler resourceHandler = new ResourceHandler();
 
         if (staticUrl != null) {
             LOG.info("Serving static files from classpath: {}", staticUrl);
@@ -59,9 +56,12 @@ public class OmniViewServer {
             }
         }
 
+        // Configure resource handler
         resourceHandler.setBaseResource(baseResource);
+        resourceHandler.setDirAllowed(false);
+        resourceHandler.setWelcomeFiles(new String[]{"index.html"});
 
-        // Wrap in context handler for SPA support
+        // Create SPA handler that wraps ResourceHandler properly
         SpaHandler spaHandler = new SpaHandler(resourceHandler, baseResource);
 
         ContextHandler contextHandler = new ContextHandler("/");
@@ -130,16 +130,15 @@ public class OmniViewServer {
     }
 
     /**
-     * Custom handler that serves index.html for SPA routes.
-     * This ensures client-side routing works correctly.
+     * Custom handler that wraps ResourceHandler and serves index.html for SPA routes.
+     * Extends Handler.Wrapper to properly include ResourceHandler in the handler chain.
      */
-    private static class SpaHandler extends Handler.Abstract {
+    private static class SpaHandler extends Handler.Wrapper {
 
-        private final ResourceHandler resourceHandler;
         private final Resource baseResource;
 
-        public SpaHandler(ResourceHandler resourceHandler, Resource baseResource) {
-            this.resourceHandler = resourceHandler;
+        public SpaHandler(Handler handler, Resource baseResource) {
+            super(handler);
             this.baseResource = baseResource;
         }
 
@@ -150,28 +149,31 @@ public class OmniViewServer {
 
             String path = request.getHttpURI().getPath();
 
-            // Check if the requested resource exists
-            Resource resource = baseResource.resolve(path.substring(1)); // Remove leading /
-
-            if (resource != null && resource.exists() && !resource.isDirectory()) {
-                // Serve the actual file
-                return resourceHandler.handle(request, response, callback);
-            }
-
-            // For SPA routes, serve index.html
+            // For SPA routes (no file extension, not API/WS), serve index.html
             if (!path.startsWith("/api") && !path.startsWith("/ws") && !path.contains(".")) {
-                Resource indexResource = baseResource.resolve("index.html");
-                if (indexResource != null && indexResource.exists()) {
-                    response.setStatus(200);
-                    response.getHeaders().put("Content-Type", "text/html; charset=utf-8");
+                // Check if a real resource exists at this path
+                String resourcePath = path.length() > 1 ? path.substring(1) : "";
+                Resource resource = resourcePath.isEmpty() ? null : baseResource.resolve(resourcePath);
 
-                    byte[] content = Files.readAllBytes(Path.of(indexResource.getURI()));
-                    response.write(true, java.nio.ByteBuffer.wrap(content), callback);
-                    return true;
+                // If no resource exists, serve index.html for SPA routing
+                if (resource == null || !resource.exists()) {
+                    Resource indexResource = baseResource.resolve("index.html");
+                    if (indexResource != null && indexResource.exists()) {
+                        response.setStatus(200);
+                        response.getHeaders().put("Content-Type", "text/html; charset=utf-8");
+
+                        // Read content from the resource
+                        try (InputStream is = indexResource.newInputStream()) {
+                            byte[] content = is.readAllBytes();
+                            response.write(true, ByteBuffer.wrap(content), callback);
+                            return true;
+                        }
+                    }
                 }
             }
 
-            return resourceHandler.handle(request, response, callback);
+            // Delegate to ResourceHandler for actual files
+            return super.handle(request, response, callback);
         }
     }
 }
