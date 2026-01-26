@@ -68,33 +68,68 @@ public final class EngineSessionConfig {
 
     /**
      * Create configuration from Typesafe Config.
+     * <p>
+     * Supports both 'initiator' boolean (consistent with OUCH/SBE) and legacy 'role' string.
+     * If 'initiator' is present, it takes precedence over 'role'.
      */
     public static EngineSessionConfig fromConfig(Config config) {
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-        Builder builder = builder()
-                .sessionName(config.getString("session-name"))
-                .beginString(config.getString("begin-string"))
-                .senderCompId(config.getString("sender-comp-id"))
-                .targetCompId(config.getString("target-comp-id"))
-                .role(Role.valueOf(config.getString("role").toUpperCase()))
-                .port(config.getInt("port"))
-                .heartbeatInterval(config.getInt("heartbeat-interval"))
-                .resetOnLogon(config.getBoolean("reset-on-logon"))
-                .resetOnLogout(config.getBoolean("reset-on-logout"))
-                .resetOnDisconnect(config.getBoolean("reset-on-disconnect"))
-                .reconnectInterval(config.getInt("reconnect-interval"))
-                .maxReconnectAttempts(config.getInt("max-reconnect-attempts"))
-                .timeZone(config.getString("time-zone"))
-                .resetOnEod(config.getBoolean("reset-on-eod"))
-                .logMessages(config.getBoolean("log-messages"))
-                .maxMessageLength(config.getInt("max-message-length"))
-                .maxTagNumber(config.getInt("max-tag-number"));
+        Builder builder = builder();
 
+        // Required fields
+        builder.sessionName(config.getString("session-id"))
+               .senderCompId(config.getString("sender-comp-id"))
+               .targetCompId(config.getString("target-comp-id"))
+               .port(config.getInt("port"));
+
+        // Role: prefer 'initiator' boolean (consistent with OUCH/SBE), fallback to 'role' string
+        if (config.hasPath("initiator")) {
+            builder.role(config.getBoolean("initiator") ? Role.INITIATOR : Role.ACCEPTOR);
+        } else if (config.hasPath("role")) {
+            builder.role(Role.valueOf(config.getString("role").toUpperCase()));
+        }
+
+        // Optional fields with defaults
+        if (config.hasPath("begin-string")) {
+            builder.beginString(config.getString("begin-string"));
+        }
+        if (config.hasPath("heartbeat-interval")) {
+            builder.heartbeatInterval(config.getInt("heartbeat-interval"));
+        }
+        if (config.hasPath("reset-on-logon")) {
+            builder.resetOnLogon(config.getBoolean("reset-on-logon"));
+        }
+        if (config.hasPath("reset-on-logout")) {
+            builder.resetOnLogout(config.getBoolean("reset-on-logout"));
+        }
+        if (config.hasPath("reset-on-disconnect")) {
+            builder.resetOnDisconnect(config.getBoolean("reset-on-disconnect"));
+        }
+        if (config.hasPath("reconnect-interval")) {
+            builder.reconnectInterval(config.getInt("reconnect-interval"));
+        }
+        if (config.hasPath("max-reconnect-attempts")) {
+            builder.maxReconnectAttempts(config.getInt("max-reconnect-attempts"));
+        }
+        if (config.hasPath("time-zone")) {
+            builder.timeZone(config.getString("time-zone"));
+        }
+        if (config.hasPath("reset-on-eod")) {
+            builder.resetOnEod(config.getBoolean("reset-on-eod"));
+        }
+        if (config.hasPath("log-messages")) {
+            builder.logMessages(config.getBoolean("log-messages"));
+        }
+        if (config.hasPath("max-message-length")) {
+            builder.maxMessageLength(config.getInt("max-message-length"));
+        }
+        if (config.hasPath("max-tag-number")) {
+            builder.maxTagNumber(config.getInt("max-tag-number"));
+        }
         if (config.hasPath("host")) {
             builder.host(config.getString("host"));
         }
-
         if (config.hasPath("start-time") && !config.getString("start-time").isEmpty()) {
             builder.startTime(LocalTime.parse(config.getString("start-time"), timeFormatter));
         }
@@ -132,6 +167,14 @@ public final class EngineSessionConfig {
 
     public Role getRole() {
         return role;
+    }
+
+    /**
+     * Check if this is an initiator session.
+     * Consistent with OUCH and SBE session config API.
+     */
+    public boolean isInitiator() {
+        return role == Role.INITIATOR;
     }
 
     public String getHost() {
