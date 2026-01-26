@@ -141,16 +141,20 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
                                       SessionConnectionState newState) {
         if (!active) return;
 
+        // Payload contains state change details
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessionId", session.getSessionId());
+        payload.put("sessionName", session.getSessionName());
+        payload.put("protocolType", session.getProtocolType());
+        payload.put("oldState", oldState.toString());
+        payload.put("state", newState.toString());
+        payload.put("connected", session.isConnected());
+        payload.put("loggedOn", session.isLoggedOn());
+
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", "STATE_CHANGE");
         event.put("timestamp", Instant.now().toString());
-        event.put("sessionId", session.getSessionId());
-        event.put("sessionName", session.getSessionName());
-        event.put("protocolType", session.getProtocolType());
-        event.put("oldState", oldState.toString());
-        event.put("newState", newState.toString());
-        event.put("connected", session.isConnected());
-        event.put("loggedOn", session.isLoggedOn());
+        event.put("payload", payload);
 
         broadcast(event);
     }
@@ -159,14 +163,13 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
     public void onSessionRegistered(ManagedSession session) {
         if (!active) return;
 
+        // Payload contains session details
+        Map<String, Object> sessionDto = toSessionDto(session);
+
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", "SESSION_REGISTERED");
         event.put("timestamp", Instant.now().toString());
-        event.put("sessionId", session.getSessionId());
-        event.put("sessionName", session.getSessionName());
-        event.put("protocolType", session.getProtocolType());
-        event.put("state", session.getConnectionState().toString());
-        event.put("enabled", session.isEnabled());
+        event.put("payload", Map.of("session", sessionDto));
 
         broadcast(event);
     }
@@ -178,9 +181,7 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", "SESSION_UNREGISTERED");
         event.put("timestamp", Instant.now().toString());
-        event.put("sessionId", session.getSessionId());
-        event.put("sessionName", session.getSessionName());
-        event.put("protocolType", session.getProtocolType());
+        event.put("payload", Map.of("sessionId", session.getSessionId()));
 
         broadcast(event);
     }
@@ -188,17 +189,21 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
     // ========== Helper Methods ==========
 
     private void sendInitialState(WsContext ctx) {
-        Map<String, Object> event = new LinkedHashMap<>();
-        event.put("type", "INITIAL_STATE");
-        event.put("timestamp", Instant.now().toString());
-        event.put("sessions", sessionService.getAllSessions().stream()
+        // Payload contains sessions list and stats
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessions", sessionService.getAllSessions().stream()
                 .map(this::toSessionDto)
                 .toList());
-        event.put("stats", Map.of(
+        payload.put("stats", Map.of(
                 "total", sessionService.getTotalSessionCount(),
                 "connected", sessionService.getConnectedSessionCount(),
                 "loggedOn", sessionService.getLoggedOnSessionCount()
         ));
+
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", "INITIAL_STATE");
+        event.put("timestamp", Instant.now().toString());
+        event.put("payload", payload);
 
         sendToClient(ctx, event);
     }
