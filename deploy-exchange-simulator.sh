@@ -102,10 +102,11 @@ echo "Package: $(basename "$DIST_PACKAGE")"
 echo "========================================================"
 
 SSH_OPTS="-i $PEM_FILE -o StrictHostKeyChecking=no -p $SSH_PORT"
+SCP_OPTS="-i $PEM_FILE -o StrictHostKeyChecking=no -P $SSH_PORT"
 
 # Upload distribution package
 echo "Uploading distribution package..."
-scp $SSH_OPTS "$DIST_PACKAGE" "$SSH_USER@$SSH_HOST:/tmp/"
+scp $SCP_OPTS "$DIST_PACKAGE" "$SSH_USER@$SSH_HOST:/tmp/"
 
 # Deploy on remote server
 echo "Deploying on remote server..."
