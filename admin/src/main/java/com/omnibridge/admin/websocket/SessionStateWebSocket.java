@@ -191,14 +191,12 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
     private void sendInitialState(WsContext ctx) {
         // Payload contains sessions list and stats
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("sessions", sessionService.getAllSessions().stream()
+        var allSessions = sessionService.getAllSessions();
+
+        payload.put("sessions", allSessions.stream()
                 .map(this::toSessionDto)
                 .toList());
-        payload.put("stats", Map.of(
-                "total", sessionService.getTotalSessionCount(),
-                "connected", sessionService.getConnectedSessionCount(),
-                "loggedOn", sessionService.getLoggedOnSessionCount()
-        ));
+        payload.put("stats", computeStats(allSessions));
 
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", "INITIAL_STATE");
@@ -206,6 +204,45 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
         event.put("payload", payload);
 
         sendToClient(ctx, event);
+    }
+
+    /**
+     * Compute stats in the format expected by OmniView frontend.
+     */
+    private Map<String, Object> computeStats(java.util.Collection<ManagedSession> sessions) {
+        int total = 0, connected = 0, loggedOn = 0, enabled = 0;
+        int fixTotal = 0, fixConnected = 0, fixLoggedOn = 0;
+        int ouchTotal = 0, ouchConnected = 0, ouchLoggedOn = 0;
+
+        for (ManagedSession session : sessions) {
+            total++;
+            if (session.isConnected()) connected++;
+            if (session.isLoggedOn()) loggedOn++;
+            if (session.isEnabled()) enabled++;
+
+            String protocol = session.getProtocolType();
+            if ("FIX".equals(protocol)) {
+                fixTotal++;
+                if (session.isConnected()) fixConnected++;
+                if (session.isLoggedOn()) fixLoggedOn++;
+            } else if ("OUCH".equals(protocol)) {
+                ouchTotal++;
+                if (session.isConnected()) ouchConnected++;
+                if (session.isLoggedOn()) ouchLoggedOn++;
+            }
+        }
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("total", total);
+        stats.put("connected", connected);
+        stats.put("loggedOn", loggedOn);
+        stats.put("enabled", enabled);
+        stats.put("byProtocol", Map.of(
+                "FIX", Map.of("total", fixTotal, "connected", fixConnected, "loggedOn", fixLoggedOn),
+                "OUCH", Map.of("total", ouchTotal, "connected", ouchConnected, "loggedOn", ouchLoggedOn)
+        ));
+
+        return stats;
     }
 
     private Map<String, Object> toSessionDto(ManagedSession session) {
