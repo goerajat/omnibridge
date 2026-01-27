@@ -4,11 +4,13 @@ import { useSessionStore } from '../store/sessionStore'
 import type { AppConfig, WebSocketMessage } from '../types'
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000]
+const HEARTBEAT_INTERVAL = 30000 // Send ping every 30 seconds
 
 interface ConnectionState {
   ws: WebSocket | null
   reconnectAttempt: number
   reconnectTimeout: ReturnType<typeof setTimeout> | null
+  heartbeatInterval: ReturnType<typeof setInterval> | null
 }
 
 export function useAppConnections() {
@@ -35,6 +37,9 @@ export function useAppConnections() {
     // Close connections for removed or disabled apps
     connectionsRef.current.forEach((conn, appId) => {
       if (!currentAppIds.has(appId)) {
+        if (conn.heartbeatInterval) {
+          clearInterval(conn.heartbeatInterval)
+        }
         if (conn.reconnectTimeout) {
           clearTimeout(conn.reconnectTimeout)
         }
@@ -69,6 +74,7 @@ export function useAppConnections() {
           ws,
           reconnectAttempt: connectionsRef.current.get(app.id)?.reconnectAttempt || 0,
           reconnectTimeout: null,
+          heartbeatInterval: null,
         }
         connectionsRef.current.set(app.id, connState)
 
@@ -79,6 +85,13 @@ export function useAppConnections() {
           }
           connState.reconnectAttempt = 0
           setConnectionStatus(app.id, 'connected')
+
+          // Start heartbeat to keep connection alive
+          connState.heartbeatInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send('ping')
+            }
+          }, HEARTBEAT_INTERVAL)
         }
 
         ws.onmessage = (event: MessageEvent) => {
@@ -91,6 +104,12 @@ export function useAppConnections() {
         }
 
         ws.onclose = () => {
+          // Clear heartbeat interval
+          if (connState.heartbeatInterval) {
+            clearInterval(connState.heartbeatInterval)
+            connState.heartbeatInterval = null
+          }
+
           if (!mountedRef.current) return
 
           const currentApp = apps.find((a) => a.id === app.id)
@@ -164,6 +183,9 @@ export function useAppConnections() {
     return () => {
       mountedRef.current = false
       connectionsRef.current.forEach((conn) => {
+        if (conn.heartbeatInterval) {
+          clearInterval(conn.heartbeatInterval)
+        }
         if (conn.reconnectTimeout) {
           clearTimeout(conn.reconnectTimeout)
         }
