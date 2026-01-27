@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.omnibridge.admin.AdminServer.ConfigurableWebSocketHandler;
 import com.omnibridge.config.session.ManagedSession;
 import com.omnibridge.config.session.SessionConnectionState;
 import com.omnibridge.config.session.SessionManagementService;
@@ -13,6 +14,7 @@ import io.javalin.websocket.WsContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,14 +47,16 @@ import java.util.function.Consumer;
  *
  * <p>WebSocket endpoint: /ws/sessions (configurable)</p>
  */
-public class SessionStateWebSocket implements WebSocketHandler, SessionStateChangeListener {
+public class SessionStateWebSocket implements ConfigurableWebSocketHandler, SessionStateChangeListener {
 
     private static final Logger log = LoggerFactory.getLogger(SessionStateWebSocket.class);
+    private static final long DEFAULT_IDLE_TIMEOUT_MS = 300000; // 5 minutes
 
     private final SessionManagementService sessionService;
     private final Set<WsContext> clients;
     private final ObjectMapper objectMapper;
     private volatile boolean active;
+    private volatile long idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     public SessionStateWebSocket(SessionManagementService sessionService) {
         this.sessionService = sessionService;
@@ -72,12 +76,21 @@ public class SessionStateWebSocket implements WebSocketHandler, SessionStateChan
     }
 
     @Override
+    public void setIdleTimeoutMs(long timeoutMs) {
+        this.idleTimeoutMs = timeoutMs;
+        log.info("WebSocket idle timeout set to {}ms", timeoutMs);
+    }
+
+    @Override
     public Consumer<WsConfig> getHandler() {
         return ws -> {
             ws.onConnect(ctx -> {
+                // Set idle timeout to prevent premature disconnections
+                ctx.session.setIdleTimeout(Duration.ofMillis(idleTimeoutMs));
+
                 clients.add(ctx);
-                log.info("WebSocket client connected: {} (total: {})",
-                        ctx.session.getRemoteAddress(), clients.size());
+                log.info("WebSocket client connected: {} (total: {}, idle timeout: {}ms)",
+                        ctx.session.getRemoteAddress(), clients.size(), idleTimeoutMs);
 
                 // Send current state of all sessions on connect
                 sendInitialState(ctx);

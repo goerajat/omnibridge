@@ -378,6 +378,11 @@ public class AdminServer implements Component {
         for (WebSocketHandler handler : webSocketHandlers) {
             String fullPath = config.getWebsocketPath() + handler.getPath();
             try {
+                // Pass idle timeout to handler if it supports it
+                if (handler instanceof ConfigurableWebSocketHandler) {
+                    ((ConfigurableWebSocketHandler) handler)
+                            .setIdleTimeoutMs(config.getWebsocketIdleTimeoutMs());
+                }
                 app.ws(fullPath, handler.getHandler());
                 log.info("[{}] Registered WebSocket: {} -> {}",
                         name, fullPath, handler.getDescription());
@@ -386,5 +391,12 @@ public class AdminServer implements Component {
                 throw new RuntimeException("Failed to register WebSocket", e);
             }
         }
+    }
+
+    /**
+     * Interface for WebSocket handlers that can be configured with idle timeout.
+     */
+    public interface ConfigurableWebSocketHandler extends WebSocketHandler {
+        void setIdleTimeoutMs(long timeoutMs);
     }
 }
