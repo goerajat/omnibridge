@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  FIX 5.0 Application Layer Dictionary
+
+  This dictionary defines the application-level messages for FIX 5.0.
+  Session-level messages are defined in FIXT11.xml.
+
+  Key differences from FIX 4.4:
+  - Uses FIXT.1.1 for transport (BeginString is always "FIXT.1.1")
+  - ApplVerID (tag 1128) can be included in messages when different from session default
+  - Some new fields and message types added
+-->
+<fix-dictionary version="FIX.5.0">
+  <fields>
+    <!-- Core Order Fields -->
+    <field name="Account" tag="1" type="String"/>
+    <field name="AvgPx" tag="6" type="Price"/>
+    <field name="ClOrdID" tag="11" type="String"/>
+    <field name="CumQty" tag="14" type="Qty"/>
+    <field name="Currency" tag="15" type="Currency"/>
+    <field name="ExecID" tag="17" type="String"/>
+    <field name="LastPx" tag="31" type="Price"/>
+    <field name="LastQty" tag="32" type="Qty"/>
+    <field name="OrderID" tag="37" type="String"/>
+    <field name="OrderQty" tag="38" type="Qty"/>
+    <field name="OrdStatus" tag="39" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="PartiallyFilled" value="1"/>
+      <enum desc="Filled" value="2"/>
+      <enum desc="DoneForDay" value="3"/>
+      <enum desc="Canceled" value="4"/>
+      <enum desc="Replaced" value="5"/>
+      <enum desc="PendingCancel" value="6"/>
+      <enum desc="Stopped" value="7"/>
+      <enum desc="Rejected" value="8"/>
+      <enum desc="Suspended" value="9"/>
+      <enum desc="PendingNew" value="A"/>
+      <enum desc="Calculated" value="B"/>
+      <enum desc="Expired" value="C"/>
+      <enum desc="AcceptedForBidding" value="D"/>
+      <enum desc="PendingReplace" value="E"/>
+    </field>
+    <field name="OrdType" tag="40" type="char">
+      <enum desc="Market" value="1"/>
+      <enum desc="Limit" value="2"/>
+      <enum desc="Stop" value="3"/>
+      <enum desc="StopLimit" value="4"/>
+      <enum desc="MarketOnClose" value="5"/>
+      <enum desc="WithOrWithout" value="6"/>
+      <enum desc="LimitOrBetter" value="7"/>
+      <enum desc="LimitWithOrWithout" value="8"/>
+      <enum desc="OnBasis" value="9"/>
+      <enum desc="OnClose" value="A"/>
+      <enum desc="LimitOnClose" value="B"/>
+      <enum desc="ForexMarket" value="C"/>
+      <enum desc="PreviouslyQuoted" value="D"/>
+      <enum desc="PreviouslyIndicated" value="E"/>
+      <enum desc="ForexLimit" value="F"/>
+      <enum desc="ForexSwap" value="G"/>
+      <enum desc="ForexPreviouslyQuoted" value="H"/>
+      <enum desc="Funari" value="I"/>
+      <enum desc="MarketIfTouched" value="J"/>
+      <enum desc="MarketWithLeftOverAsLimit" value="K"/>
+      <enum desc="PreviousFundValuationPoint" value="L"/>
+      <enum desc="NextFundValuationPoint" value="M"/>
+      <enum desc="Pegged" value="P"/>
+      <enum desc="CounterOrderSelection" value="Q"/>
+    </field>
+    <field name="Price" tag="44" type="Price"/>
+    <field name="Side" tag="54" type="char">
+      <enum desc="Buy" value="1"/>
+      <enum desc="Sell" value="2"/>
+      <enum desc="BuyMinus" value="3"/>
+      <enum desc="SellPlus" value="4"/>
+      <enum desc="SellShort" value="5"/>
+      <enum desc="SellShortExempt" value="6"/>
+      <enum desc="Undisclosed" value="7"/>
+      <enum desc="Cross" value="8"/>
+      <enum desc="CrossShort" value="9"/>
+      <enum desc="CrossShortExempt" value="A"/>
+      <enum desc="AsDefined" value="B"/>
+      <enum desc="Opposite" value="C"/>
+      <enum desc="Subscribe" value="D"/>
+      <enum desc="Redeem" value="E"/>
+      <enum desc="Lend" value="F"/>
+      <enum desc="Borrow" value="G"/>
+    </field>
+    <field name="Symbol" tag="55" type="String"/>
+    <field name="Text" tag="58" type="String"/>
+    <field name="TimeInForce" tag="59" type="char">
+      <enum desc="Day" value="0"/>
+      <enum desc="GoodTillCancel" value="1"/>
+      <enum desc="AtTheOpening" value="2"/>
+      <enum desc="ImmediateOrCancel" value="3"/>
+      <enum desc="FillOrKill" value="4"/>
+      <enum desc="GoodTillCrossing" value="5"/>
+      <enum desc="GoodTillDate" value="6"/>
+      <enum desc="AtTheClose" value="7"/>
+      <enum desc="GoodThroughCrossing" value="8"/>
+      <enum desc="AtCrossing" value="9"/>
+    </field>
+    <field name="TransactTime" tag="60" type="UTCTimestamp"/>
+    <field name="ExecType" tag="150" type="char">
+      <enum desc="New" value="0"/>
+      <enum desc="DoneForDay" value="3"/>
+      <enum desc="Canceled" value="4"/>
+      <enum desc="Replaced" value="5"/>
+      <enum desc="PendingCancel" value="6"/>
+      <enum desc="Stopped" value="7"/>
+      <enum desc="Rejected" value="8"/>
+      <enum desc="Suspended" value="9"/>
+      <enum desc="PendingNew" value="A"/>
+      <enum desc="Calculated" value="B"/>
+      <enum desc="Expired" value="C"/>
+      <enum desc="Restated" value="D"/>
+      <enum desc="PendingReplace" value="E"/>
+      <enum desc="Trade" value="F"/>
+      <enum desc="TradeCorrect" value="G"/>
+      <enum desc="TradeCancel" value="H"/>
+      <enum desc="OrderStatus" value="I"/>
+      <enum desc="TradeInAClearingHold" value="J"/>
+      <enum desc="TradeHasBeenReleasedToClearing" value="K"/>
+      <enum desc="TriggeredOrActivatedBySystem" value="L"/>
+    </field>
+    <field name="LeavesQty" tag="151" type="Qty"/>
+    <field name="CxlRejReason" tag="102" type="int">
+      <enum desc="TooLateToCancel" value="0"/>
+      <enum desc="UnknownOrder" value="1"/>
+      <enum desc="BrokerCredit" value="2"/>
+      <enum desc="OrderAlreadyInPendingCancelOrPendingReplaceStatus" value="3"/>
+      <enum desc="UnableToProcessOrderMassCancelRequest" value="4"/>
+      <enum desc="OrigOrdModTime" value="5"/>
+      <enum desc="DuplicateClOrdID" value="6"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="CxlRejResponseTo" tag="434" type="char">
+      <enum desc="OrderCancelRequest" value="1"/>
+      <enum desc="OrderCancelReplaceRequest" value="2"/>
+    </field>
+    <field name="OrdRejReason" tag="103" type="int">
+      <enum desc="BrokerCredit" value="0"/>
+      <enum desc="UnknownSymbol" value="1"/>
+      <enum desc="ExchangeClosed" value="2"/>
+      <enum desc="OrderExceedsLimit" value="3"/>
+      <enum desc="TooLateToEnter" value="4"/>
+      <enum desc="UnknownOrder" value="5"/>
+      <enum desc="DuplicateOrder" value="6"/>
+      <enum desc="DuplicateOfAVerballyCommunicatedOrder" value="7"/>
+      <enum desc="StaleOrder" value="8"/>
+      <enum desc="TradeAlongRequired" value="9"/>
+      <enum desc="InvalidInvestorID" value="10"/>
+      <enum desc="UnsupportedOrderCharacteristic" value="11"/>
+      <enum desc="SurveillanceOption" value="12"/>
+      <enum desc="IncorrectQuantity" value="13"/>
+      <enum desc="IncorrectAllocatedQuantity" value="14"/>
+      <enum desc="UnknownAccount" value="15"/>
+      <enum desc="Other" value="99"/>
+    </field>
+    <field name="OrigClOrdID" tag="41" type="String"/>
+    <field name="ExecRefID" tag="19" type="String"/>
+    <field name="SecurityID" tag="48" type="String"/>
+    <field name="SecurityIDSource" tag="22" type="String">
+      <enum desc="CUSIP" value="1"/>
+      <enum desc="SEDOL" value="2"/>
+      <enum desc="QUIK" value="3"/>
+      <enum desc="ISINNumber" value="4"/>
+      <enum desc="RICCode" value="5"/>
+      <enum desc="ISOCurrencyCode" value="6"/>
+      <enum desc="ISOCountryCode" value="7"/>
+      <enum desc="ExchangeSymbol" value="8"/>
+      <enum desc="ConsolidatedTapeAssociation" value="9"/>
+      <enum desc="BloombergSymbol" value="A"/>
+      <enum desc="Wertpapier" value="B"/>
+      <enum desc="Dutch" value="C"/>
+      <enum desc="Valoren" value="D"/>
+      <enum desc="Sicovam" value="E"/>
+      <enum desc="Belgian" value="F"/>
+      <enum desc="Common" value="G"/>
+      <enum desc="ClearingHouse" value="H"/>
+      <enum desc="ISDAFpMLSpecification" value="I"/>
+      <enum desc="OptionPriceReportingAuthority" value="J"/>
+      <enum desc="ISDAFpMLURL" value="K"/>
+      <enum desc="LetterOfCredit" value="L"/>
+    </field>
+
+    <!-- FIX 5.0+ Application Version Fields -->
+    <field name="ApplVerID" tag="1128" type="String">
+      <enum desc="FIX27" value="0"/>
+      <enum desc="FIX30" value="1"/>
+      <enum desc="FIX40" value="2"/>
+      <enum desc="FIX41" value="3"/>
+      <enum desc="FIX42" value="4"/>
+      <enum desc="FIX43" value="5"/>
+      <enum desc="FIX44" value="6"/>
+      <enum desc="FIX50" value="7"/>
+      <enum desc="FIX50SP1" value="8"/>
+      <enum desc="FIX50SP2" value="9"/>
+    </field>
+    <field name="CstmApplVerID" tag="1129" type="String"/>
+    <field name="ApplExtID" tag="1156" type="int"/>
+
+    <!-- Business Reject Fields -->
+    <field name="BusinessRejectRefID" tag="379" type="String"/>
+    <field name="BusinessRejectReason" tag="380" type="int">
+      <enum desc="Other" value="0"/>
+      <enum desc="UnknownID" value="1"/>
+      <enum desc="UnknownSecurity" value="2"/>
+      <enum desc="UnsupportedMessageType" value="3"/>
+      <enum desc="ApplicationNotAvailable" value="4"/>
+      <enum desc="ConditionallyRequiredFieldMissing" value="5"/>
+      <enum desc="NotAuthorized" value="6"/>
+      <enum desc="DeliverToFirmNotAvailableAtThisTime" value="7"/>
+      <enum desc="InvalidPriceIncrement" value="18"/>
+    </field>
+    <field name="RefMsgType" tag="372" type="String"/>
+  </fields>
+
+  <messages>
+    <!-- NewOrderSingle (D) -->
+    <message name="NewOrderSingle" msgtype="D">
+      <field name="ClOrdID" required="Y"/>
+      <field name="Account" required="N"/>
+      <field name="Symbol" required="Y"/>
+      <field name="SecurityID" required="N"/>
+      <field name="SecurityIDSource" required="N"/>
+      <field name="Side" required="Y"/>
+      <field name="TransactTime" required="Y"/>
+      <field name="OrderQty" required="Y"/>
+      <field name="OrdType" required="Y"/>
+      <field name="Price" required="N"/>
+      <field name="TimeInForce" required="N"/>
+      <field name="Text" required="N"/>
+      <field name="ApplVerID" required="N"/>
+    </message>
+
+    <!-- ExecutionReport (8) -->
+    <message name="ExecutionReport" msgtype="8">
+      <field name="OrderID" required="Y"/>
+      <field name="ClOrdID" required="N"/>
+      <field name="OrigClOrdID" required="N"/>
+      <field name="ExecID" required="Y"/>
+      <field name="ExecType" required="Y"/>
+      <field name="OrdStatus" required="Y"/>
+      <field name="Account" required="N"/>
+      <field name="Symbol" required="Y"/>
+      <field name="SecurityID" required="N"/>
+      <field name="SecurityIDSource" required="N"/>
+      <field name="Side" required="Y"/>
+      <field name="OrderQty" required="N"/>
+      <field name="OrdType" required="N"/>
+      <field name="Price" required="N"/>
+      <field name="TimeInForce" required="N"/>
+      <field name="LastQty" required="N"/>
+      <field name="LastPx" required="N"/>
+      <field name="LeavesQty" required="Y"/>
+      <field name="CumQty" required="Y"/>
+      <field name="AvgPx" required="Y"/>
+      <field name="TransactTime" required="N"/>
+      <field name="Text" required="N"/>
+      <field name="OrdRejReason" required="N"/>
+      <field name="ApplVerID" required="N"/>
+    </message>
+
+    <!-- OrderCancelRequest (F) -->
+    <message name="OrderCancelRequest" msgtype="F">
+      <field name="OrigClOrdID" required="Y"/>
+      <field name="ClOrdID" required="Y"/>
+      <field name="OrderID" required="N"/>
+      <field name="Account" required="N"/>
+      <field name="Symbol" required="Y"/>
+      <field name="SecurityID" required="N"/>
+      <field name="SecurityIDSource" required="N"/>
+      <field name="Side" required="Y"/>
+      <field name="TransactTime" required="Y"/>
+      <field name="OrderQty" required="N"/>
+      <field name="Text" required="N"/>
+      <field name="ApplVerID" required="N"/>
+    </message>
+
+    <!-- OrderCancelReplaceRequest (G) -->
+    <message name="OrderCancelReplaceRequest" msgtype="G">
+      <field name="OrigClOrdID" required="Y"/>
+      <field name="ClOrdID" required="Y"/>
+      <field name="OrderID" required="N"/>
+      <field name="Account" required="N"/>
+      <field name="Symbol" required="Y"/>
+      <field name="SecurityID" required="N"/>
+      <field name="SecurityIDSource" required="N"/>
+      <field name="Side" required="Y"/>
+      <field name="TransactTime" required="Y"/>
+      <field name="OrderQty" required="Y"/>
+      <field name="OrdType" required="Y"/>
+      <field name="Price" required="N"/>
+      <field name="TimeInForce" required="N"/>
+      <field name="Text" required="N"/>
+      <field name="ApplVerID" required="N"/>
+    </message>
+
+    <!-- OrderCancelReject (9) -->
+    <message name="OrderCancelReject" msgtype="9">
+      <field name="OrderID" required="Y"/>
+      <field name="ClOrdID" required="Y"/>
+      <field name="OrigClOrdID" required="Y"/>
+      <field name="OrdStatus" required="Y"/>
+      <field name="CxlRejReason" required="N"/>
+      <field name="CxlRejResponseTo" required="Y"/>
+      <field name="Text" required="N"/>
+      <field name="ApplVerID" required="N"/>
+    </message>
+
+    <!-- BusinessMessageReject (j) -->
+    <message name="BusinessMessageReject" msgtype="j">
+      <field name="BusinessRejectRefID" required="N"/>
+      <field name="RefMsgType" required="Y"/>
+      <field name="BusinessRejectReason" required="Y"/>
+      <field name="Text" required="N"/>
+      <field name="ApplVerID" required="N"/>
+    </message>
+  </messages>
+</fix-dictionary>
