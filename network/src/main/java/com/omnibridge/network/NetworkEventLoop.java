@@ -8,6 +8,7 @@ import com.omnibridge.network.config.NetworkConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -326,6 +327,19 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
      * @throws IOException if unable to initiate connection
      */
     public void connect(String host, int port, NetworkHandler handler) throws IOException {
+        connect(host, port, handler, null);
+    }
+
+    /**
+     * Connect to a remote host asynchronously with SSL.
+     *
+     * @param host the remote host
+     * @param port the remote port
+     * @param handler the handler for connection events
+     * @param sslConfig the SSL configuration (null for plain connection)
+     * @throws IOException if unable to initiate connection
+     */
+    public void connect(String host, int port, NetworkHandler handler, SslConfig sslConfig) throws IOException {
         SocketChannel socketChannel = SocketChannel.open();
         socketChannel.configureBlocking(false);
         socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
@@ -339,18 +353,22 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             try {
                 if (connected) {
                     // Immediate connection (unlikely but possible)
-                    TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
-                    SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ,
-                            new ChannelContext(channel, effectiveHandler));
-                    channel.setSelectionKey(key);
-                    channel.markConnected();
-                    effectiveHandler.onConnected(channel);
+                    if (sslConfig != null && sslConfig.isEnabled()) {
+                        handleSslConnected(socketChannel, host, effectiveHandler, sslConfig);
+                    } else {
+                        TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
+                        SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ,
+                                new ChannelContext(channel, effectiveHandler));
+                        channel.setSelectionKey(key);
+                        channel.markConnected();
+                        effectiveHandler.onConnected(channel);
+                    }
                 } else {
                     // Connection in progress
-                    ConnectContext ctx = new ConnectContext(socketChannel, address.toString(), effectiveHandler);
+                    ConnectContext ctx = new ConnectContext(socketChannel, address.toString(), effectiveHandler, host, sslConfig);
                     socketChannel.register(selector, SelectionKey.OP_CONNECT, ctx);
                 }
-            } catch (IOException e) {
+            } catch (Exception e) {
                 try {
                     socketChannel.close();
                 } catch (IOException ignored) {
@@ -358,6 +376,26 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                 effectiveHandler.onConnectFailed(address.toString(), e);
             }
         });
+    }
+
+    /**
+     * Handle SSL connection setup after TCP connect completes.
+     */
+    private void handleSslConnected(SocketChannel socketChannel, String hostname,
+                                     NetworkHandler handler, SslConfig sslConfig) throws Exception {
+        SSLContext sslContext = sslConfig.getSSLContext();
+        SslTcpChannel sslChannel = new SslTcpChannel(socketChannel, sslContext, true,
+                hostname, readBufferSize, writeBufferSize);
+
+        // Start SSL handshake
+        sslChannel.beginHandshake();
+
+        // Register for both read and write during handshake
+        SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE,
+                new SslChannelContext(sslChannel, handler, true));
+        sslChannel.setSelectionKey(key);
+
+        log.debug("SSL connection initiated to {}", sslChannel.getRemoteAddress());
     }
 
     @Override
@@ -468,6 +506,16 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                                 channel.getId(), e.getMessage());
                     }
                 }
+            } else if (attachment instanceof SslChannelContext ctx) {
+                SslTcpChannel sslChannel = ctx.sslChannel();
+                if (sslChannel.isHandshakeComplete() && sslChannel.hasRingBufferMessages()) {
+                    try {
+                        sslChannel.flush();
+                    } catch (IOException e) {
+                        log.error("Error draining ring buffer for SSL channel {}: {}",
+                                sslChannel.getId(), e.getMessage());
+                    }
+                }
             }
         }
     }
@@ -486,16 +534,141 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             } else if (key.isConnectable()) {
                 handleConnect(key);
             } else {
-                if (key.isReadable()) {
-                    handleRead(key);
-                }
-                if (key.isValid() && key.isWritable()) {
-                    handleWrite(key);
+                Object attachment = key.attachment();
+
+                // Handle SSL channels differently
+                if (attachment instanceof SslChannelContext sslCtx) {
+                    if (key.isReadable() || key.isWritable()) {
+                        handleSslIO(key, sslCtx);
+                    }
+                } else {
+                    if (key.isReadable()) {
+                        handleRead(key);
+                    }
+                    if (key.isValid() && key.isWritable()) {
+                        handleWrite(key);
+                    }
                 }
             }
         } catch (Exception e) {
             log.error("Error processing key: {}", e.getMessage(), e);
             handleError(key, e);
+        }
+    }
+
+    /**
+     * Handle SSL channel I/O.
+     */
+    private void handleSslIO(SelectionKey key, SslChannelContext ctx) {
+        SslTcpChannel sslChannel = ctx.sslChannel;
+
+        try {
+            // If handshake not complete, process handshake
+            if (!sslChannel.isHandshakeComplete()) {
+                boolean complete = sslChannel.processHandshake();
+                if (complete) {
+                    // Handshake complete - switch to read-only interest
+                    key.interestOps(SelectionKey.OP_READ);
+                    log.debug("SSL handshake complete for {}", sslChannel.getRemoteAddress());
+
+                    // Notify handler (use TcpChannel-compatible wrapper)
+                    ctx.handler.onConnected(wrapSslChannel(sslChannel));
+                }
+                return;
+            }
+
+            // Normal SSL read
+            if (key.isReadable()) {
+                handleSslRead(key, ctx);
+            }
+
+            // Normal SSL write
+            if (key.isValid() && key.isWritable()) {
+                handleSslWrite(key, ctx);
+            }
+
+        } catch (Exception e) {
+            log.error("SSL I/O error for channel {}: {}", sslChannel.getId(), e.getMessage());
+            closeSslChannel(sslChannel, ctx.handler, e);
+        }
+    }
+
+    /**
+     * Handle SSL read.
+     */
+    private void handleSslRead(SelectionKey key, SslChannelContext ctx) throws IOException {
+        SslTcpChannel sslChannel = ctx.sslChannel;
+        DirectByteBuffer directBuffer = sslChannel.getReadBuffer();
+        ByteBuffer byteBuffer = directBuffer.byteBuffer();
+
+        int bytesRead = sslChannel.read();
+
+        if (bytesRead < 0) {
+            // Remote closed
+            closeSslChannel(sslChannel, ctx.handler, null);
+            return;
+        }
+
+        if (bytesRead > 0) {
+            int dataLength = byteBuffer.position();
+            TcpChannel wrapper = wrapSslChannel(sslChannel);
+            try {
+                int consumed = ctx.handler.onDataReceived(wrapper, directBuffer, 0, dataLength);
+                if (consumed > 0 && consumed < dataLength) {
+                    directBuffer.putBytes(0, directBuffer, consumed, dataLength - consumed);
+                    byteBuffer.position(dataLength - consumed);
+                } else {
+                    byteBuffer.clear();
+                }
+            } catch (Exception e) {
+                log.error("Error in onDataReceived for SSL channel: {}", e.getMessage(), e);
+                byteBuffer.clear();
+            }
+        }
+    }
+
+    /**
+     * Handle SSL write.
+     */
+    private void handleSslWrite(SelectionKey key, SslChannelContext ctx) throws IOException {
+        SslTcpChannel sslChannel = ctx.sslChannel;
+
+        if (sslChannel.flush()) {
+            // All data flushed, remove write interest
+            key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+        }
+    }
+
+    /**
+     * Wrap an SslTcpChannel as TcpChannel for handler compatibility.
+     *
+     * <p>This creates a lightweight wrapper that delegates to the SSL channel.
+     * The wrapper maintains the same API as TcpChannel.</p>
+     */
+    private TcpChannel wrapSslChannel(SslTcpChannel sslChannel) {
+        // For now, store the SslTcpChannel in the attachment of a minimal TcpChannel wrapper
+        // This allows handlers to use the same interface
+        try {
+            TcpChannel wrapper = new TcpChannel(sslChannel.getSocketChannel(), readBufferSize, writeBufferSize);
+            wrapper.setAttachment(sslChannel);
+            return wrapper;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create SSL channel wrapper", e);
+        }
+    }
+
+    /**
+     * Close an SSL channel.
+     */
+    private void closeSslChannel(SslTcpChannel channel, NetworkHandler handler, Throwable reason) {
+        if (!channel.isClosed()) {
+            channel.close();
+            try {
+                TcpChannel wrapper = wrapSslChannel(channel);
+                handler.onDisconnected(wrapper, reason);
+            } catch (Exception e) {
+                log.error("Error in onDisconnected for SSL channel: {}", e.getMessage(), e);
+            }
         }
     }
 
@@ -550,14 +723,26 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
 
         try {
             if (socketChannel.finishConnect()) {
-                TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
-                key.interestOps(SelectionKey.OP_READ);
-                key.attach(new ChannelContext(channel, ctx.handler));
-                channel.setSelectionKey(key);
-                channel.markConnected();
+                // Check if SSL is enabled
+                if (ctx.sslConfig != null && ctx.sslConfig.isEnabled()) {
+                    try {
+                        handleSslConnected(socketChannel, ctx.hostname, ctx.handler, ctx.sslConfig);
+                        key.cancel(); // Re-registered in handleSslConnected
+                    } catch (Exception e) {
+                        key.cancel();
+                        socketChannel.close();
+                        ctx.handler.onConnectFailed(ctx.remoteAddress, e);
+                    }
+                } else {
+                    TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
+                    key.interestOps(SelectionKey.OP_READ);
+                    key.attach(new ChannelContext(channel, ctx.handler));
+                    channel.setSelectionKey(key);
+                    channel.markConnected();
 
-                log.debug("Connected to {}", channel.getRemoteAddress());
-                ctx.handler.onConnected(channel);
+                    log.debug("Connected to {}", channel.getRemoteAddress());
+                    ctx.handler.onConnected(channel);
+                }
             }
         } catch (IOException e) {
             key.cancel();
@@ -633,6 +818,8 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         Object attachment = key.attachment();
         if (attachment instanceof ChannelContext ctx) {
             closeChannel(ctx.channel, ctx.handler, e);
+        } else if (attachment instanceof SslChannelContext ctx) {
+            closeSslChannel(ctx.sslChannel, ctx.handler, e);
         } else if (attachment instanceof ConnectContext ctx) {
             key.cancel();
             try {
@@ -736,8 +923,18 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     /**
+     * Context for SSL channels.
+     */
+    private record SslChannelContext(SslTcpChannel sslChannel, NetworkHandler handler, boolean clientMode) {
+    }
+
+    /**
      * Context for pending connections.
      */
-    private record ConnectContext(SocketChannel socketChannel, String remoteAddress, NetworkHandler handler) {
+    private record ConnectContext(SocketChannel socketChannel, String remoteAddress, NetworkHandler handler,
+                                  String hostname, SslConfig sslConfig) {
+        ConnectContext(SocketChannel socketChannel, String remoteAddress, NetworkHandler handler) {
+            this(socketChannel, remoteAddress, handler, null, null);
+        }
     }
 }

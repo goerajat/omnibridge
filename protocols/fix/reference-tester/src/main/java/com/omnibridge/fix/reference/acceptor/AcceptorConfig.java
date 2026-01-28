@@ -15,6 +15,7 @@ public class AcceptorConfig {
     private final int fillDelayMs;
     private final boolean autoAck;
     private final boolean customConfig;
+    private final String defaultApplVerID;  // FIX 5.0+
 
     private AcceptorConfig(Builder builder) {
         this.port = builder.port;
@@ -27,6 +28,7 @@ public class AcceptorConfig {
         this.fillDelayMs = builder.fillDelayMs;
         this.autoAck = builder.autoAck;
         this.customConfig = builder.customConfig;
+        this.defaultApplVerID = builder.defaultApplVerID;
     }
 
     public static Builder builder() {
@@ -73,6 +75,17 @@ public class AcceptorConfig {
         return customConfig;
     }
 
+    public String getDefaultApplVerID() {
+        return defaultApplVerID;
+    }
+
+    /**
+     * Check if this is a FIX 5.0+ (FIXT.1.1) session.
+     */
+    public boolean usesFixt() {
+        return "FIXT.1.1".equals(beginString);
+    }
+
     public static class Builder {
         private int port = 9880;
         private String senderCompId = "EXCHANGE";
@@ -84,6 +97,7 @@ public class AcceptorConfig {
         private int fillDelayMs = 0;
         private boolean autoAck = true;
         private boolean customConfig = true;
+        private String defaultApplVerID = null;
 
         public Builder port(int port) {
             this.port = port;
@@ -132,6 +146,24 @@ public class AcceptorConfig {
 
         public Builder customConfig(boolean customConfig) {
             this.customConfig = customConfig;
+            return this;
+        }
+
+        /**
+         * Set the DefaultApplVerID for FIX 5.0+ sessions.
+         * Valid values: "9" (FIX50), "10" (FIX50SP1), "11" (FIX50SP2)
+         */
+        public Builder defaultApplVerID(String defaultApplVerID) {
+            this.defaultApplVerID = defaultApplVerID;
+            return this;
+        }
+
+        /**
+         * Configure for FIX 5.0 using FIXT.1.1 transport.
+         */
+        public Builder fix50() {
+            this.beginString = "FIXT.1.1";
+            this.defaultApplVerID = "9";
             return this;
         }
 

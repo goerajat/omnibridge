@@ -4,6 +4,7 @@ import com.omnibridge.fix.engine.FixEngine;
 import com.omnibridge.fix.engine.config.EngineConfig;
 import com.omnibridge.fix.engine.config.SessionConfig;
 import com.omnibridge.fix.engine.session.FixSession;
+import com.omnibridge.fix.message.FixVersion;
 import com.omnibridge.fix.tester.tests.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,9 @@ public class SessionTester implements Callable<Integer> {
     @Option(names = {"--heartbeat"}, description = "Heartbeat interval in seconds", defaultValue = "30")
     private int heartbeatInterval;
 
+    @Option(names = {"--fix-version"}, description = "FIX version (FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2)", defaultValue = "FIX.4.4")
+    private String fixVersionStr;
+
     @Option(names = {"--list-tests", "-l"}, description = "List available tests and exit")
     private boolean listTests;
 
@@ -68,6 +72,7 @@ public class SessionTester implements Callable<Integer> {
         registerTest(new HeartbeatTest());
         registerTest(new ResendRequestTest());
         registerTest(new ConcurrentOrderTest());
+        registerTest(new Fix50LogonTest());
     }
 
     private void registerTest(SessionTest test) {
@@ -104,6 +109,21 @@ public class SessionTester implements Callable<Integer> {
         log.info("Running {} test(s): {}", testsToRun.size(),
                 testsToRun.stream().map(SessionTest::getName).toList());
 
+        // Parse FIX version
+        FixVersion fixVersion;
+        try {
+            fixVersion = FixVersion.fromString(fixVersionStr);
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid FIX version: " + fixVersionStr);
+            System.err.println("Valid versions: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2");
+            return 1;
+        }
+
+        log.info("FIX Version: {} (BeginString: {})", fixVersion, fixVersion.getBeginString());
+        if (fixVersion.usesFixt()) {
+            log.info("Using FIXT.1.1 transport with DefaultApplVerID: {}", fixVersion.getDefaultApplVerID());
+        }
+
         // Create engine and session
         FixEngine engine = null;
         try {
@@ -116,6 +136,7 @@ public class SessionTester implements Callable<Integer> {
                     .initiator()
                     .heartbeatInterval(heartbeatInterval)
                     .resetOnLogon(true)
+                    .fixVersion(fixVersion)
                     .build();
 
             EngineConfig engineConfig = EngineConfig.builder()

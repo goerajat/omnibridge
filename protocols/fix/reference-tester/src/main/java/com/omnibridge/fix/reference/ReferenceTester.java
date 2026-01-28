@@ -76,8 +76,11 @@ public class ReferenceTester implements Callable<Integer> {
         @Option(names = {"--target"}, description = "TargetCompID (default: CLIENT)")
         String targetCompId = "CLIENT";
 
-        @Option(names = {"--begin-string"}, description = "FIX version (default: FIX.4.4)")
+        @Option(names = {"--begin-string"}, description = "FIX version: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2 (default: FIX.4.4)")
         String beginString = "FIX.4.4";
+
+        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (9=FIX50, 10=FIX50SP1, 11=FIX50SP2)")
+        String defaultApplVerID = null;
 
         @Option(names = {"--heartbeat"}, description = "Heartbeat interval in seconds (default: 30)")
         int heartbeatInterval = 30;
@@ -99,16 +102,33 @@ public class ReferenceTester implements Callable<Integer> {
 
         @Override
         public Integer call() throws Exception {
+            // Parse FIX version and convert FIX.5.0* to FIXT.1.1 + ApplVerID
+            String effectiveBeginString = beginString;
+            String effectiveApplVerID = defaultApplVerID;
+            if (beginString.startsWith("FIX.5.0")) {
+                effectiveBeginString = "FIXT.1.1";
+                if (effectiveApplVerID == null) {
+                    if (beginString.contains("SP2")) {
+                        effectiveApplVerID = "11";  // FIX 5.0 SP2
+                    } else if (beginString.contains("SP1")) {
+                        effectiveApplVerID = "10";  // FIX 5.0 SP1
+                    } else {
+                        effectiveApplVerID = "9";   // FIX 5.0
+                    }
+                }
+            }
+
             AcceptorConfig config = AcceptorConfig.builder()
                     .port(port)
                     .senderCompId(senderCompId)
                     .targetCompId(targetCompId)
-                    .beginString(beginString)
+                    .beginString(effectiveBeginString)
                     .heartbeatInterval(heartbeatInterval)
                     .fillRate(fillRate)
                     .fillDelayMs(fillDelayMs)
                     .autoAck(!noAutoAck)
                     .resetOnLogon(resetOnLogon)
+                    .defaultApplVerID(effectiveApplVerID)
                     .build();
 
             ReferenceAcceptor acceptor = new ReferenceAcceptor(config);
@@ -121,6 +141,10 @@ public class ReferenceTester implements Callable<Integer> {
             System.out.println("SenderCompID: " + senderCompId);
             System.out.println("TargetCompID: " + targetCompId);
             System.out.println("FIX Version: " + beginString);
+            if (config.usesFixt()) {
+                System.out.println("Transport: FIXT.1.1");
+                System.out.println("DefaultApplVerID: " + effectiveApplVerID);
+            }
             System.out.println("Fill Rate: " + (fillRate * 100) + "%");
             System.out.println("Auto-Ack: " + !noAutoAck);
             System.out.println("Daemon Mode: " + daemon);
@@ -163,8 +187,11 @@ public class ReferenceTester implements Callable<Integer> {
         @Option(names = {"--target"}, description = "TargetCompID (default: SERVER)")
         String targetCompId = "SERVER";
 
-        @Option(names = {"--begin-string"}, description = "FIX version (default: FIX.4.4)")
+        @Option(names = {"--begin-string"}, description = "FIX version: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2 (default: FIX.4.4)")
         String beginString = "FIX.4.4";
+
+        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (9=FIX50, 10=FIX50SP1, 11=FIX50SP2)")
+        String defaultApplVerID = null;
 
         @Option(names = {"--heartbeat"}, description = "Heartbeat interval in seconds (default: 30)")
         int heartbeatInterval = 30;
@@ -192,14 +219,31 @@ public class ReferenceTester implements Callable<Integer> {
 
         @Override
         public Integer call() throws Exception {
+            // Parse FIX version and convert FIX.5.0* to FIXT.1.1 + ApplVerID
+            String effectiveBeginString = beginString;
+            String effectiveApplVerID = defaultApplVerID;
+            if (beginString.startsWith("FIX.5.0")) {
+                effectiveBeginString = "FIXT.1.1";
+                if (effectiveApplVerID == null) {
+                    if (beginString.contains("SP2")) {
+                        effectiveApplVerID = "11";  // FIX 5.0 SP2
+                    } else if (beginString.contains("SP1")) {
+                        effectiveApplVerID = "10";  // FIX 5.0 SP1
+                    } else {
+                        effectiveApplVerID = "9";   // FIX 5.0
+                    }
+                }
+            }
+
             InitiatorConfig config = InitiatorConfig.builder()
                     .host(host)
                     .port(port)
                     .senderCompId(senderCompId)
                     .targetCompId(targetCompId)
-                    .beginString(beginString)
+                    .beginString(effectiveBeginString)
                     .heartbeatInterval(heartbeatInterval)
                     .resetOnLogon(resetOnLogon)
+                    .defaultApplVerID(effectiveApplVerID)
                     .build();
 
             ReferenceInitiator initiator = new ReferenceInitiator(config);
@@ -211,6 +255,10 @@ public class ReferenceTester implements Callable<Integer> {
             System.out.println("SenderCompID: " + senderCompId);
             System.out.println("TargetCompID: " + targetCompId);
             System.out.println("FIX Version: " + beginString);
+            if (config.usesFixt()) {
+                System.out.println("Transport: FIXT.1.1");
+                System.out.println("DefaultApplVerID: " + effectiveApplVerID);
+            }
             System.out.println("========================================");
 
             initiator.start();
@@ -339,8 +387,11 @@ public class ReferenceTester implements Callable<Integer> {
         @Option(names = {"--target"}, description = "TargetCompID (default: SERVER)")
         String targetCompId = "SERVER";
 
-        @Option(names = {"--begin-string"}, description = "FIX version (default: FIX.4.4)")
+        @Option(names = {"--begin-string"}, description = "FIX version: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2 (default: FIX.4.4)")
         String beginString = "FIX.4.4";
+
+        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (9=FIX50, 10=FIX50SP1, 11=FIX50SP2)")
+        String defaultApplVerID = null;
 
         @Option(names = {"-t", "--tests"}, description = "Comma-separated test names or 'all' (default: all)")
         String tests = "all";
@@ -359,7 +410,8 @@ public class ReferenceTester implements Callable<Integer> {
                 new OrderCancelTest(),
                 new OrderModifyTest(),
                 new MultipleOrdersTest(),
-                new LogonLogoutTest()  // Run last as it logs out
+                new Fix50LogonTest(),   // FIX 5.0 specific test
+                new LogonLogoutTest()   // Run last as it logs out
         );
 
         @Override
@@ -369,12 +421,29 @@ public class ReferenceTester implements Callable<Integer> {
                 return 0;
             }
 
+            // Parse FIX version and convert FIX.5.0* to FIXT.1.1 + ApplVerID
+            String effectiveBeginString = beginString;
+            String effectiveApplVerID = defaultApplVerID;
+            if (beginString.startsWith("FIX.5.0")) {
+                effectiveBeginString = "FIXT.1.1";
+                if (effectiveApplVerID == null) {
+                    if (beginString.contains("SP2")) {
+                        effectiveApplVerID = "11";  // FIX 5.0 SP2
+                    } else if (beginString.contains("SP1")) {
+                        effectiveApplVerID = "10";  // FIX 5.0 SP1
+                    } else {
+                        effectiveApplVerID = "9";   // FIX 5.0
+                    }
+                }
+            }
+
             InitiatorConfig config = InitiatorConfig.builder()
                     .host(host)
                     .port(port)
                     .senderCompId(senderCompId)
                     .targetCompId(targetCompId)
-                    .beginString(beginString)
+                    .beginString(effectiveBeginString)
+                    .defaultApplVerID(effectiveApplVerID)
                     .build();
 
             TestContext context = new TestContext(timeout * 1000L);
@@ -404,6 +473,11 @@ public class ReferenceTester implements Callable<Integer> {
             System.out.println("FIX Reference Tester - Test Suite");
             System.out.println("========================================");
             System.out.println("Target: " + host + ":" + port);
+            System.out.println("FIX Version: " + beginString);
+            if (config.usesFixt()) {
+                System.out.println("Transport: FIXT.1.1");
+                System.out.println("DefaultApplVerID: " + effectiveApplVerID);
+            }
             System.out.println("Tests: " + suite.getTests().size());
             System.out.println("========================================");
             System.out.println();

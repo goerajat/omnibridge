@@ -1,5 +1,8 @@
 package com.omnibridge.fix.engine.config;
 
+import com.omnibridge.fix.message.ApplVerID;
+import com.omnibridge.fix.message.FixVersion;
+import com.omnibridge.network.SslConfig;
 import com.typesafe.config.Config;
 
 import java.time.LocalTime;
@@ -40,6 +43,13 @@ public final class EngineSessionConfig {
     private final String persistencePath;
     private final String scheduleName;
 
+    // FIX 5.0+ support
+    private final FixVersion fixVersion;
+    private final ApplVerID defaultApplVerID;
+
+    // SSL/TLS configuration
+    private final SslConfig sslConfig;
+
     private EngineSessionConfig(Builder builder) {
         this.sessionName = builder.sessionName;
         this.beginString = builder.beginString;
@@ -64,6 +74,9 @@ public final class EngineSessionConfig {
         this.maxTagNumber = builder.maxTagNumber;
         this.persistencePath = builder.persistencePath;
         this.scheduleName = builder.scheduleName;
+        this.fixVersion = builder.fixVersion;
+        this.defaultApplVerID = builder.defaultApplVerID;
+        this.sslConfig = builder.sslConfig;
     }
 
     /**
@@ -144,6 +157,56 @@ public final class EngineSessionConfig {
         }
         if (config.hasPath("schedule")) {
             builder.scheduleName(config.getString("schedule"));
+        }
+
+        // FIX 5.0+ version configuration
+        if (config.hasPath("fix-version")) {
+            builder.fixVersion(FixVersion.fromString(config.getString("fix-version")));
+        }
+        if (config.hasPath("default-appl-ver-id")) {
+            builder.defaultApplVerID(ApplVerID.fromDisplayName(config.getString("default-appl-ver-id")));
+        }
+
+        // SSL/TLS configuration
+        if (config.hasPath("ssl")) {
+            Config sslCfg = config.getConfig("ssl");
+            SslConfig.Builder sslBuilder = SslConfig.builder();
+
+            if (sslCfg.hasPath("enabled")) {
+                sslBuilder.enabled(sslCfg.getBoolean("enabled"));
+            }
+            if (sslCfg.hasPath("protocol")) {
+                sslBuilder.protocol(sslCfg.getString("protocol"));
+            }
+            if (sslCfg.hasPath("key-store-path")) {
+                sslBuilder.keyStorePath(sslCfg.getString("key-store-path"));
+            }
+            if (sslCfg.hasPath("key-store-password")) {
+                sslBuilder.keyStorePassword(sslCfg.getString("key-store-password"));
+            }
+            if (sslCfg.hasPath("key-store-type")) {
+                sslBuilder.keyStoreType(sslCfg.getString("key-store-type"));
+            }
+            if (sslCfg.hasPath("key-password")) {
+                sslBuilder.keyPassword(sslCfg.getString("key-password"));
+            }
+            if (sslCfg.hasPath("trust-store-path")) {
+                sslBuilder.trustStorePath(sslCfg.getString("trust-store-path"));
+            }
+            if (sslCfg.hasPath("trust-store-password")) {
+                sslBuilder.trustStorePassword(sslCfg.getString("trust-store-password"));
+            }
+            if (sslCfg.hasPath("trust-store-type")) {
+                sslBuilder.trustStoreType(sslCfg.getString("trust-store-type"));
+            }
+            if (sslCfg.hasPath("client-auth")) {
+                sslBuilder.clientAuth(sslCfg.getBoolean("client-auth"));
+            }
+            if (sslCfg.hasPath("hostname-verification")) {
+                sslBuilder.hostnameVerification(sslCfg.getBoolean("hostname-verification"));
+            }
+
+            builder.sslConfig(sslBuilder.build());
         }
 
         return builder.build();
@@ -253,6 +316,51 @@ public final class EngineSessionConfig {
     }
 
     /**
+     * Get the FIX protocol version.
+     *
+     * @return the FIX version
+     */
+    public FixVersion getFixVersion() {
+        return fixVersion;
+    }
+
+    /**
+     * Get the default ApplVerID for FIX 5.0+ sessions.
+     *
+     * @return the default ApplVerID, or null for FIX 4.x
+     */
+    public ApplVerID getDefaultApplVerID() {
+        return defaultApplVerID;
+    }
+
+    /**
+     * Check if this session uses FIXT.1.1 transport (FIX 5.0+).
+     *
+     * @return true if using FIXT.1.1
+     */
+    public boolean usesFixt() {
+        return fixVersion != null && fixVersion.usesFixt();
+    }
+
+    /**
+     * Get the SSL/TLS configuration.
+     *
+     * @return the SSL configuration, or null if SSL is not configured
+     */
+    public SslConfig getSslConfig() {
+        return sslConfig;
+    }
+
+    /**
+     * Check if SSL/TLS is enabled for this session.
+     *
+     * @return true if SSL is enabled
+     */
+    public boolean isSslEnabled() {
+        return sslConfig != null && sslConfig.isEnabled();
+    }
+
+    /**
      * Get the session ID (SenderCompID->TargetCompID).
      */
     public String getSessionId() {
@@ -287,6 +395,9 @@ public final class EngineSessionConfig {
         private int maxTagNumber = 1000;
         private String persistencePath;
         private String scheduleName;
+        private FixVersion fixVersion = FixVersion.FIX44;
+        private ApplVerID defaultApplVerID = null;
+        private SslConfig sslConfig = null;
 
         private Builder() {}
 
@@ -402,6 +513,47 @@ public final class EngineSessionConfig {
 
         public Builder scheduleName(String scheduleName) {
             this.scheduleName = scheduleName;
+            return this;
+        }
+
+        /**
+         * Set the FIX protocol version.
+         * This automatically sets the appropriate BeginString.
+         *
+         * @param fixVersion the FIX version
+         * @return this builder
+         */
+        public Builder fixVersion(FixVersion fixVersion) {
+            if (fixVersion == null) {
+                throw new IllegalArgumentException("FixVersion cannot be null");
+            }
+            this.fixVersion = fixVersion;
+            this.beginString = fixVersion.getBeginString();
+            if (fixVersion.getDefaultApplVerID() != null && this.defaultApplVerID == null) {
+                this.defaultApplVerID = fixVersion.getDefaultApplVerID();
+            }
+            return this;
+        }
+
+        /**
+         * Set the default ApplVerID for FIX 5.0+ sessions.
+         *
+         * @param applVerID the default application version ID
+         * @return this builder
+         */
+        public Builder defaultApplVerID(ApplVerID applVerID) {
+            this.defaultApplVerID = applVerID;
+            return this;
+        }
+
+        /**
+         * Set the SSL/TLS configuration.
+         *
+         * @param sslConfig the SSL configuration
+         * @return this builder
+         */
+        public Builder sslConfig(SslConfig sslConfig) {
+            this.sslConfig = sslConfig;
             return this;
         }
 

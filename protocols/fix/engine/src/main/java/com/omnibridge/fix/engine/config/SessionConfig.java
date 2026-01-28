@@ -1,6 +1,9 @@
 package com.omnibridge.fix.engine.config;
 
 import com.omnibridge.config.ClockProvider;
+import com.omnibridge.fix.message.ApplVerID;
+import com.omnibridge.fix.message.FixVersion;
+import com.omnibridge.network.SslConfig;
 
 import java.time.LocalTime;
 
@@ -22,6 +25,10 @@ public class SessionConfig {
     private String senderCompId;
     private String targetCompId;
     private Role role;
+
+    // FIX version support
+    private FixVersion fixVersion = FixVersion.FIX44;
+    private ApplVerID defaultApplVerID = null;
 
     // Network settings
     private String host;
@@ -61,6 +68,9 @@ public class SessionConfig {
 
     // Clock provider for time sources (allows testing with mock clocks)
     private ClockProvider clockProvider = ClockProvider.system();
+
+    // SSL/TLS configuration
+    private SslConfig sslConfig = SslConfig.disabled();
 
     // ==================== Builder ====================
 
@@ -211,6 +221,68 @@ public class SessionConfig {
             return this;
         }
 
+        /**
+         * Set the SSL/TLS configuration.
+         *
+         * @param sslConfig the SSL configuration
+         * @return this builder
+         */
+        public Builder sslConfig(SslConfig sslConfig) {
+            config.sslConfig = sslConfig != null ? sslConfig : SslConfig.disabled();
+            return this;
+        }
+
+        /**
+         * Enable SSL with the given keystore and truststore.
+         *
+         * @param keyStorePath path to the keystore file
+         * @param keyStorePassword keystore password
+         * @param trustStorePath path to the truststore file
+         * @param trustStorePassword truststore password
+         * @return this builder
+         */
+        public Builder ssl(String keyStorePath, String keyStorePassword,
+                           String trustStorePath, String trustStorePassword) {
+            config.sslConfig = SslConfig.builder()
+                    .keyStorePath(keyStorePath)
+                    .keyStorePassword(keyStorePassword)
+                    .trustStorePath(trustStorePath)
+                    .trustStorePassword(trustStorePassword)
+                    .build();
+            return this;
+        }
+
+        /**
+         * Set the FIX protocol version.
+         * This automatically sets the appropriate BeginString.
+         *
+         * @param fixVersion the FIX version
+         * @return this builder
+         */
+        public Builder fixVersion(FixVersion fixVersion) {
+            if (fixVersion == null) {
+                throw new IllegalArgumentException("FixVersion cannot be null");
+            }
+            config.fixVersion = fixVersion;
+            config.beginString = fixVersion.getBeginString();
+            if (fixVersion.getDefaultApplVerID() != null && config.defaultApplVerID == null) {
+                config.defaultApplVerID = fixVersion.getDefaultApplVerID();
+            }
+            return this;
+        }
+
+        /**
+         * Set the default ApplVerID for FIX 5.0+ sessions.
+         * This is sent in the Logon message as DefaultApplVerID (tag 1137).
+         *
+         * @param applVerID the default application version ID
+         * @return this builder
+         */
+        public Builder defaultApplVerID(ApplVerID applVerID) {
+            config.defaultApplVerID = applVerID;
+            return this;
+        }
+
         public SessionConfig build() {
             validate();
             return config;
@@ -246,6 +318,33 @@ public class SessionConfig {
 
     public String getBeginString() {
         return beginString;
+    }
+
+    /**
+     * Get the FIX protocol version.
+     *
+     * @return the FIX version
+     */
+    public FixVersion getFixVersion() {
+        return fixVersion;
+    }
+
+    /**
+     * Get the default ApplVerID for FIX 5.0+ sessions.
+     *
+     * @return the default ApplVerID, or null for FIX 4.x
+     */
+    public ApplVerID getDefaultApplVerID() {
+        return defaultApplVerID;
+    }
+
+    /**
+     * Check if this session uses FIXT.1.1 transport (FIX 5.0+).
+     *
+     * @return true if using FIXT.1.1
+     */
+    public boolean usesFixt() {
+        return fixVersion != null && fixVersion.usesFixt();
     }
 
     public String getSenderCompId() {
@@ -352,6 +451,24 @@ public class SessionConfig {
      */
     public ClockProvider getClockProvider() {
         return clockProvider;
+    }
+
+    /**
+     * Get the SSL/TLS configuration.
+     *
+     * @return the SSL configuration
+     */
+    public SslConfig getSslConfig() {
+        return sslConfig;
+    }
+
+    /**
+     * Check if SSL/TLS is enabled for this session.
+     *
+     * @return true if SSL is enabled
+     */
+    public boolean isSslEnabled() {
+        return sslConfig != null && sslConfig.isEnabled();
     }
 
     /**

@@ -643,6 +643,98 @@ public class OuchSession {
 }
 ```
 
+### 4.5 SSL/TLS Support
+
+The network layer supports secure connections via SSL/TLS with the following components:
+
+#### SslConfig
+
+Holds SSL configuration parameters:
+
+```java
+SslConfig config = SslConfig.builder()
+    .keyStorePath("/path/to/keystore.jks")
+    .keyStorePassword("password")
+    .trustStorePath("/path/to/truststore.jks")
+    .trustStorePassword("password")
+    .protocol("TLSv1.3")    // TLSv1.2, TLSv1.3
+    .clientAuth(false)       // Require client certificate
+    .hostnameVerification(true)
+    .build();
+```
+
+#### SslTcpChannel
+
+Wraps a SocketChannel with SSLEngine for non-blocking SSL operations:
+
+```java
+// SSL channel creation (done internally by NetworkEventLoop)
+SslTcpChannel sslChannel = new SslTcpChannel(
+    socketChannel,
+    sslConfig.getSSLContext(),
+    clientMode,      // true for initiator, false for acceptor
+    hostname,        // SNI hostname
+    readBufferSize,
+    writeBufferSize
+);
+
+// Begin handshake
+sslChannel.beginHandshake();
+
+// Process handshake (called by event loop)
+boolean complete = sslChannel.processHandshake();
+```
+
+#### Session Configuration
+
+Enable SSL for FIX sessions via HOCON config:
+
+```hocon
+fix-engine {
+  sessions = [
+    {
+      session-id = "FIX-SECURE"
+      sender-comp-id = "CLIENT"
+      target-comp-id = "EXCHANGE"
+      host = "exchange.example.com"
+      port = 9877
+      initiator = true
+
+      ssl {
+        enabled = true
+        protocol = "TLSv1.3"
+        key-store-path = "/path/to/client-keystore.jks"
+        key-store-password = "changeit"
+        key-store-type = "JKS"          # or PKCS12
+        trust-store-path = "/path/to/truststore.jks"
+        trust-store-password = "changeit"
+        client-auth = false
+        hostname-verification = true
+      }
+    }
+  ]
+}
+```
+
+#### Programmatic Configuration
+
+```java
+SessionConfig config = SessionConfig.builder()
+    .sessionName("FIX-SECURE")
+    .senderCompId("CLIENT")
+    .targetCompId("EXCHANGE")
+    .host("exchange.example.com")
+    .port(9877)
+    .initiator()
+    .sslConfig(SslConfig.builder()
+        .keyStorePath("/path/to/keystore.jks")
+        .keyStorePassword("password")
+        .trustStorePath("/path/to/truststore.jks")
+        .trustStorePassword("password")
+        .build())
+    .build();
+```
+
 ---
 
 ## 5. Session Management

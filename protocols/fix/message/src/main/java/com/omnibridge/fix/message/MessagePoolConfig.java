@@ -10,6 +10,7 @@ import com.omnibridge.config.ClockProvider;
  *   <li>Message buffer size - maximum size of each message</li>
  *   <li>Tag tracking - maximum tag number for duplicate detection</li>
  *   <li>Session identifiers - pre-populated CompIDs</li>
+ *   <li>FIX version - for FIXT.1.1 mode and ApplVerID support</li>
  * </ul>
  *
  * <p>Example usage:</p>
@@ -17,7 +18,7 @@ import com.omnibridge.config.ClockProvider;
  * MessagePoolConfig config = MessagePoolConfig.builder()
  *     .maxMessageLength(4096)
  *     .maxTagNumber(1000)
- *     .beginString("FIX.4.4")
+ *     .fixVersion(FixVersion.FIX50)
  *     .senderCompId("SENDER")
  *     .targetCompId("TARGET")
  *     .build();
@@ -35,6 +36,10 @@ public class MessagePoolConfig {
     private int bodyLengthDigits = 5;
     private int seqNumDigits = 8;
     private ClockProvider clockProvider = ClockProvider.system();
+
+    // FIX 5.0+ support
+    private FixVersion fixVersion = FixVersion.FIX44;
+    private ApplVerID defaultApplVerID = null;
 
     /**
      * Create a new builder for MessagePoolConfig.
@@ -133,6 +138,33 @@ public class MessagePoolConfig {
      */
     public ClockProvider getClockProvider() {
         return clockProvider;
+    }
+
+    /**
+     * Get the FIX protocol version.
+     *
+     * @return the FIX version
+     */
+    public FixVersion getFixVersion() {
+        return fixVersion;
+    }
+
+    /**
+     * Get the default ApplVerID for FIX 5.0+ sessions.
+     *
+     * @return the default ApplVerID, or null for FIX 4.x
+     */
+    public ApplVerID getDefaultApplVerID() {
+        return defaultApplVerID;
+    }
+
+    /**
+     * Check if this configuration uses FIXT.1.1 transport (FIX 5.0+).
+     *
+     * @return true if using FIXT.1.1
+     */
+    public boolean usesFixt() {
+        return fixVersion != null && fixVersion.usesFixt();
     }
 
     /**
@@ -278,6 +310,36 @@ public class MessagePoolConfig {
                 throw new IllegalArgumentException("ClockProvider cannot be null");
             }
             config.clockProvider = clockProvider;
+            return this;
+        }
+
+        /**
+         * Set the FIX protocol version.
+         * This automatically sets the appropriate BeginString.
+         *
+         * @param fixVersion the FIX version
+         * @return this builder
+         */
+        public Builder fixVersion(FixVersion fixVersion) {
+            if (fixVersion == null) {
+                throw new IllegalArgumentException("FixVersion cannot be null");
+            }
+            config.fixVersion = fixVersion;
+            config.beginString = fixVersion.getBeginString();
+            if (fixVersion.getDefaultApplVerID() != null && config.defaultApplVerID == null) {
+                config.defaultApplVerID = fixVersion.getDefaultApplVerID();
+            }
+            return this;
+        }
+
+        /**
+         * Set the default ApplVerID for FIX 5.0+ sessions.
+         *
+         * @param applVerID the default application version ID
+         * @return this builder
+         */
+        public Builder defaultApplVerID(ApplVerID applVerID) {
+            config.defaultApplVerID = applVerID;
             return this;
         }
 

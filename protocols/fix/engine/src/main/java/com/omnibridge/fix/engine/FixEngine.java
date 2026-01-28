@@ -589,12 +589,21 @@ public class FixEngine implements Component {
             throw new IllegalArgumentException("Session is not an initiator: " + sessionId);
         }
 
-        log.info("Connecting session: {} to {}:{}", sessionId, sessionConfig.getHost(), sessionConfig.getPort());
+        log.info("Connecting session: {} to {}:{}{}",
+                sessionId, sessionConfig.getHost(), sessionConfig.getPort(),
+                sessionConfig.isSslEnabled() ? " (SSL)" : "");
 
-        eventLoop.connect(
-            new InetSocketAddress(sessionConfig.getHost(), sessionConfig.getPort()),
-            session
-        );
+        try {
+            eventLoop.connect(
+                sessionConfig.getHost(),
+                sessionConfig.getPort(),
+                session,
+                sessionConfig.getSslConfig()
+            );
+        } catch (IOException e) {
+            log.error("Failed to connect session {}: {}", sessionId, e.getMessage());
+            session.onConnectFailed(sessionConfig.getHost() + ":" + sessionConfig.getPort(), e);
+        }
     }
 
     /**

@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  FIXT.1.1 Transport Layer Dictionary
+
+  This dictionary defines the session-level (transport) messages for FIX 5.0+.
+  In FIX 5.0+, the protocol is split into:
+  - Transport layer (FIXT.1.1): Session messages (Logon, Logout, Heartbeat, etc.)
+  - Application layer (FIX50.xml): Business messages (NewOrderSingle, ExecutionReport, etc.)
+
+  Key differences from FIX 4.x:
+  - BeginString is always "FIXT.1.1" (not the application version)
+  - Logon includes DefaultApplVerID (tag 1137) to specify application message version
+  - Application messages may include ApplVerID (tag 1128) if different from default
+-->
+<fix-dictionary version="FIXT.1.1">
+  <fields>
+    <!-- Standard Header Fields -->
+    <field name="BeginString" tag="8" type="String"/>
+    <field name="BodyLength" tag="9" type="Length"/>
+    <field name="CheckSum" tag="10" type="String"/>
+    <field name="MsgSeqNum" tag="34" type="SeqNum"/>
+    <field name="MsgType" tag="35" type="String">
+      <enum desc="Heartbeat" value="0"/>
+      <enum desc="TestRequest" value="1"/>
+      <enum desc="ResendRequest" value="2"/>
+      <enum desc="Reject" value="3"/>
+      <enum desc="SequenceReset" value="4"/>
+      <enum desc="Logout" value="5"/>
+      <enum desc="Logon" value="A"/>
+      <enum desc="XMLNonFIX" value="n"/>
+    </field>
+    <field name="PossDupFlag" tag="43" type="Boolean"/>
+    <field name="SenderCompID" tag="49" type="String"/>
+    <field name="SendingTime" tag="52" type="UTCTimestamp"/>
+    <field name="TargetCompID" tag="56" type="String"/>
+    <field name="PossResend" tag="97" type="Boolean"/>
+    <field name="OrigSendingTime" tag="122" type="UTCTimestamp"/>
+
+    <!-- Session Message Fields -->
+    <field name="BeginSeqNo" tag="7" type="SeqNum"/>
+    <field name="EndSeqNo" tag="16" type="SeqNum"/>
+    <field name="NewSeqNo" tag="36" type="SeqNum"/>
+    <field name="RefSeqNum" tag="45" type="SeqNum"/>
+    <field name="Text" tag="58" type="String"/>
+    <field name="EncryptMethod" tag="98" type="int">
+      <enum desc="None" value="0"/>
+      <enum desc="PKCS" value="1"/>
+      <enum desc="DES" value="2"/>
+      <enum desc="PKCS_DES" value="3"/>
+      <enum desc="PGP_DES" value="4"/>
+      <enum desc="PGP_DES_MD5" value="5"/>
+      <enum desc="PEM_DES_MD5" value="6"/>
+    </field>
+    <field name="HeartBtInt" tag="108" type="int"/>
+    <field name="TestReqID" tag="112" type="String"/>
+    <field name="GapFillFlag" tag="123" type="Boolean"/>
+    <field name="ResetSeqNumFlag" tag="141" type="Boolean"/>
+    <field name="RefTagID" tag="371" type="int"/>
+    <field name="RefMsgType" tag="372" type="String"/>
+    <field name="SessionRejectReason" tag="373" type="int">
+      <enum desc="InvalidTagNumber" value="0"/>
+      <enum desc="RequiredTagMissing" value="1"/>
+      <enum desc="TagNotDefinedForMessageType" value="2"/>
+      <enum desc="UndefinedTag" value="3"/>
+      <enum desc="TagSpecifiedWithoutValue" value="4"/>
+      <enum desc="ValueIsIncorrect" value="5"/>
+      <enum desc="IncorrectDataFormatForValue" value="6"/>
+      <enum desc="DecryptionProblem" value="7"/>
+      <enum desc="SignatureProblem" value="8"/>
+      <enum desc="CompIDProblem" value="9"/>
+      <enum desc="SendingTimeAccuracyProblem" value="10"/>
+      <enum desc="InvalidMsgType" value="11"/>
+      <enum desc="XMLValidationError" value="12"/>
+      <enum desc="TagAppearsMoreThanOnce" value="13"/>
+      <enum desc="TagSpecifiedOutOfRequiredOrder" value="14"/>
+      <enum desc="RepeatingGroupFieldsOutOfOrder" value="15"/>
+      <enum desc="IncorrectNumInGroupCountForRepeatingGroup" value="16"/>
+      <enum desc="NonDataValueIncludesFieldDelimiter" value="17"/>
+      <enum desc="Other" value="99"/>
+    </field>
+
+    <!-- FIX 5.0+ Application Version Fields -->
+    <field name="ApplVerID" tag="1128" type="String">
+      <enum desc="FIX27" value="0"/>
+      <enum desc="FIX30" value="1"/>
+      <enum desc="FIX40" value="2"/>
+      <enum desc="FIX41" value="3"/>
+      <enum desc="FIX42" value="4"/>
+      <enum desc="FIX43" value="5"/>
+      <enum desc="FIX44" value="6"/>
+      <enum desc="FIX50" value="7"/>
+      <enum desc="FIX50SP1" value="8"/>
+      <enum desc="FIX50SP2" value="9"/>
+    </field>
+    <field name="CstmApplVerID" tag="1129" type="String"/>
+    <field name="DefaultApplVerID" tag="1137" type="String">
+      <enum desc="FIX27" value="0"/>
+      <enum desc="FIX30" value="1"/>
+      <enum desc="FIX40" value="2"/>
+      <enum desc="FIX41" value="3"/>
+      <enum desc="FIX42" value="4"/>
+      <enum desc="FIX43" value="5"/>
+      <enum desc="FIX44" value="6"/>
+      <enum desc="FIX50" value="7"/>
+      <enum desc="FIX50SP1" value="8"/>
+      <enum desc="FIX50SP2" value="9"/>
+    </field>
+    <field name="ApplExtID" tag="1156" type="int"/>
+
+    <!-- Additional Session Fields -->
+    <field name="Username" tag="553" type="String"/>
+    <field name="Password" tag="554" type="String"/>
+    <field name="NewPassword" tag="925" type="String"/>
+    <field name="NextExpectedMsgSeqNum" tag="789" type="SeqNum"/>
+  </fields>
+
+  <messages>
+    <!-- Logon (A) -->
+    <message name="Logon" msgtype="A">
+      <field name="EncryptMethod" required="Y"/>
+      <field name="HeartBtInt" required="Y"/>
+      <field name="ResetSeqNumFlag" required="N"/>
+      <field name="NextExpectedMsgSeqNum" required="N"/>
+      <field name="DefaultApplVerID" required="Y"/>
+      <field name="Username" required="N"/>
+      <field name="Password" required="N"/>
+      <field name="NewPassword" required="N"/>
+    </message>
+
+    <!-- Logout (5) -->
+    <message name="Logout" msgtype="5">
+      <field name="Text" required="N"/>
+    </message>
+
+    <!-- Heartbeat (0) -->
+    <message name="Heartbeat" msgtype="0">
+      <field name="TestReqID" required="N"/>
+    </message>
+
+    <!-- TestRequest (1) -->
+    <message name="TestRequest" msgtype="1">
+      <field name="TestReqID" required="Y"/>
+    </message>
+
+    <!-- ResendRequest (2) -->
+    <message name="ResendRequest" msgtype="2">
+      <field name="BeginSeqNo" required="Y"/>
+      <field name="EndSeqNo" required="Y"/>
+    </message>
+
+    <!-- Reject (3) -->
+    <message name="Reject" msgtype="3">
+      <field name="RefSeqNum" required="Y"/>
+      <field name="RefTagID" required="N"/>
+      <field name="RefMsgType" required="N"/>
+      <field name="SessionRejectReason" required="N"/>
+      <field name="Text" required="N"/>
+    </message>
+
+    <!-- SequenceReset (4) -->
+    <message name="SequenceReset" msgtype="4">
+      <field name="GapFillFlag" required="N"/>
+      <field name="NewSeqNo" required="Y"/>
+    </message>
+  </messages>
+
+  <header>
+    <field name="BeginString" required="Y"/>
+    <field name="BodyLength" required="Y"/>
+    <field name="MsgType" required="Y"/>
+    <field name="SenderCompID" required="Y"/>
+    <field name="TargetCompID" required="Y"/>
+    <field name="MsgSeqNum" required="Y"/>
+    <field name="PossDupFlag" required="N"/>
+    <field name="PossResend" required="N"/>
+    <field name="SendingTime" required="Y"/>
+    <field name="OrigSendingTime" required="N"/>
+  </header>
+
+  <trailer>
+    <field name="CheckSum" required="Y"/>
+  </trailer>
+</fix-dictionary>

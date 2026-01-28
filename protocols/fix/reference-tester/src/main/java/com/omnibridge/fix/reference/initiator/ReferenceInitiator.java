@@ -109,7 +109,27 @@ public class ReferenceInitiator implements Application {
 
         settings.setString(sessionId, "SocketConnectHost", config.getHost());
         settings.setString(sessionId, "SocketConnectPort", String.valueOf(config.getPort()));
-        settings.setString(sessionId, "DataDictionary", config.getBeginString().contains("4.4") ? "FIX44.xml" : "FIX42.xml");
+
+        // Configure dictionaries based on FIX version
+        if (config.usesFixt()) {
+            // FIX 5.0+ uses separate transport and application dictionaries
+            settings.setString(sessionId, "TransportDataDictionary", "FIXT11.xml");
+            settings.setString(sessionId, "AppDataDictionary", "FIX50.xml");
+
+            // Set DefaultApplVerID for FIX 5.0+
+            if (config.getDefaultApplVerID() != null) {
+                settings.setString(sessionId, "DefaultApplVerID", config.getDefaultApplVerID());
+            } else {
+                settings.setString(sessionId, "DefaultApplVerID", "9"); // Default to FIX 5.0
+            }
+
+            log.info("Configured for FIXT.1.1 with DefaultApplVerID={}",
+                    config.getDefaultApplVerID() != null ? config.getDefaultApplVerID() : "9");
+        } else {
+            // FIX 4.x uses single dictionary
+            settings.setString(sessionId, "DataDictionary",
+                    config.getBeginString().contains("4.4") ? "FIX44.xml" : "FIX42.xml");
+        }
 
         return settings;
     }

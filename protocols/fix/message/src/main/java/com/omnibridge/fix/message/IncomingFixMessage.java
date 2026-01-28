@@ -64,6 +64,10 @@ public final class IncomingFixMessage {
     private final ByteBufferCharSequence cachedSenderCompId;
     private final ByteBufferCharSequence cachedTargetCompId;
 
+    // FIX 5.0+ cached values
+    private final ByteBufferCharSequence cachedApplVerID;
+    private final ByteBufferCharSequence cachedDefaultApplVerID;
+
     // Pool of CharSequence wrappers for returning field values
     private final ByteBufferCharSequence[] charSeqPool;
     private int charSeqPoolIndex;
@@ -88,6 +92,10 @@ public final class IncomingFixMessage {
         this.cachedMsgType = new ByteBufferCharSequence();
         this.cachedSenderCompId = new ByteBufferCharSequence();
         this.cachedTargetCompId = new ByteBufferCharSequence();
+
+        // Initialize FIX 5.0+ cached values
+        this.cachedApplVerID = new ByteBufferCharSequence();
+        this.cachedDefaultApplVerID = new ByteBufferCharSequence();
 
         // Initialize CharSequence pool
         this.charSeqPool = new ByteBufferCharSequence[CHAR_SEQ_POOL_SIZE];
@@ -409,6 +417,55 @@ public final class IncomingFixMessage {
         return FixTags.MsgTypes.isAdmin(cachedMsgType);
     }
 
+    // ==================== FIX 5.0+ Accessors ====================
+
+    /**
+     * Get the ApplVerID (tag 1128) as a CharSequence (zero-allocation).
+     * This is present in application messages when different from the default.
+     *
+     * @return the ApplVerID, or null if not present
+     */
+    public CharSequence getApplVerIDCharSeq() {
+        return cachedApplVerID.isValid() ? cachedApplVerID : null;
+    }
+
+    /**
+     * Get the ApplVerID (tag 1128) as a String.
+     *
+     * @return the ApplVerID, or null if not present
+     */
+    public String getApplVerID() {
+        return cachedApplVerID.isValid() ? cachedApplVerID.toString() : null;
+    }
+
+    /**
+     * Get the DefaultApplVerID (tag 1137) as a CharSequence (zero-allocation).
+     * This is present in Logon messages for FIX 5.0+.
+     *
+     * @return the DefaultApplVerID, or null if not present
+     */
+    public CharSequence getDefaultApplVerIDCharSeq() {
+        return cachedDefaultApplVerID.isValid() ? cachedDefaultApplVerID : null;
+    }
+
+    /**
+     * Get the DefaultApplVerID (tag 1137) as a String.
+     *
+     * @return the DefaultApplVerID, or null if not present
+     */
+    public String getDefaultApplVerID() {
+        return cachedDefaultApplVerID.isValid() ? cachedDefaultApplVerID.toString() : null;
+    }
+
+    /**
+     * Check if this message has ApplVerID (tag 1128).
+     *
+     * @return true if ApplVerID is present
+     */
+    public boolean hasApplVerID() {
+        return cachedApplVerID.isValid();
+    }
+
     // ==================== Compatibility Methods ====================
 
     /**
@@ -580,6 +637,8 @@ public final class IncomingFixMessage {
             case FixTags.MsgSeqNum -> cachedMsgSeqNum = parseIntValue(valueStart, valueEnd);
             case FixTags.SenderCompID -> cachedSenderCompId.wrap(buffer, valueStart, valueEnd - valueStart);
             case FixTags.TargetCompID -> cachedTargetCompId.wrap(buffer, valueStart, valueEnd - valueStart);
+            case FixTags.ApplVerID -> cachedApplVerID.wrap(buffer, valueStart, valueEnd - valueStart);
+            case FixTags.DefaultApplVerID -> cachedDefaultApplVerID.wrap(buffer, valueStart, valueEnd - valueStart);
         }
     }
 

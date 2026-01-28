@@ -66,6 +66,18 @@ public final class FixTags {
     public static final int GAP_FILL_FLAG = GapFillFlag;
     public static final int NEW_SEQ_NO = NewSeqNo;
 
+    // FIX 5.0+ Application Version fields
+    public static final int ApplVerID = 1128;
+    public static final int DefaultApplVerID = 1137;
+    public static final int ApplExtID = 1156;
+    public static final int CstmApplVerID = 1129;
+
+    // FIX 5.0+ aliases
+    public static final int APPL_VER_ID = ApplVerID;
+    public static final int DEFAULT_APPL_VER_ID = DefaultApplVerID;
+    public static final int APPL_EXT_ID = ApplExtID;
+    public static final int CSTM_APPL_VER_ID = CstmApplVerID;
+
     // Session reject reasons
     public static final int SESSION_REJECT_REASON_INVALID_TAG_NUMBER = 0;
     public static final int SESSION_REJECT_REASON_REQUIRED_TAG_MISSING = 1;

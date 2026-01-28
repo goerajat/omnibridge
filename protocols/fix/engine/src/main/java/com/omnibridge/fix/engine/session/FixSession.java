@@ -2,8 +2,10 @@ package com.omnibridge.fix.engine.session;
 
 import com.omnibridge.config.ClockProvider;
 import com.omnibridge.fix.engine.config.SessionConfig;
+import com.omnibridge.fix.message.ApplVerID;
 import com.omnibridge.fix.message.FixReader;
 import com.omnibridge.fix.message.FixTags;
+import com.omnibridge.fix.message.FixVersion;
 import com.omnibridge.fix.message.IncomingFixMessage;
 import com.omnibridge.fix.message.IncomingMessagePool;
 import com.omnibridge.fix.message.IncomingMessagePoolConfig;
@@ -68,6 +70,10 @@ public class FixSession implements NetworkHandler {
     // Clock provider for time sources
     private final ClockProvider clockProvider;
 
+    // FIX 5.0+ support
+    private final FixVersion fixVersion;
+    private ApplVerID negotiatedApplVerID;
+
     // Thread-local ring buffer message wrappers for concurrent access
     private final ThreadLocal<RingBufferOutgoingMessage> ringBufferMessageThreadLocal;
 
@@ -79,15 +85,28 @@ public class FixSession implements NetworkHandler {
         this.logStore = logStore;
         this.clockProvider = config.getClockProvider();
 
+        // FIX 5.0+ support
+        this.fixVersion = config.getFixVersion();
+        this.negotiatedApplVerID = config.getDefaultApplVerID();
+
         // Initialize message pool configuration (used by ring buffer message)
-        this.poolConfig = MessagePoolConfig.builder()
+        MessagePoolConfig.Builder poolConfigBuilder = MessagePoolConfig.builder()
                 .maxMessageLength(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber())
                 .beginString(config.getBeginString())
                 .senderCompId(config.getSenderCompId())
                 .targetCompId(config.getTargetCompId())
-                .clockProvider(clockProvider)
-                .build();
+                .clockProvider(clockProvider);
+
+        // Configure FIX version for FIXT.1.1 mode
+        if (fixVersion != null) {
+            poolConfigBuilder.fixVersion(fixVersion);
+            if (config.getDefaultApplVerID() != null) {
+                poolConfigBuilder.defaultApplVerID(config.getDefaultApplVerID());
+            }
+        }
+
+        this.poolConfig = poolConfigBuilder.build();
 
         // Initialize thread-local ring buffer message wrappers for concurrent access
         this.ringBufferMessageThreadLocal = ThreadLocal.withInitial(() -> new RingBufferOutgoingMessage(poolConfig));
@@ -446,6 +465,24 @@ public class FixSession implements NetworkHandler {
         int heartbeatInt = message.getInt(FixTags.HEARTBT_INT);
         boolean resetSeqNum = message.getBool(FixTags.RESET_SEQ_NUM_FLAG);
 
+        // FIX 5.0+: Process DefaultApplVerID (tag 1137)
+        if (fixVersion != null && fixVersion.usesFixt()) {
+            CharSequence defaultApplVerIdCs = message.getCharSequence(FixTags.DefaultApplVerID);
+            if (defaultApplVerIdCs != null && defaultApplVerIdCs.length() > 0) {
+                try {
+                    ApplVerID receivedApplVerID = ApplVerID.fromValue(defaultApplVerIdCs);
+                    negotiatedApplVerID = receivedApplVerID;
+                    log.info("[{}] Negotiated ApplVerID: {}", config.getSessionId(), negotiatedApplVerID);
+                } catch (IllegalArgumentException e) {
+                    log.warn("[{}] Invalid DefaultApplVerID received: {}",
+                            config.getSessionId(), defaultApplVerIdCs);
+                }
+            } else {
+                log.warn("[{}] FIX 5.0+ session but no DefaultApplVerID in Logon",
+                        config.getSessionId());
+            }
+        }
+
         SessionState currentState = state.get();
 
         if (resetSeqNum || config.isResetOnLogon()) {
@@ -793,7 +830,8 @@ public class FixSession implements NetworkHandler {
     }
 
     private void sendLogon() {
-        log.info("[{}] Sending Logon", config.getSessionId());
+        log.info("[{}] Sending Logon (version={})", config.getSessionId(),
+                fixVersion != null ? fixVersion : "FIX.4.4");
 
         setState(SessionState.LOGON_SENT);
 
@@ -802,6 +840,18 @@ public class FixSession implements NetworkHandler {
             msg.setField(FixTags.HEARTBT_INT, config.getHeartbeatInterval());
             if (config.isResetOnLogon()) {
                 msg.setField(FixTags.RESET_SEQ_NUM_FLAG, "Y");
+            }
+            // FIX 5.0+: Include DefaultApplVerID (tag 1137)
+            if (fixVersion != null && fixVersion.usesFixt()) {
+                ApplVerID applVerID = config.getDefaultApplVerID();
+                if (applVerID == null) {
+                    applVerID = fixVersion.getDefaultApplVerID();
+                }
+                if (applVerID != null) {
+                    msg.setField(FixTags.DefaultApplVerID, applVerID.getValue());
+                    log.debug("[{}] Including DefaultApplVerID={} in Logon",
+                            config.getSessionId(), applVerID);
+                }
             }
         });
     }
@@ -961,6 +1011,34 @@ public class FixSession implements NetworkHandler {
         log.info("[{}] Resetting sequence numbers", config.getSessionId());
         outgoingSeqNum.set(1);
         expectedIncomingSeqNum.set(1);
+    }
+
+    /**
+     * Get the FIX protocol version for this session.
+     *
+     * @return the FIX version
+     */
+    public FixVersion getFixVersion() {
+        return fixVersion;
+    }
+
+    /**
+     * Get the negotiated ApplVerID for FIX 5.0+ sessions.
+     * This is determined during logon.
+     *
+     * @return the negotiated ApplVerID, or null for FIX 4.x
+     */
+    public ApplVerID getNegotiatedApplVerID() {
+        return negotiatedApplVerID;
+    }
+
+    /**
+     * Check if this session uses FIXT.1.1 transport (FIX 5.0+).
+     *
+     * @return true if using FIXT.1.1
+     */
+    public boolean usesFixt() {
+        return fixVersion != null && fixVersion.usesFixt();
     }
 
     /**
