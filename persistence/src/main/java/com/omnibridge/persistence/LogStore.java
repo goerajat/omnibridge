@@ -98,20 +98,25 @@ public interface LogStore extends Closeable, Component {
     String getStorePath();
 
     /**
-     * Get the decoder associated with this store.
+     * Get the decoder for a specific stream.
      *
-     * @return the decoder, or null if not set
+     * @param streamName the stream name
+     * @return the decoder for the stream, or null if not set
      */
-    default Decoder getDecoder() {
+    default Decoder getDecoder(String streamName) {
         return null;
     }
 
     /**
-     * Set the decoder for this store.
+     * Set the decoder for a specific stream.
      *
-     * @param decoder the decoder to use
+     * <p>Each stream can have its own decoder to support different protocols
+     * being logged to the same store.</p>
+     *
+     * @param streamName the stream name
+     * @param decoder the decoder to use for this stream
      */
-    default void setDecoder(Decoder decoder) {
+    default void setDecoder(String streamName, Decoder decoder) {
         // Default implementation does nothing
     }
 

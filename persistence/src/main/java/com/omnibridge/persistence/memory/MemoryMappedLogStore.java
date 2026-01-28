@@ -78,7 +78,7 @@ public class MemoryMappedLogStore implements LogStore, Component {
     private ComponentProvider componentProvider;
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
-    private Decoder decoder;
+    private final Map<String, Decoder> streamDecoders = new ConcurrentHashMap<>();
     private final LogEntry flyweightEntry = new LogEntry(); // Reusable for reads
 
     /**
@@ -170,13 +170,22 @@ public class MemoryMappedLogStore implements LogStore, Component {
     }
 
     @Override
-    public Decoder getDecoder() {
-        return decoder;
+    public Decoder getDecoder(String streamName) {
+        return streamDecoders.get(streamName);
     }
 
     @Override
-    public void setDecoder(Decoder decoder) {
-        this.decoder = decoder;
+    public void setDecoder(String streamName, Decoder decoder) {
+        if (decoder != null) {
+            streamDecoders.put(streamName, decoder);
+            // Update the stream's file header if it exists
+            StreamStore store = streams.get(streamName);
+            if (store != null) {
+                store.updateDecoder(decoder);
+            }
+        } else {
+            streamDecoders.remove(streamName);
+        }
     }
 
     private void loadExistingStreams() {
@@ -194,9 +203,12 @@ public class MemoryMappedLogStore implements LogStore, Component {
                     log.debug("Loaded stream: {} ({} entries, version={})",
                             streamName, store.getEntryCount(), store.getVersion());
 
-                    // Try to load decoder from file header
-                    if (store.getDecoderClassName() != null && decoder == null) {
-                        decoder = instantiateDecoder(store.getDecoderClassName());
+                    // Load decoder from file header for this stream
+                    if (store.getDecoderClassName() != null && !store.getDecoderClassName().isEmpty()) {
+                        Decoder decoder = instantiateDecoder(store.getDecoderClassName());
+                        if (decoder != null) {
+                            streamDecoders.put(streamName, decoder);
+                        }
                     }
                 } catch (IOException e) {
                     log.error("Failed to load stream {}: {}", streamName, e.getMessage());
@@ -220,6 +232,7 @@ public class MemoryMappedLogStore implements LogStore, Component {
             try {
                 String sanitizedName = sanitizeFileName(name);
                 File file = new File(baseDir, sanitizedName + ".log");
+                Decoder decoder = streamDecoders.get(name);
                 return new StreamStore(name, file, maxFileSize, syncOnWrite, decoder);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to create stream: " + name, e);
@@ -862,6 +875,25 @@ public class MemoryMappedLogStore implements LogStore, Component {
 
         String getDecoderClassName() {
             return decoderClassName;
+        }
+
+        synchronized void updateDecoder(Decoder decoder) {
+            if (version != VERSION_2) {
+                return; // Can only update decoder in v2 files
+            }
+            String className = decoder != null ? decoder.getClass().getName() : "";
+            byte[] nameBytes = className.getBytes(StandardCharsets.UTF_8);
+            buffer.putInt(12, nameBytes.length);
+
+            // Clear existing name area and write new name
+            for (int i = 0; i < 128; i++) {
+                buffer.put(16 + i, (byte) 0);
+            }
+            for (int i = 0; i < Math.min(nameBytes.length, 128); i++) {
+                buffer.put(16 + i, nameBytes[i]);
+            }
+
+            this.decoderClassName = className;
         }
 
         synchronized long write(LogEntry entry) {
