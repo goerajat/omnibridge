@@ -6,6 +6,7 @@ import com.omnibridge.config.provider.ComponentProvider;
 import com.omnibridge.persistence.Decoder;
 import com.omnibridge.persistence.LogCallback;
 import com.omnibridge.persistence.LogEntry;
+import com.omnibridge.persistence.LogReader;
 import com.omnibridge.persistence.LogStore;
 import com.omnibridge.persistence.config.PersistenceConfig;
 import org.agrona.IoUtil;
@@ -64,8 +65,8 @@ public class MemoryMappedLogStore implements LogStore, Component {
     private static final int HEADER_SIZE_V2 = 144; // 8 (magic) + 4 (version) + 4 (decoder len) + 128 (decoder name)
     private static final int HEADER_SIZE_V1 = 64;  // Legacy header size
 
-    // Entry header: length (4) + timestamp (8) + seqNum (4) + direction (1)
-    private static final int ENTRY_HEADER_SIZE = 4 + 8 + 4 + 1;
+    // Entry header (excluding 4-byte length prefix): timestamp (8) + seqNum (4) + direction (1)
+    private static final int ENTRY_HEADER_SIZE = 8 + 4 + 1;
 
     private static final long DEFAULT_FILE_SIZE = 256 * 1024 * 1024; // 256 MB
 
@@ -396,6 +397,363 @@ public class MemoryMappedLogStore implements LogStore, Component {
         return componentState;
     }
 
+    // ==================== Polling API ====================
+
+    @Override
+    public LogReader createReader(String streamName, long startPosition) {
+        if (streamName != null) {
+            // Get or create stream if it doesn't exist
+            StreamStore store = getOrCreateStream(streamName);
+            return new MappedLogReader(streamName, store, startPosition);
+        } else {
+            // All-streams reader
+            return new AllStreamsLogReader(startPosition);
+        }
+    }
+
+    /**
+     * LogReader implementation for a single stream.
+     */
+    private class MappedLogReader implements LogReader {
+        private final String streamName;
+        private final StreamStore store;
+        private final LogEntry flyweight = new LogEntry();
+        private long position;
+        private volatile boolean closed;
+
+        MappedLogReader(String streamName, StreamStore store, long startPosition) {
+            this.streamName = streamName;
+            this.store = store;
+
+            if (startPosition == LogReader.END) {
+                this.position = store.getWritePosition();
+            } else if (startPosition == LogReader.START) {
+                this.position = store.getHeaderSize();
+            } else {
+                this.position = startPosition;
+            }
+        }
+
+        @Override
+        public LogEntry poll(long timeoutMs) {
+            long deadline = timeoutMs > 0 ? System.currentTimeMillis() + timeoutMs : 0;
+
+            while (!closed) {
+                LogEntry entry = tryReadNext();
+                if (entry != null) {
+                    return entry;
+                }
+
+                if (timeoutMs == 0) {
+                    return null; // No wait
+                }
+
+                if (timeoutMs > 0 && System.currentTimeMillis() >= deadline) {
+                    return null; // Timeout
+                }
+
+                // Wait for new data
+                try {
+                    synchronized (store) {
+                        long waitTime = timeoutMs < 0 ? 100 : Math.min(100, deadline - System.currentTimeMillis());
+                        if (waitTime > 0) {
+                            store.wait(waitTime);
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
+        @Override
+        public int poll(int maxEntries, long timeoutMs, LogCallback callback) {
+            int count = 0;
+
+            // First entry may need to wait
+            LogEntry first = poll(timeoutMs);
+            if (first != null) {
+                count++;
+                if (!callback.onEntry(first)) {
+                    return count;
+                }
+            } else {
+                return 0;
+            }
+
+            // Subsequent entries - no wait
+            while (count < maxEntries) {
+                LogEntry entry = tryReadNext();
+                if (entry == null) {
+                    break;
+                }
+                count++;
+                if (!callback.onEntry(entry)) {
+                    break;
+                }
+            }
+
+            return count;
+        }
+
+        private LogEntry tryReadNext() {
+            long writePos = store.getWritePosition();
+            if (position >= writePos) {
+                return null;
+            }
+
+            int offset = (int) position;
+            int entrySize = store.readInt(offset);
+            if (entrySize <= 0) {
+                return null;
+            }
+
+            store.readEntry(offset + 4, flyweight);
+            flyweight.setStreamName(streamName);
+            position = offset + 4 + entrySize;
+
+            return flyweight;
+        }
+
+        @Override
+        public long getPosition() {
+            return position;
+        }
+
+        @Override
+        public void setPosition(long position) {
+            if (position == LogReader.END) {
+                this.position = store.getWritePosition();
+            } else if (position == LogReader.START) {
+                this.position = store.getHeaderSize();
+            } else {
+                this.position = position;
+            }
+        }
+
+        @Override
+        public String getStreamName() {
+            return streamName;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return position < store.getWritePosition();
+        }
+
+        @Override
+        public long available() {
+            // Approximate: count entries between position and writePosition
+            long count = 0;
+            long pos = position;
+            long writePos = store.getWritePosition();
+
+            while (pos < writePos) {
+                int entrySize = store.readInt((int) pos);
+                if (entrySize <= 0) break;
+                pos += 4 + entrySize;
+                count++;
+            }
+            return count;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+        }
+    }
+
+    /**
+     * LogReader implementation for all streams.
+     */
+    private class AllStreamsLogReader implements LogReader {
+        private final Map<String, Long> streamPositions = new HashMap<>();
+        private final LogEntry flyweight = new LogEntry();
+        private volatile boolean closed;
+
+        AllStreamsLogReader(long startPosition) {
+            for (Map.Entry<String, StreamStore> entry : streams.entrySet()) {
+                StreamStore store = entry.getValue();
+                long pos;
+                if (startPosition == LogReader.END) {
+                    pos = store.getWritePosition();
+                } else if (startPosition == LogReader.START) {
+                    pos = store.getHeaderSize();
+                } else {
+                    pos = store.getHeaderSize(); // Default to start for all-streams
+                }
+                streamPositions.put(entry.getKey(), pos);
+            }
+        }
+
+        @Override
+        public LogEntry poll(long timeoutMs) {
+            long deadline = timeoutMs > 0 ? System.currentTimeMillis() + timeoutMs : 0;
+
+            while (!closed) {
+                // Find the next entry across all streams (by timestamp)
+                LogEntry next = findNextEntry();
+                if (next != null) {
+                    return next;
+                }
+
+                if (timeoutMs == 0) {
+                    return null;
+                }
+
+                if (timeoutMs > 0 && System.currentTimeMillis() >= deadline) {
+                    return null;
+                }
+
+                // Wait
+                try {
+                    Thread.sleep(Math.min(100, timeoutMs > 0 ? deadline - System.currentTimeMillis() : 100));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
+        private LogEntry findNextEntry() {
+            LogEntry earliest = null;
+            String earliestStream = null;
+            long earliestPos = 0;
+
+            for (Map.Entry<String, Long> posEntry : streamPositions.entrySet()) {
+                String streamName = posEntry.getKey();
+                long position = posEntry.getValue();
+                StreamStore store = streams.get(streamName);
+
+                if (store == null || position >= store.getWritePosition()) {
+                    continue;
+                }
+
+                int offset = (int) position;
+                int entrySize = store.readInt(offset);
+                if (entrySize <= 0) continue;
+
+                LogEntry temp = new LogEntry();
+                store.readEntry(offset + 4, temp);
+                temp.setStreamName(streamName);
+
+                if (earliest == null || temp.getTimestamp() < earliest.getTimestamp()) {
+                    earliest = temp;
+                    earliestStream = streamName;
+                    earliestPos = position + 4 + entrySize;
+                }
+            }
+
+            if (earliest != null) {
+                streamPositions.put(earliestStream, earliestPos);
+                flyweight.reset(earliest.getTimestamp(), earliest.getDirection(),
+                        earliest.getSequenceNumber(), earliest.getStreamName(),
+                        earliest.getMetadata(), earliest.getRawMessage());
+                return flyweight;
+            }
+
+            return null;
+        }
+
+        @Override
+        public int poll(int maxEntries, long timeoutMs, LogCallback callback) {
+            int count = 0;
+
+            LogEntry first = poll(timeoutMs);
+            if (first != null) {
+                count++;
+                if (!callback.onEntry(first)) {
+                    return count;
+                }
+            } else {
+                return 0;
+            }
+
+            while (count < maxEntries) {
+                LogEntry entry = findNextEntry();
+                if (entry == null) {
+                    break;
+                }
+                count++;
+                if (!callback.onEntry(entry)) {
+                    break;
+                }
+            }
+
+            return count;
+        }
+
+        @Override
+        public long getPosition() {
+            // Return minimum position across all streams
+            return streamPositions.values().stream()
+                    .mapToLong(Long::longValue)
+                    .min()
+                    .orElse(0);
+        }
+
+        @Override
+        public void setPosition(long position) {
+            for (Map.Entry<String, StreamStore> entry : streams.entrySet()) {
+                StreamStore store = entry.getValue();
+                long pos;
+                if (position == LogReader.END) {
+                    pos = store.getWritePosition();
+                } else if (position == LogReader.START) {
+                    pos = store.getHeaderSize();
+                } else {
+                    pos = store.getHeaderSize();
+                }
+                streamPositions.put(entry.getKey(), pos);
+            }
+        }
+
+        @Override
+        public String getStreamName() {
+            return null; // All streams
+        }
+
+        @Override
+        public boolean hasNext() {
+            for (Map.Entry<String, Long> posEntry : streamPositions.entrySet()) {
+                StreamStore store = streams.get(posEntry.getKey());
+                if (store != null && posEntry.getValue() < store.getWritePosition()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public long available() {
+            long count = 0;
+            for (Map.Entry<String, Long> posEntry : streamPositions.entrySet()) {
+                StreamStore store = streams.get(posEntry.getKey());
+                if (store == null) continue;
+
+                long pos = posEntry.getValue();
+                long writePos = store.getWritePosition();
+                while (pos < writePos) {
+                    int entrySize = store.readInt((int) pos);
+                    if (entrySize <= 0) break;
+                    pos += 4 + entrySize;
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+        }
+    }
+
     /**
      * Per-stream storage using memory-mapped file.
      */
@@ -569,7 +927,75 @@ public class MemoryMappedLogStore implements LogStore, Component {
                 buffer.force();
             }
 
+            // Notify waiting readers
+            synchronized (this) {
+                notifyAll();
+            }
+
             return position;
+        }
+
+        long getWritePosition() {
+            return writePosition;
+        }
+
+        int getHeaderSize() {
+            return version == VERSION_2 ? HEADER_SIZE_V2 : HEADER_SIZE_V1;
+        }
+
+        int readInt(int offset) {
+            return buffer.getInt(offset);
+        }
+
+        void readEntry(int offset, LogEntry entry) {
+            if (version == 1) {
+                readEntryV1IntoFlyweight(offset, entry);
+            } else {
+                readEntryV2(offset, entry);
+            }
+        }
+
+        private void readEntryV1IntoFlyweight(int offset, LogEntry entry) {
+            long timestamp = buffer.getLong(offset);
+            offset += 8;
+
+            int seqNum = buffer.getInt(offset);
+            offset += 4;
+
+            LogEntry.Direction dir = buffer.get(offset) == 0 ?
+                    LogEntry.Direction.INBOUND : LogEntry.Direction.OUTBOUND;
+            offset += 1;
+
+            // Skip txnId (8 bytes)
+            offset += 8;
+
+            // Skip msgType (2+str)
+            int msgTypeLen = buffer.getShort(offset) & 0xFFFF;
+            offset += 2 + msgTypeLen;
+
+            // Metadata
+            int metadataLen = buffer.getShort(offset) & 0xFFFF;
+            offset += 2;
+            byte[] metadata = null;
+            if (metadataLen > 0) {
+                metadata = new byte[metadataLen];
+                for (int i = 0; i < metadataLen; i++) {
+                    metadata[i] = buffer.get(offset++);
+                }
+            }
+
+            // Raw message
+            int rawLen = buffer.getInt(offset);
+            offset += 4;
+            byte[] rawMessage = null;
+            if (rawLen > 0) {
+                rawMessage = new byte[rawLen];
+                for (int i = 0; i < rawLen; i++) {
+                    rawMessage[i] = buffer.get(offset++);
+                }
+            }
+
+            entry.reset(timestamp, dir, seqNum, null, metadata, rawMessage);
         }
 
         long replay(LogEntry.Direction direction, int fromSeqNum, int toSeqNum,

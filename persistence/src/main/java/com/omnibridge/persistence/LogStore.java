@@ -114,4 +114,43 @@ public interface LogStore extends Closeable, Component {
     default void setDecoder(Decoder decoder) {
         // Default implementation does nothing
     }
+
+    // ==================== Polling API ====================
+
+    /**
+     * Create a reader for polling entries from a stream.
+     *
+     * <p>The reader starts from the beginning of the stream.</p>
+     *
+     * @param streamName the stream to read from
+     * @return a new LogReader instance
+     * @throws IllegalArgumentException if the stream does not exist
+     */
+    default LogReader createReader(String streamName) {
+        return createReader(streamName, LogReader.START);
+    }
+
+    /**
+     * Create a reader for polling entries from a stream at a specific position.
+     *
+     * <p>Use {@link LogReader#START} to start from the beginning, or
+     * {@link LogReader#END} to start from the current end (tail mode).</p>
+     *
+     * @param streamName the stream to read from
+     * @param startPosition the starting position (byte offset, or START/END constants)
+     * @return a new LogReader instance
+     * @throws IllegalArgumentException if the stream does not exist
+     */
+    LogReader createReader(String streamName, long startPosition);
+
+    /**
+     * Create a reader for polling entries from all streams.
+     *
+     * <p>Entries are returned in write order across all streams.</p>
+     *
+     * @return a new LogReader instance for all streams
+     */
+    default LogReader createReader() {
+        return createReader(null, LogReader.START);
+    }
 }
