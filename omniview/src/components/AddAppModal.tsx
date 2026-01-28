@@ -18,10 +18,11 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'failure' | null>(null)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   if (!isOpen) return null
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
@@ -36,22 +37,28 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
       return
     }
 
-    if (editApp) {
-      updateApp(editApp.id, {
-        name: name.trim(),
-        host: host.trim(),
-        port: portNum,
-      })
-    } else {
-      addApp({
-        name: name.trim(),
-        host: host.trim(),
-        port: portNum,
-        enabled: true,
-      })
+    setSaving(true)
+    try {
+      if (editApp) {
+        await updateApp(editApp.id, {
+          name: name.trim(),
+          host: host.trim(),
+          port: portNum,
+        })
+      } else {
+        await addApp({
+          name: name.trim(),
+          host: host.trim(),
+          port: portNum,
+          enabled: true,
+        })
+      }
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save app')
+    } finally {
+      setSaving(false)
     }
-
-    onClose()
   }
 
   const handleTestConnection = async () => {
@@ -151,15 +158,17 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-300 hover:text-white"
+              disabled={saving}
+              className="px-4 py-2 text-sm text-gray-300 hover:text-white disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md"
+              disabled={saving}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md disabled:opacity-50"
             >
-              {editApp ? 'Save' : 'Add'}
+              {saving ? 'Saving...' : editApp ? 'Save' : 'Add'}
             </button>
           </div>
         </form>

@@ -4,20 +4,20 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.connectivity</groupId>
+    <parent>
+        <groupId>com.omnibridge</groupId>
+        <artifactId>connectivity</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
     <artifactId>omniview</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>OmniView</name>
     <description>Web-based monitoring application for protocol engine applications</description>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jetty.version>12.0.5</jetty.version>
-        <slf4j.version>2.0.9</slf4j.version>
         <node.version>v20.10.0</node.version>
         <npm.version>10.2.5</npm.version>
     </properties>
@@ -40,11 +40,16 @@
             <version>${jetty.version}</version>
         </dependency>
 
-        <!-- Logging -->
+        <!-- Jackson for JSON serialization (version managed by parent) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Logging (version managed by parent) -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

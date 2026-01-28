@@ -13,13 +13,15 @@ set APP_NAME=omniview
 set JAR_FILE=%OMNIVIEW_HOME%\lib\omniview.jar
 set PID_FILE=%OMNIVIEW_HOME%\omniview.pid
 set LOG_FILE=%OMNIVIEW_HOME%\logs\omniview.log
+set DATA_DIR=%OMNIVIEW_HOME%\data
 set DEFAULT_PORT=3000
 
 rem Java options
 if "%JAVA_OPTS%"=="" set JAVA_OPTS=-Xms128m -Xmx512m
 
-rem Ensure logs directory exists
+rem Ensure directories exist
 if not exist "%OMNIVIEW_HOME%\logs" mkdir "%OMNIVIEW_HOME%\logs"
+if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
 rem Parse command
 set COMMAND=%~1
@@ -53,7 +55,7 @@ if not exist "%JAR_FILE%" (
 echo Starting OmniView on port %PORT%...
 
 rem Start the server in background
-start /b "" java %JAVA_OPTS% -Dport=%PORT% -jar "%JAR_FILE%" > "%LOG_FILE%" 2>&1
+start /b "" java %JAVA_OPTS% -Dport=%PORT% -Domniview.data.dir="%DATA_DIR%" -jar "%JAR_FILE%" > "%LOG_FILE%" 2>&1
 
 rem Get the PID (approximate - find java process running omniview)
 timeout /t 2 /nobreak >nul

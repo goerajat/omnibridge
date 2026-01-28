@@ -23,9 +23,10 @@
         <module>protocols</module>
         <!-- Sample applications (FIX, OUCH, iLink3, Optiq, Pillar) -->
         <module>apps</module>
+        <!-- OmniView web monitoring UI -->
+        <module>omniview</module>
         <!-- Build tools (integration tests) - must be last to ensure dependencies are built -->
         <module>build-tools</module>
-        <!-- fix-admin-ui is an npm project, not a Maven module -->
     </modules>
 
     <properties>
@@ -171,6 +172,11 @@
             <dependency>
                 <groupId>com.omnibridge</groupId>
                 <artifactId>exchange-simulator</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>omniview</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

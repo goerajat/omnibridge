@@ -3,6 +3,7 @@ import { useAppStore } from '../store/appStore'
 import { useSessionStore } from '../store/sessionStore'
 import { AppCard } from '../components/AppCard'
 import { AddAppModal } from '../components/AddAppModal'
+import { DisconnectedSessionsWidget } from '../components/DisconnectedSessionsWidget'
 
 export function Dashboard() {
   const apps = useAppStore((state) => state.apps)
@@ -38,6 +39,13 @@ export function Dashboard() {
         </div>
       ) : (
         <>
+          {/* Summary Widgets */}
+          <div className="mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <DisconnectedSessionsWidget />
+            </div>
+          </div>
+
           {enabledApps.length > 0 && (
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-gray-300 mb-4">

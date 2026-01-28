@@ -15,10 +15,10 @@ export function Settings() {
   const [testingApp, setTestingApp] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Map<string, boolean>>(new Map())
 
-  const handleDelete = (app: AppConfig) => {
+  const handleDelete = async (app: AppConfig) => {
     if (confirm(`Are you sure you want to delete "${app.name}"?`)) {
       clearAppData(app.id)
-      removeApp(app.id)
+      await removeApp(app.id)
     }
   }
 
@@ -98,7 +98,7 @@ export function Settings() {
                     </button>
 
                     <button
-                      onClick={() => toggleApp(app.id)}
+                      onClick={() => void toggleApp(app.id)}
                       className={`px-3 py-1 text-sm rounded-md ${
                         app.enabled
                           ? 'bg-yellow-900 hover:bg-yellow-800 text-yellow-300'

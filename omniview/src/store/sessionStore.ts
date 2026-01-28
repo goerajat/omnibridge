@@ -6,6 +6,11 @@ import type {
   StateChangePayload,
 } from '../types'
 
+export interface SessionWithApp extends Session {
+  appId: string
+  appName: string
+}
+
 interface SessionState {
   // Sessions by app ID
   sessionsByApp: Map<string, Session[]>
@@ -33,6 +38,7 @@ interface SessionState {
   getStats: (appId: string) => SessionStats | undefined
   getConnectionStatus: (appId: string) => ConnectionStatus
   getLastError: (appId: string) => string | undefined
+  getAllDisconnectedSessions: (appNames: Map<string, string>) => SessionWithApp[]
 }
 
 const defaultStats: SessionStats = {
@@ -203,4 +209,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     get().connectionStatus.get(appId) || 'disconnected',
 
   getLastError: (appId) => get().lastError.get(appId),
+
+  getAllDisconnectedSessions: (appNames) => {
+    const result: SessionWithApp[] = []
+    const { sessionsByApp } = get()
+
+    sessionsByApp.forEach((sessions, appId) => {
+      const appName = appNames.get(appId) || appId
+      for (const session of sessions) {
+        if (!session.connected && session.enabled) {
+          result.push({
+            ...session,
+            appId,
+            appName,
+          })
+        }
+      }
+    })
+
+    return result
+  },
 }))

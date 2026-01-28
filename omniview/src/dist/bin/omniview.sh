@@ -13,13 +13,15 @@ APP_NAME="omniview"
 JAR_FILE="$OMNIVIEW_HOME/lib/omniview.jar"
 PID_FILE="$OMNIVIEW_HOME/omniview.pid"
 LOG_FILE="$OMNIVIEW_HOME/logs/omniview.log"
+DATA_DIR="$OMNIVIEW_HOME/data"
 DEFAULT_PORT=3000
 
 # Java options
 JAVA_OPTS="${JAVA_OPTS:--Xms128m -Xmx512m}"
 
-# Ensure logs directory exists
+# Ensure directories exist
 mkdir -p "$OMNIVIEW_HOME/logs"
+mkdir -p "$DATA_DIR"
 
 # Get port from argument or use default
 get_port() {
@@ -66,7 +68,7 @@ start() {
     fi
 
     # Start the server
-    nohup java $JAVA_OPTS -Dport="$PORT" -jar "$JAR_FILE" > "$LOG_FILE" 2>&1 &
+    nohup java $JAVA_OPTS -Dport="$PORT" -Domniview.data.dir="$DATA_DIR" -jar "$JAR_FILE" > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
 
     # Wait and verify startup
