@@ -9,12 +9,12 @@
 
     <name>Connectivity - Ultra Low Latency FIX Engine</name>
     <description>High-performance FIX protocol engine with non-blocking I/O and shared memory persistence</description>
-    <url>https://github.com/goerajat/connectivity</url>
+    <url>https://github.com/goerajat/omnibridge</url>
 
     <scm>
-        <connection>scm:git:https://github.com/goerajat/connectivity.git</connection>
-        <developerConnection>scm:git:https://github.com/goerajat/connectivity.git</developerConnection>
-        <url>https://github.com/goerajat/connectivity</url>
+        <connection>scm:git:https://github.com/goerajat/omnibridge.git</connection>
+        <developerConnection>scm:git:https://github.com/goerajat/omnibridge.git</developerConnection>
+        <url>https://github.com/goerajat/omnibridge</url>
         <tag>HEAD</tag>
     </scm>
 
@@ -22,7 +22,7 @@
         <repository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/goerajat/connectivity</url>
+            <url>https://maven.pkg.github.com/goerajat/omnibridge</url>
         </repository>
     </distributionManagement>
 
