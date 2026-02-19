@@ -48,6 +48,7 @@ jobs:
             -DskipIntegrationTests=true \
             -DreleaseVersion=${{ inputs.releaseVersion }} \
             -DdevelopmentVersion=${{ inputs.developmentVersion }} \
+            -Darguments="-DskipTests -DskipIntegrationTests=true -Pskip-frontend" \
             -DdryRun=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
