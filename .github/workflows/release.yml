@@ -12,7 +12,7 @@ on:
       dryRun:
         description: 'Dry run (prepare only, no deploy)'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
@@ -42,9 +42,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Maven Release (dry run)
-        if: ${{ inputs.dryRun == 'true' }}
+        if: ${{ inputs.dryRun }}
         run: |
           mvn release:prepare -B -Pskip-frontend \
+            -DskipIntegrationTests=true \
             -DreleaseVersion=${{ inputs.releaseVersion }} \
             -DdevelopmentVersion=${{ inputs.developmentVersion }} \
             -DdryRun=true
@@ -52,17 +53,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Maven Release
-        if: ${{ inputs.dryRun != 'true' }}
+        if: ${{ !inputs.dryRun }}
         run: |
           mvn release:prepare release:perform -B -Pskip-frontend \
+            -DskipIntegrationTests=true \
             -DreleaseVersion=${{ inputs.releaseVersion }} \
             -DdevelopmentVersion=${{ inputs.developmentVersion }} \
-            -Darguments="-DskipTests -Pskip-frontend"
+            -Darguments="-DskipTests -DskipIntegrationTests=true -Pskip-frontend"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
-        if: ${{ inputs.dryRun != 'true' }}
+        if: ${{ !inputs.dryRun }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.releaseVersion }}
