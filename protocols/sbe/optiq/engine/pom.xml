@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.omnibridge</groupId>
         <artifactId>optiq-parent</artifactId>
-        <version>1.2.0-SNAPSHOT</version>
+        <version>1.0.1</version>
     </parent>
 
     <artifactId>optiq-engine</artifactId>
