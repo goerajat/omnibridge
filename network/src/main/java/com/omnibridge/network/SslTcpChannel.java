@@ -372,6 +372,12 @@ public class SslTcpChannel {
                 int payloadLength = buffer.getInt(index);
                 int payloadOffset = index + 4;
 
+                // Notify listener (e.g., for persistence logging)
+                var listener = delegateChannel.getOutgoingMessageListener();
+                if (listener != null) {
+                    listener.onOutgoingMessage(buffer, payloadOffset, payloadLength);
+                }
+
                 // Copy payload to appOutBuffer
                 appOutBuffer.clear();
                 for (int i = 0; i < payloadLength; i++) {
@@ -506,6 +512,14 @@ public class SslTcpChannel {
      */
     public boolean hasRingBufferMessages() {
         return delegateChannel.hasRingBufferMessages();
+    }
+
+    /**
+     * Set a listener to be notified of outgoing messages during ring buffer drain.
+     * Delegates to the underlying TcpChannel.
+     */
+    public void setOutgoingMessageListener(TcpChannel.OutgoingMessageListener listener) {
+        delegateChannel.setOutgoingMessageListener(listener);
     }
 
     /**

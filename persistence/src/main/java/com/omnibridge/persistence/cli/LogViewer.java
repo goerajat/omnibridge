@@ -2,6 +2,7 @@ package com.omnibridge.persistence.cli;
 
 import com.omnibridge.persistence.LogEntry;
 import com.omnibridge.persistence.LogStore;
+import com.omnibridge.persistence.chronicle.ChronicleLogStore;
 import com.omnibridge.persistence.memory.MemoryMappedLogStore;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -103,6 +104,24 @@ public class LogViewer implements Callable<Integer> {
         return msg.substring(start, end);
     }
 
+    /**
+     * Auto-detect store type and create the appropriate LogStore.
+     * If subdirectories contain .cq4 files, use ChronicleLogStore;
+     * otherwise fall back to MemoryMappedLogStore.
+     */
+    static LogStore openStore(File logDir) {
+        File[] subdirs = logDir.listFiles(File::isDirectory);
+        if (subdirs != null) {
+            for (File subdir : subdirs) {
+                File[] cq4Files = subdir.listFiles((d, name) -> name.endsWith(".cq4"));
+                if (cq4Files != null && cq4Files.length > 0) {
+                    return new ChronicleLogStore(logDir);
+                }
+            }
+        }
+        return openStore(logDir);
+    }
+
     // ==================== Common Options Mixin ====================
 
     static class CommonOptions {
@@ -192,7 +211,7 @@ public class LogViewer implements Callable<Integer> {
                 return 1;
             }
 
-            try (LogStore store = new MemoryMappedLogStore(logDir)) {
+            try (LogStore store = openStore(logDir)) {
                 Collection<String> streams = store.getStreamNames();
 
                 if (streams.isEmpty()) {
@@ -292,7 +311,7 @@ public class LogViewer implements Callable<Integer> {
                 return 1;
             }
 
-            try (LogStore store = new MemoryMappedLogStore(options.logDir);
+            try (LogStore store = openStore(options.logDir);
                  PrintWriter out = new PrintWriter(System.out, true)) {
 
                 OutputFormatter formatter = createFormatter(out);
@@ -389,7 +408,7 @@ public class LogViewer implements Callable<Integer> {
                 return 1;
             }
 
-            try (LogStore store = new MemoryMappedLogStore(options.logDir);
+            try (LogStore store = openStore(options.logDir);
                  PrintWriter out = new PrintWriter(System.out, true)) {
 
                 OutputFormatter formatter = createFormatter(out);
@@ -479,7 +498,7 @@ public class LogViewer implements Callable<Integer> {
                 return 1;
             }
 
-            try (LogStore store = new MemoryMappedLogStore(logDir)) {
+            try (LogStore store = openStore(logDir)) {
                 if ("json".equalsIgnoreCase(format)) {
                     printJsonStats(store);
                 } else {
@@ -635,7 +654,7 @@ public class LogViewer implements Callable<Integer> {
                 return 1;
             }
 
-            try (LogStore store = new MemoryMappedLogStore(options.logDir);
+            try (LogStore store = openStore(options.logDir);
                  PrintWriter out = new PrintWriter(System.out, true)) {
 
                 OutputFormatter formatter = OutputFormatter.text(out, options.verbose, options.decodeMsgTypes, options.getTimeZone());
@@ -744,7 +763,7 @@ public class LogViewer implements Callable<Integer> {
                 return 1;
             }
 
-            try (LogStore store = new MemoryMappedLogStore(options.logDir);
+            try (LogStore store = openStore(options.logDir);
                  PrintWriter out = new PrintWriter(new FileWriter(outputFile, append))) {
 
                 OutputFormatter formatter = createFormatter(out);

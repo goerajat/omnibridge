@@ -21,6 +21,15 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class TcpChannel {
 
+    /**
+     * Callback for outgoing messages drained from the ring buffer.
+     * Called on the event loop thread during {@link #drainRingBuffer()}.
+     */
+    @FunctionalInterface
+    public interface OutgoingMessageListener {
+        void onOutgoingMessage(org.agrona.DirectBuffer buffer, int offset, int length);
+    }
+
     private static final Logger log = LoggerFactory.getLogger(TcpChannel.class);
     private static final AtomicLong ID_GENERATOR = new AtomicLong(0);
 
@@ -50,6 +59,8 @@ public class TcpChannel {
 
     // Direct ByteBuffer view of ring buffer for zero-copy socket writes
     private final ByteBuffer ringBufferDirectView;
+
+    private OutgoingMessageListener outgoingMessageListener;
 
     private SelectionKey selectionKey;
     private volatile boolean connected;
@@ -179,6 +190,21 @@ public class TcpChannel {
      */
     void markConnected() {
         this.connected = true;
+    }
+
+    /**
+     * Set a listener to be notified of outgoing messages during ring buffer drain.
+     * The listener is called on the event loop thread.
+     */
+    public void setOutgoingMessageListener(OutgoingMessageListener listener) {
+        this.outgoingMessageListener = listener;
+    }
+
+    /**
+     * Get the outgoing message listener.
+     */
+    public OutgoingMessageListener getOutgoingMessageListener() {
+        return outgoingMessageListener;
     }
 
     // ==================== Ring Buffer Methods ====================
@@ -365,6 +391,11 @@ public class TcpChannel {
                 // First 4 bytes = payload length (not sent)
                 int payloadLength = buffer.getInt(index);
                 int payloadOffset = index + LENGTH_PREFIX_SIZE;
+
+                // Notify listener (e.g., for persistence logging)
+                if (outgoingMessageListener != null) {
+                    outgoingMessageListener.onOutgoingMessage(buffer, payloadOffset, payloadLength);
+                }
 
                 // Set up direct view of payload (zero-copy)
                 ringBufferDirectView.limit(payloadOffset + payloadLength);

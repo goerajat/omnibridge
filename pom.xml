@@ -11,6 +11,22 @@
 
     <name>Connectivity - Ultra Low Latency FIX Engine</name>
     <description>High-performance FIX protocol engine with non-blocking I/O and shared memory persistence</description>
+    <url>https://github.com/goerajat/connectivity</url>
+
+    <scm>
+        <connection>scm:git:https://github.com/goerajat/connectivity.git</connection>
+        <developerConnection>scm:git:https://github.com/goerajat/connectivity.git</developerConnection>
+        <url>https://github.com/goerajat/connectivity</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/goerajat/connectivity</url>
+        </repository>
+    </distributionManagement>
 
     <modules>
         <!-- Core infrastructure modules -->
@@ -39,7 +55,7 @@
         <logback.version>1.4.14</logback.version>
         <junit.version>5.10.1</junit.version>
         <jna.version>5.14.0</jna.version>
-        <chronicle.version>2.24ea23</chronicle.version>
+        <chronicle.version>5.24ea23</chronicle.version>
         <agrona.version>1.20.0</agrona.version>
         <jackson.version>2.16.1</jackson.version>
         <picocli.version>4.7.5</picocli.version>
@@ -281,6 +297,22 @@
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
                     <version>3.1.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-release-plugin</artifactId>
+                    <version>3.1.1</version>
+                    <configuration>
+                        <tagNameFormat>v@{project.version}</tagNameFormat>
+                        <autoVersionSubmodules>true</autoVersionSubmodules>
+                        <releaseProfiles>release</releaseProfiles>
+                        <scmCommentPrefix>[release] </scmCommentPrefix>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>3.1.2</version>
                 </plugin>
             </plugins>
         </pluginManagement>

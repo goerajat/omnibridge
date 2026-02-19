@@ -30,6 +30,7 @@
     -->
 
     <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
         <!-- Default test type: all -->
         <it.type>all</it.type>
         <!-- Latency test parameters -->
@@ -93,12 +94,25 @@
                         <id>run-integration-tests</id>
                         <phase>integration-test</phase>
                         <goals>
-                            <goal>java</goal>
+                            <goal>exec</goal>
                         </goals>
                         <configuration>
                             <skip>${skipIntegrationTests}</skip>
-                            <mainClass>com.omnibridge.build.IntegrationTestRunner</mainClass>
+                            <executable>java</executable>
+                            <workingDirectory>${project.basedir}/..</workingDirectory>
                             <arguments>
+                                <!-- Chronicle Queue (Java 17+) requires these module opens -->
+                                <argument>--add-opens</argument><argument>java.base/java.lang=ALL-UNNAMED</argument>
+                                <argument>--add-opens</argument><argument>java.base/java.lang.reflect=ALL-UNNAMED</argument>
+                                <argument>--add-opens</argument><argument>java.base/java.io=ALL-UNNAMED</argument>
+                                <argument>--add-opens</argument><argument>java.base/java.nio=ALL-UNNAMED</argument>
+                                <argument>--add-opens</argument><argument>java.base/sun.nio.ch=ALL-UNNAMED</argument>
+                                <argument>--add-opens</argument><argument>java.base/jdk.internal.misc=ALL-UNNAMED</argument>
+                                <argument>--add-exports</argument><argument>java.base/jdk.internal.misc=ALL-UNNAMED</argument>
+                                <argument>--add-exports</argument><argument>java.base/jdk.internal.ref=ALL-UNNAMED</argument>
+                                <argument>--add-exports</argument><argument>java.base/sun.nio.ch=ALL-UNNAMED</argument>
+                                <argument>-classpath</argument><argument>${project.build.directory}/classes</argument>
+                                <argument>com.omnibridge.build.IntegrationTestRunner</argument>
                                 <argument>${it.type}</argument>
                                 <argument>--warmup</argument>
                                 <argument>${latency.warmup}</argument>

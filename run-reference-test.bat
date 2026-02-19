@@ -39,10 +39,13 @@ echo Tester JAR: %TESTER_JAR%
 echo Tests: %TESTS%
 echo ==========================================================================
 
+REM JVM options for Chronicle Queue (Java 17+)
+set CHRONICLE_OPTS=--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.ref=ALL-UNNAMED --add-exports java.base/sun.nio.ch=ALL-UNNAMED
+
 REM Start acceptor in background
 echo.
 echo Starting FIX Acceptor in background...
-start "" /b java -jar "%ACCEPTOR_JAR%" -c "%CONFIG_DIR%\acceptor.conf" > acceptor-ref-test.log 2>&1
+start "" /b java %CHRONICLE_OPTS% -jar "%ACCEPTOR_JAR%" -c "%CONFIG_DIR%\acceptor.conf" > acceptor-ref-test.log 2>&1
 
 REM Wait for acceptor to start
 echo Waiting for acceptor to start...
@@ -74,7 +77,7 @@ echo.
 echo Running Reference Tester (QuickFIX/J)...
 echo ==========================================================================
 echo.
-java -jar "%TESTER_JAR%" test --host localhost --port 9876 --sender CLIENT --target EXCHANGE --tests %TESTS%
+java %CHRONICLE_OPTS% -jar "%TESTER_JAR%" test --host localhost --port 9876 --sender CLIENT --target EXCHANGE --tests %TESTS%
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
 

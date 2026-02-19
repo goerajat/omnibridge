@@ -14,6 +14,10 @@
     <name>FIX Session Tester</name>
     <description>Test framework for FIX session functionality</description>
 
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <dependencies>
         <!-- Internal modules -->
         <dependency>

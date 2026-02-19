@@ -44,10 +44,13 @@ echo ==========================================================================
 REM JVM options for low latency
 set JVM_OPTS=-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch -Dagrona.disable.bounds.checks=true
 
+REM JVM options for Chronicle Queue (Java 17+)
+set CHRONICLE_OPTS=--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.ref=ALL-UNNAMED --add-exports java.base/sun.nio.ch=ALL-UNNAMED
+
 REM Start OUCH 5.0 acceptor in background
 echo.
 echo Starting OUCH 5.0 Acceptor in background...
-start "" /b java %JVM_OPTS% -jar "%UBER_JAR%" -c ouch-acceptor-v50.conf --latency > ouch-acceptor-v50.log 2>&1
+start "" /b java %JVM_OPTS% %CHRONICLE_OPTS% -jar "%UBER_JAR%" -c ouch-acceptor-v50.conf --latency > ouch-acceptor-v50.log 2>&1
 
 REM Wait for acceptor to start
 echo Waiting for acceptor to start...
@@ -78,7 +81,7 @@ REM Run OUCH 5.0 initiator in latency mode
 echo.
 echo Starting OUCH 5.0 Initiator in latency mode...
 echo.
-java %JVM_OPTS% -cp "%UBER_JAR%" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator -c ouch-initiator-v50.conf --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
+java %JVM_OPTS% %CHRONICLE_OPTS% -cp "%UBER_JAR%" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator -c ouch-initiator-v50.conf --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
 

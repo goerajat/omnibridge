@@ -61,10 +61,13 @@ cleanup() {
 
 trap cleanup EXIT
 
+# JVM options for Chronicle Queue (Java 17+)
+CHRONICLE_OPTS="--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.ref=ALL-UNNAMED --add-exports java.base/sun.nio.ch=ALL-UNNAMED"
+
 # Start acceptor in background
 echo ""
 echo "Starting FIX Acceptor in background..."
-java -jar "$ACCEPTOR_JAR" -c "$CONFIG_DIR/acceptor.conf" > acceptor-session-test.log 2>&1 &
+java $CHRONICLE_OPTS -jar "$ACCEPTOR_JAR" -c "$CONFIG_DIR/acceptor.conf" > acceptor-session-test.log 2>&1 &
 ACCEPTOR_PID=$!
 
 # Wait for acceptor to start
@@ -96,7 +99,7 @@ echo "==========================================================================
 echo ""
 
 TEST_EXIT_CODE=0
-java -jar "$TESTER_JAR" --host localhost --port 9876 --sender CLIENT --target EXCHANGE --tests $TESTS --report-format $REPORT_FORMAT || TEST_EXIT_CODE=$?
+java $CHRONICLE_OPTS -jar "$TESTER_JAR" --host localhost --port 9876 --sender CLIENT --target EXCHANGE --tests $TESTS --report-format $REPORT_FORMAT || TEST_EXIT_CODE=$?
 
 echo ""
 echo "=========================================================================="

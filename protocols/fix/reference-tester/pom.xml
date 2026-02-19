@@ -16,6 +16,7 @@
 
     <properties>
         <quickfixj.version>2.3.1</quickfixj.version>
+        <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 
     <dependencies>

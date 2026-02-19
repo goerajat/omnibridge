@@ -128,6 +128,9 @@ public class FixSession implements NetworkHandler {
      */
     public void setChannel(TcpChannel channel) {
         this.channel = channel;
+        if (channel != null) {
+            registerOutgoingMessageListener(channel);
+        }
     }
 
     /**
@@ -215,6 +218,7 @@ public class FixSession implements NetworkHandler {
     public void onConnected(TcpChannel channel) {
         log.info("[{}] Connected to {}:{}", config.getSessionId(), config.getHost(), config.getPort());
         this.channel = channel;
+        registerOutgoingMessageListener(channel);
         setState(SessionState.CONNECTED);
         lastReceivedTime = clockProvider.currentTimeMillis();
 
@@ -455,6 +459,46 @@ public class FixSession implements NetworkHandler {
                 .build();
             logStore.write(entry);
         }
+    }
+
+    /**
+     * Register an outgoing message listener on the channel for persistence logging.
+     * The listener fires during ring buffer drain on the event loop thread,
+     * ensuring single-writer semantics for Chronicle Queue.
+     */
+    private void registerOutgoingMessageListener(TcpChannel channel) {
+        if (logStore != null && config.isLogMessages()) {
+            channel.setOutgoingMessageListener((buffer, offset, length) -> {
+                byte[] logCopy = new byte[length];
+                buffer.getBytes(offset, logCopy, 0, length);
+                int seqNum = parseSeqNum(logCopy);
+                LogEntry entry = LogEntry.builder()
+                    .timestamp(Instant.now().toEpochMilli())
+                    .sequenceNumber(seqNum)
+                    .direction(LogEntry.Direction.OUTBOUND)
+                    .streamName(config.getSessionId())
+                    .rawMessage(logCopy)
+                    .build();
+                logStore.write(entry);
+            });
+        }
+    }
+
+    /**
+     * Parse MsgSeqNum (tag 34) from raw FIX message bytes.
+     * Scans for SOH + "34=" pattern and parses the integer value inline.
+     */
+    private static int parseSeqNum(byte[] fixMessage) {
+        for (int i = 0; i < fixMessage.length - 4; i++) {
+            if (fixMessage[i] == 0x01 && fixMessage[i + 1] == '3' && fixMessage[i + 2] == '4' && fixMessage[i + 3] == '=') {
+                int num = 0;
+                for (int j = i + 4; j < fixMessage.length && fixMessage[j] != 0x01; j++) {
+                    num = num * 10 + (fixMessage[j] - '0');
+                }
+                return num;
+            }
+        }
+        return 0;
     }
 
     // ==================== Incoming Admin Message Handlers (for pooled messages) ====================
@@ -731,18 +775,9 @@ public class FixSession implements NetworkHandler {
         long sendingTime = clockProvider.currentTimeMillis();
         int messageLength = msg.prepareForSend(sendingTime);
 
-        // Log outgoing message
-        if (logStore != null && config.isLogMessages()) {
-            byte[] logCopy = msg.toByteArray();
-            LogEntry entry = LogEntry.builder()
-                .timestamp(Instant.now().toEpochMilli())
-                .sequenceNumber(msg.getSeqNum())
-                .direction(LogEntry.Direction.OUTBOUND)
-                .streamName(config.getSessionId())
-                .rawMessage(logCopy)
-                .build();
-            logStore.write(entry);
-        }
+        // Outgoing message logging is handled by the OutgoingMessageListener
+        // registered on the TcpChannel, which fires during ring buffer drain
+        // on the event loop thread (ensuring single-writer for Chronicle Queue).
 
         // Commit to ring buffer
         TcpChannel ch = channel;

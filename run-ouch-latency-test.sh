@@ -38,6 +38,9 @@ echo "==========================================================================
 # -Dagrona.disable.bounds.checks=true removes bounds checking from UnsafeBuffer for max performance
 JVM_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+AlwaysPreTouch -Dagrona.disable.bounds.checks=true"
 
+# JVM options for Chronicle Queue (Java 17+)
+CHRONICLE_OPTS="--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.misc=ALL-UNNAMED --add-exports java.base/jdk.internal.ref=ALL-UNNAMED --add-exports java.base/sun.nio.ch=ALL-UNNAMED"
+
 ACCEPTOR_PID=""
 
 # Cleanup function
@@ -62,7 +65,7 @@ trap cleanup EXIT
 # Start OUCH acceptor in background (uber jar default main class is acceptor)
 echo ""
 echo "Starting OUCH Acceptor in background..."
-java $JVM_OPTS -jar "$UBER_JAR" --latency > ouch-acceptor.log 2>&1 &
+java $JVM_OPTS $CHRONICLE_OPTS -jar "$UBER_JAR" --latency > ouch-acceptor.log 2>&1 &
 ACCEPTOR_PID=$!
 
 # Wait for acceptor to start (check if port is listening)
@@ -99,7 +102,7 @@ echo "Starting OUCH Initiator in latency mode..."
 echo ""
 
 TEST_EXIT_CODE=0
-java $JVM_OPTS -cp "$UBER_JAR" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+java $JVM_OPTS $CHRONICLE_OPTS -cp "$UBER_JAR" com.omnibridge.apps.ouch.initiator.SampleOuchInitiator --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
 
 echo "=========================================================================="
 if [ $TEST_EXIT_CODE -eq 0 ]; then

@@ -922,7 +922,8 @@ public class FixEngine implements Component {
         // Create EOD event
         EodEvent event = new EodEvent(sessionId, Instant.now(), type, previousOutSeq, previousInSeq);
 
-        // Log EOD event to persistence
+        // Log EOD event to persistence (routed through event loop to ensure
+        // single-writer semantics for Chronicle Queue)
         if (logStore != null) {
             LogEntry eodEntry = LogEntry.builder()
                 .timestamp(Instant.now().toEpochMilli())
@@ -932,7 +933,7 @@ public class FixEngine implements Component {
                 .metadata(event.toMetadataJson())
                 .rawMessage(new byte[0])  // no raw message
                 .build();
-            logStore.write(eodEntry);
+            eventLoop.execute(() -> logStore.write(eodEntry));
         }
 
         // Reset sequence numbers
@@ -1188,8 +1189,10 @@ public class FixEngine implements Component {
                 routedSession.setChannel(channel);
                 routedSession.onConnected(channel);
 
-                // Remove from pending connections
-                parentHandler.removePendingConnection(channel);
+                // Keep the PendingConnectionHandler in the pendingConnections map
+                // so that subsequent data/disconnect events from the NetworkEventLoop
+                // (which still routes through MultiSessionAcceptorHandler) can be
+                // delegated to the routed session via this handler's routedSession field.
 
                 // Replay buffered data to the session
                 if (bufferPosition > 0) {
