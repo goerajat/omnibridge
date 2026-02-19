@@ -1,264 +1,316 @@
-# Connectivity - Ultra Low Latency FIX Engine
+# OmniBridge
 
-High-performance FIX protocol engine with non-blocking I/O and shared memory persistence.
+Ultra-low-latency, multi-protocol connectivity engine for financial markets.
+
+[![CI](https://github.com/goerajat/omnibridge/actions/workflows/ci.yml/badge.svg)](https://github.com/goerajat/omnibridge/actions/workflows/ci.yml)
+
+## Overview
+
+OmniBridge is a high-performance protocol engine built in Java 17 for electronic trading connectivity. It provides a unified architecture for multiple exchange protocols with sub-microsecond message processing, lock-free I/O, shared-memory persistence, and real-time monitoring — designed from the ground up for latency-sensitive environments.
+
+## Supported Protocols
+
+| Protocol | Versions | Transport | Use Case |
+|----------|----------|-----------|----------|
+| **FIX** | 4.2, 4.4, 5.0 | TCP | Equities, derivatives, FX |
+| **OUCH** | 4.2, 5.0 | TCP (SoupBinTCP) | NASDAQ-style order entry |
+| **iLink 3** | CME | TCP (SBE) | CME Globex derivatives |
+| **Optiq** | Euronext OEG | TCP (SBE) | Euronext cash & derivatives |
+| **Pillar** | NYSE | TCP (binary) | NYSE equities |
+
+## Low-Latency Design
+
+OmniBridge applies several techniques to minimize latency across the message path:
+
+- **Lock-free ring buffers** — Agrona `ManyToOneRingBuffer` for zero-contention inter-thread messaging
+- **Zero-copy message encoding** — Flyweight pattern over `DirectByteBuffer`; no intermediate object allocation
+- **Single-threaded event loop** — `NetworkEventLoop` with non-blocking NIO; one thread handles all I/O
+- **CPU affinity** — Pin event-loop threads to isolated cores via JNA
+- **Busy-spin mode** — Optional busy-wait polling for sub-microsecond wake-up latency
+- **Pre-allocated buffers** — All read/write buffers allocated at startup; no allocations on the hot path
+- **GC tuning** — G1GC with 10ms max pause target; `-XX:+AlwaysPreTouch` for predictable memory access
+
+## Persistence
+
+Three persistence modes for message logging and replay:
+
+| Mode | Implementation | Description |
+|------|----------------|-------------|
+| `chronicle` | Chronicle Queue | Memory-mapped append-only log with microsecond writes (default) |
+| `memory-mapped` | Custom `MemoryMappedLogStore` | Lightweight memory-mapped files without Chronicle dependency |
+| `none` | — | No persistence; lowest latency |
+
+Features:
+- Replay from any sequence number for gap-fill and recovery
+- Per-session log streams with configurable max file size
+- CLI `LogViewer` for offline log inspection and filtering
+
+## OmniView — Real-Time Monitoring
+
+OmniView is a web-based dashboard for monitoring OmniBridge engine instances.
+
+- **React SPA** served from an embedded Jetty server
+- **WebSocket** push for real-time session state updates
+- **Dashboard** with application cards showing session health at a glance
+- **Session actions** — enable/disable sessions directly from the UI
+- **Protocol filtering** — view FIX, OUCH, or all sessions
+- **Multi-app support** — monitor multiple engine instances with automatic reconnection
 
 ## Project Structure
 
 ```
-connectivity/
-├── fix-network-io/      # Non-blocking TCP networking
-├── fix-persistence/     # Shared memory message logging
-├── fix-message/         # FIX message parsing/serialization
-├── fix-engine/          # Core FIX protocol engine
-├── fix-sample-apps/     # Sample initiator and acceptor
-├── fix-session-tester/  # Session testing CLI tool
-├── fix-admin-api/       # REST API for administration
-└── fix-admin-ui/        # React web UI for administration
+omnibridge/
+├── config/                          # HOCON configuration & component lifecycle
+├── network/                         # Non-blocking TCP I/O, CPU affinity, event loop
+├── persistence/                     # Chronicle Queue & memory-mapped log stores
+├── admin/                           # REST + WebSocket admin API (Javalin)
+├── protocols/
+│   ├── fix/
+│   │   ├── dictionary/              # FIX data dictionary parser
+│   │   ├── message/                 # FIX message codec (flyweight)
+│   │   ├── engine/                  # FIX session & engine
+│   │   ├── session-tester/          # Session-level test CLI
+│   │   └── reference-tester/        # QuickFIX/J interoperability tests
+│   ├── ouch/
+│   │   ├── message/                 # OUCH binary message codec (v4.2 / v5.0)
+│   │   └── engine/                  # OUCH session & engine
+│   └── sbe/
+│       ├── message/                 # SBE base message classes & pool
+│       ├── engine/                  # SBE base engine & session
+│       ├── ilink3/                  # CME iLink 3 (message + engine)
+│       ├── optiq/                   # Euronext Optiq (message + engine)
+│       └── pillar/                  # NYSE Pillar (message + engine)
+├── apps/
+│   ├── common/                      # Shared application base & lifecycle
+│   ├── fix-samples/                 # FIX initiator & acceptor samples
+│   ├── ouch-samples/                # OUCH initiator & acceptor samples
+│   ├── ilink3-samples/              # iLink 3 samples
+│   ├── optiq-samples/               # Optiq samples
+│   ├── pillar-samples/              # Pillar samples
+│   ├── exchange-simulator-core/     # Order book & fill engine library
+│   └── exchange-simulator/          # Multi-protocol exchange simulator
+├── omniview/                        # React monitoring dashboard
+└── build-tools/                     # Integration test runner
 ```
 
-## Prerequisites
+## Quick Start
 
-- Java 17 or higher
+### Prerequisites
+
+- Java 17+
 - Maven 3.8+
-- Node.js 18+ and npm (for the React UI)
+- Node.js 18+ (for OmniView only)
 
-## Build Instructions
-
-### Build All Java Modules
+### Build
 
 ```bash
-cd connectivity
-mvn clean install
+mvn install -DskipTests
 ```
 
-This builds all Maven modules including:
-- fix-network-io
-- fix-persistence
-- fix-message
-- fix-engine
-- fix-sample-apps
-- fix-session-tester
-- fix-admin-api
-
-### Build React UI
+### Run the FIX Sample Acceptor
 
 ```bash
-cd fix-admin-ui
-npm install
-npm run build
+java -jar apps/fix-samples/target/fix-samples-*-all.jar
 ```
 
-## Running the Applications
+The acceptor listens on port **9876** with default CompIDs `EXCHANGE` / `CLIENT`.
 
-### 1. Sample Acceptor (Exchange Simulator)
-
-Start the sample acceptor to simulate an exchange:
+### Run Latency Tests
 
 ```bash
-cd fix-sample-apps
-java -jar target/fix-sample-apps-1.0.0-SNAPSHOT-all.jar --port 9880
+# FIX
+./run-latency-test.sh 10000 1000 100
+
+# OUCH 4.2
+./run-ouch-latency-test.sh 10000 1000 100
+
+# OUCH 5.0
+./run-ouch-latency-test-v50.sh 10000 1000 100
 ```
 
-Options:
-- `--port` - Port to listen on (default: 9880)
-- `--sender` - SenderCompID (default: EXCHANGE)
-- `--target` - TargetCompID (default: CLIENT)
-- `--fill-rate` - Order fill rate 0.0-1.0 (default: 1.0)
-
-### 2. Sample Initiator (Trading Client)
-
-Start the sample initiator to connect to an acceptor:
-
-```bash
-cd fix-sample-apps
-java -cp target/fix-sample-apps-1.0.0-SNAPSHOT-all.jar \
-  com.omnibridge.samples.initiator.SampleInitiator \
-  --host localhost --port 9880
-```
-
-Options:
-- `--host` - Target host (default: localhost)
-- `--port` - Target port (default: 9880)
-- `--sender` - SenderCompID (default: CLIENT)
-- `--target` - TargetCompID (default: EXCHANGE)
-- `--mode` - Mode: interactive, auto, warmup, latency
-
-### 3. REST Admin API
-
-Start the Spring Boot REST API:
-
-```bash
-cd fix-admin-api
-mvn spring-boot:run
-```
-
-Or run the packaged JAR:
-
-```bash
-java -jar target/fix-admin-api-1.0.0-SNAPSHOT.jar
-```
-
-The API will be available at:
-- REST API: http://localhost:8080/api/sessions
-- Swagger UI: http://localhost:8080/swagger-ui.html
-- WebSocket: ws://localhost:8080/ws/sessions
-
-### 4. React Admin UI
-
-Development mode:
-
-```bash
-cd fix-admin-ui
-npm install
-npm run dev
-```
-
-The UI will be available at http://localhost:3000
-
-Production build:
-
-```bash
-npm run build
-npm run preview
-```
-
-### 5. Session Tester CLI
-
-Run tests against a FIX acceptor:
-
-```bash
-cd fix-session-tester
-java -jar target/fix-session-tester-1.0.0-SNAPSHOT-all.jar \
-  --host localhost \
-  --port 9880 \
-  --tests all \
-  --report-format text
-```
-
-Options:
-- `--host, -h` - Target host (default: localhost)
-- `--port, -p` - Target port (default: 9880)
-- `--sender` - SenderCompID (default: TESTER)
-- `--target` - TargetCompID (default: ACCEPTOR)
-- `--tests, -t` - Comma-separated test names or "all"
-- `--report-format, -f` - Output format: text, json, html
-- `--output, -o` - Output file (stdout if not specified)
-- `--timeout` - Default timeout in seconds (default: 30)
-- `--list-tests, -l` - List available tests and exit
-
-Available tests:
-- `LogonLogoutTest` - Tests logout, disconnect, reconnect, logon sequence
-- `SequenceNumberTest` - Tests sequence number get/set/reset operations
-- `TestRequestTest` - Tests TestRequest/Heartbeat exchange
-- `HeartbeatTest` - Tests automatic heartbeat timing
-- `ResendRequestTest` - Tests resend request handling
-
-## REST API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/sessions` | List all sessions |
-| GET | `/api/sessions/{id}` | Get session details |
-| POST | `/api/sessions/{id}/connect` | Connect session |
-| POST | `/api/sessions/{id}/disconnect` | Disconnect session |
-| POST | `/api/sessions/{id}/logout` | Logout session |
-| POST | `/api/sessions/{id}/reset-sequence` | Reset sequence numbers to 1 |
-| POST | `/api/sessions/{id}/set-outgoing-seq` | Set outgoing sequence number |
-| POST | `/api/sessions/{id}/set-incoming-seq` | Set incoming sequence number |
-| POST | `/api/sessions/{id}/send-test-request` | Send test request |
-| POST | `/api/sessions/{id}/trigger-eod` | Trigger End of Day reset |
-| GET | `/api/sessions/health` | Health check |
-
-Query parameters for GET `/api/sessions`:
-- `state` - Filter by session state
-- `connected` - Filter by TCP connection status
-- `loggedOn` - Filter by FIX logon status
+Parameters: `[warmup-orders] [test-orders] [rate]`. Results include min, max, avg, p50, p90, p95, p99, and p99.9 latencies.
 
 ## Configuration
 
-### Session Configuration
+OmniBridge uses [HOCON](https://github.com/lightbend/config) for configuration. Example:
 
-```java
-SessionConfig config = SessionConfig.builder()
-    .sessionName("MySession")
-    .senderCompId("CLIENT")
-    .targetCompId("EXCHANGE")
-    .host("localhost")
-    .port(9880)
-    .initiator()  // or .acceptor()
-    .heartbeatInterval(30)
-    .resetOnLogon(true)
-    .resetOnLogout(false)
-    .resetOnDisconnect(false)
-    .eodTime(LocalTime.of(17, 0))  // EOD at 5pm
-    .resetOnEod(true)
-    .persistencePath("./fix-logs")
-    .build();
+```hocon
+# Network event loop
+network {
+    name = "main-event-loop"
+    cpu-affinity = 2                   # Pin to core 2 (-1 to disable)
+    read-buffer-size = 65536
+    write-buffer-size = 65536
+    busy-spin-mode = false             # true for lowest latency
+}
+
+# Persistence
+persistence {
+    enabled = true
+    store-type = "chronicle"           # chronicle | memory-mapped | none
+    base-path = "./data/fix-logs"
+    max-file-size = 256MB
+    sync-on-write = false
+}
+
+# FIX sessions
+fix-engine {
+    sessions = [
+        {
+            session-id = "PROD-1"
+            port = 9876
+            sender-comp-id = "MYAPP"
+            target-comp-id = "EXCHANGE"
+            initiator = true
+            host = "exchange.example.com"
+            begin-string = "FIX.4.4"
+            heartbeat-interval = 30
+        }
+    ]
+}
+
+# Admin API
+admin {
+    enabled = true
+    port = 8080
+    context-path = "/api"
+    websocket {
+        enabled = true
+        path = "/ws"
+    }
+}
 ```
 
-### Engine Configuration
+## Testing
 
-```java
-EngineConfig engineConfig = EngineConfig.builder()
-    .persistencePath("./fix-logs")
-    .maxLogFileSize(1024 * 1024 * 1024)  // 1GB
-    .cpuAffinity(0)  // Pin to CPU 0, or -1 for no affinity
-    .addSession(sessionConfig)
-    .build();
+### Reference Tests (QuickFIX/J Interoperability)
+
+```bash
+./run-reference-test.sh all
+./run-reference-test.sh HeartbeatTest,NewOrderTest
 ```
 
-### Admin API Configuration (application.yml)
+Available: `HeartbeatTest`, `SequenceNumberTest`, `NewOrderTest`, `MarketOrderTest`, `OrderCancelTest`, `OrderModifyTest`, `MultipleOrdersTest`, `LogonLogoutTest`
 
-```yaml
-server:
-  port: 8080
+### Session Tests
 
-fix:
-  engine:
-    enabled: true
-    persistence-path: ./fix-logs
+```bash
+./run-session-test.sh all text
+./run-session-test.sh HeartbeatTest json
 ```
 
-## End of Day (EOD) Functionality
+Available: `LogonLogoutTest`, `SequenceNumberTest`, `TestRequestTest`, `HeartbeatTest`, `ResendRequestTest`
 
-Sessions can be configured to automatically reset sequence numbers at a specific time:
+Report formats: `text` (default), `json`, `html`
 
-```java
-SessionConfig.builder()
-    .eodTime(LocalTime.of(17, 0))  // 5:00 PM
-    .resetOnEod(true)
-    .timeZone("America/New_York")
-    .build();
-```
-
-EOD events are:
-- Logged to persistence with metadata
-- Broadcast via WebSocket to connected clients
-- Triggerable manually via API: `POST /api/sessions/{id}/trigger-eod`
-
-## Development
-
-### Running Tests
+### Unit Tests
 
 ```bash
 mvn test
 ```
 
-### Code Style
+## Exchange Simulator
 
-The project follows standard Java conventions:
-- Builder pattern for configuration objects
-- CopyOnWriteArrayList for thread-safe listeners
-- AtomicInteger/AtomicReference for thread-safe state
-- SLF4J for logging
+A multi-protocol exchange simulator with a configurable fill engine for development and testing.
+
+**Supported protocols:** FIX, OUCH 4.2, OUCH 5.0, iLink 3, Optiq, Pillar
+
+**Default ports:**
+
+| Protocol | Port |
+|----------|------|
+| FIX | 9876 |
+| OUCH 4.2 | 9200 |
+| OUCH 5.0 | 9201 |
+| iLink 3 | 9300 |
+| Optiq | 9400 |
+| Pillar | 9500 |
+| Admin API | 8080 |
+
+**Fill rules** are symbol-driven and configurable — set fill probability, partial-fill ratios, and match patterns like `TEST*`, `HALT*`, or `*` (default).
+
+## Admin API
+
+### REST Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/sessions` | List all sessions |
+| GET | `/api/sessions/stats` | Session statistics |
+| GET | `/api/sessions/{id}` | Get session by ID |
+| POST | `/api/sessions/{id}/enable` | Enable a session |
+| POST | `/api/sessions/{id}/disable` | Disable a session |
+| POST | `/api/sessions/enable-all` | Enable all sessions |
+| POST | `/api/sessions/disable-all` | Disable all sessions |
+| GET | `/api/sessions/protocol/{type}` | Filter sessions by protocol |
+| GET | `/api/sessions/connected` | List connected sessions |
+| GET | `/api/sessions/logged-on` | List logged-on sessions |
+| PUT | `/api/sessions/{id}/sequence` | Set sequence numbers |
+
+### WebSocket
+
+Connect to `/ws` for real-time session state change events (JSON).
+
+## Deployment
+
+### Distribution Packages
+
+Build produces distribution archives for sample apps, the exchange simulator, and OmniView:
+
+```bash
+mvn package -DskipTests
+```
+
+Outputs:
+- `apps/fix-samples/target/fix-samples-*-dist.tar.gz`
+- `apps/ouch-samples/target/ouch-samples-*-dist.tar.gz`
+- `apps/exchange-simulator/target/exchange-simulator-*-dist.tar.gz`
+- `omniview/target/omniview-*-dist.tar.gz`
+
+### Remote Deployment
+
+```bash
+# Sample acceptors
+./deploy-samples.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100
+
+# Exchange simulator
+./deploy-exchange-simulator.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100
+
+# OmniView
+./deploy-omniview.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100 -p 3000
+```
+
+### OmniView Management
+
+```bash
+bin/omniview.sh start [port]    # Default port: 3000
+bin/omniview.sh stop
+bin/omniview.sh status
+bin/omniview.sh restart [port]
+```
+
+## Tech Stack
+
+| Component | Library | Version |
+|-----------|---------|---------|
+| Ring buffers | Agrona | 1.20.0 |
+| Persistence | Chronicle Queue | 5.24ea23 |
+| Configuration | Lightbend Config (HOCON) | 1.4.3 |
+| Admin API | Javalin | 6.1.3 |
+| Monitoring UI | React + Vite | — |
+| CPU affinity | JNA | 5.14.0 |
+| CLI | picocli | 4.7.5 |
+| Serialization | Jackson | 2.16.1 |
+| Logging | SLF4J + Logback | 2.0.9 / 1.4.14 |
+| Reference testing | QuickFIX/J | 2.3.1 |
+| Build | Maven + Java 17 | — |
 
 ## License
 
-Proprietary - All rights reserved.
+Proprietary — All rights reserved.
 
 ## AI / Machine Learning Usage Prohibited
 
 No part of this repository—including source code, documentation, comments, or commit history—may be used to train, fine-tune, or improve machine learning or artificial intelligence models (including large language models), whether for commercial or non-commercial purposes, without prior written consent from the repository owner.
 The contents of this repository are expressly excluded from use in training, fine-tuning, or benchmarking artificial intelligence or machine learning models (including but not limited to large language models).
 Any such use is prohibited without explicit, prior, written permission from the repository owner. This restriction applies to all forms of data extraction, scraping, aggregation, or automated analysis for AI-related purposes.
-
