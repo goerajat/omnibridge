@@ -36,7 +36,7 @@ class ConfigLoaderTest {
         assertEquals(65536, config.getInt("network.read-buffer-size"));
 
         assertTrue(config.getBoolean("persistence.enabled"));
-        assertEquals("memory-mapped", config.getString("persistence.store-type"));
+        assertEquals("chronicle", config.getString("persistence.store-type"));
     }
 
     @Test
