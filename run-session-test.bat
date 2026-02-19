@@ -12,8 +12,10 @@ REM ==========================================================================
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
-set ACCEPTOR_JAR=apps\fix-samples\target\fix-samples-1.0.0-SNAPSHOT-all.jar
-set TESTER_JAR=protocols\fix\session-tester\target\session-tester-1.0.0-SNAPSHOT-all.jar
+set ACCEPTOR_JAR=
+for /f "delims=" %%i in ('dir /b apps\fix-samples\target\fix-samples-*-all.jar 2^>nul') do set ACCEPTOR_JAR=apps\fix-samples\target\%%i
+set TESTER_JAR=
+for /f "delims=" %%i in ('dir /b protocols\fix\session-tester\target\session-tester-*-all.jar 2^>nul') do set TESTER_JAR=protocols\fix\session-tester\target\%%i
 set CONFIG_DIR=apps\fix-samples\src\main\resources
 
 REM Check if jars exist

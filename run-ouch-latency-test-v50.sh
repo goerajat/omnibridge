@@ -10,7 +10,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-UBER_JAR="apps/ouch-samples/target/ouch-samples-1.0.0-SNAPSHOT-all.jar"
+UBER_JAR=$(ls apps/ouch-samples/target/ouch-samples-*-all.jar 2>/dev/null | head -1)
 OUCH_PORT=9250
 
 # Check if uber jar exists

@@ -10,7 +10,8 @@ REM ==========================================================================
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
-set UBER_JAR=apps\ouch-samples\target\ouch-samples-1.0.0-SNAPSHOT-all.jar
+set UBER_JAR=
+for /f "delims=" %%i in ('dir /b apps\ouch-samples\target\ouch-samples-*-all.jar 2^>nul') do set UBER_JAR=apps\ouch-samples\target\%%i
 set OUCH_PORT=9200
 
 REM Check if uber jar exists
