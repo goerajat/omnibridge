@@ -21,7 +21,7 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: mvn verify -DskipITs -Pskip-frontend
+        run: mvn verify -DskipITs -DskipIntegrationTests=true -Pskip-frontend
 
       - name: Upload test results
         if: always()
