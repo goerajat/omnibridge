@@ -56,10 +56,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Maven Release
+      - name: Maven Release Prepare
         if: ${{ !inputs.dryRun }}
         run: |
-          mvn release:prepare release:perform -B -Pskip-frontend \
+          mvn release:prepare -B -Pskip-frontend \
             -DskipIntegrationTests=true \
             -DreleaseVersion=${{ inputs.releaseVersion }} \
             -DdevelopmentVersion=${{ inputs.developmentVersion }} \
