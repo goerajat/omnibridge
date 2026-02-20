@@ -89,7 +89,7 @@ run-session-test.bat [test-names] [report-format]
 ./run-session-test.sh [test-names] [report-format]
 ```
 
-Available tests: LogonLogoutTest, SequenceNumberTest, TestRequestTest, HeartbeatTest, ResendRequestTest
+Available tests: LogonLogoutTest, SequenceNumberTest, TestRequestTest, HeartbeatTest, ResendRequestTest, DuplicateLogonTest, ResetSeqNumOnLogonTest, MultipleReconnectTest, SendInWrongStateTest, GapDetectionTest, DuplicateMessageTest, LogoutAcknowledgmentTest, RejectNotificationTest
 
 Report formats: text (default), json, html
 

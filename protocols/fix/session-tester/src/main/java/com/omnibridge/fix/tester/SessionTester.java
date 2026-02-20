@@ -72,6 +72,14 @@ public class SessionTester implements Callable<Integer> {
         registerTest(new HeartbeatTest());
         registerTest(new ResendRequestTest());
         registerTest(new ConcurrentOrderTest());
+        registerTest(new DuplicateLogonTest());
+        registerTest(new ResetSeqNumOnLogonTest());
+        registerTest(new MultipleReconnectTest());
+        registerTest(new SendInWrongStateTest());
+        registerTest(new GapDetectionTest());
+        registerTest(new DuplicateMessageTest());
+        registerTest(new LogoutAcknowledgmentTest());
+        registerTest(new RejectNotificationTest());
         registerTest(new Fix50LogonTest());
     }
 
