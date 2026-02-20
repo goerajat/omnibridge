@@ -1,0 +1,158 @@
+#!/bin/bash
+# =============================================================================
+# OmniBridge Trading App Bootstrap Script
+# =============================================================================
+# Installs Java 17, mounts EBS, and deploys the trading application from S3.
+# =============================================================================
+
+set -euo pipefail
+exec > /var/log/omnibridge-bootstrap.log 2>&1
+
+echo "=== OmniBridge ${app_type} Bootstrap Starting ==="
+echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# -----------------------------------------------------------------------------
+# System Setup
+# -----------------------------------------------------------------------------
+
+# Update system packages
+yum update -y
+
+# Install Amazon Corretto 17 (Java 17)
+yum install -y java-17-amazon-corretto-headless
+
+# Verify Java installation
+java -version
+
+# Install additional tools
+yum install -y aws-cli jq htop sysstat
+
+# -----------------------------------------------------------------------------
+# EBS Volume Setup
+# -----------------------------------------------------------------------------
+
+EBS_DEVICE="${ebs_device}"
+MOUNT_POINT="/opt/omnibridge"
+
+# Wait for EBS volume to be attached
+echo "Waiting for EBS volume at $EBS_DEVICE..."
+while [ ! -e "$EBS_DEVICE" ]; do
+  sleep 1
+done
+
+# Check if the volume has a filesystem; create one if not
+if ! blkid "$EBS_DEVICE"; then
+  echo "Creating ext4 filesystem on $EBS_DEVICE"
+  mkfs -t ext4 "$EBS_DEVICE"
+fi
+
+# Mount the volume
+mkdir -p "$MOUNT_POINT"
+mount "$EBS_DEVICE" "$MOUNT_POINT"
+
+# Add to fstab for persistence across reboots
+echo "$EBS_DEVICE $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+
+# Create application directories
+mkdir -p "$MOUNT_POINT"/{app,data,logs,conf}
+chmod 755 "$MOUNT_POINT"/{app,data,logs,conf}
+
+# -----------------------------------------------------------------------------
+# Kernel Tuning for Low-Latency Trading
+# -----------------------------------------------------------------------------
+
+# Increase network buffer sizes
+sysctl -w net.core.rmem_max=16777216
+sysctl -w net.core.wmem_max=16777216
+sysctl -w net.core.rmem_default=1048576
+sysctl -w net.core.wmem_default=1048576
+sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216"
+sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216"
+
+# Disable TCP Nagle's algorithm for lower latency
+sysctl -w net.ipv4.tcp_nodelay=1
+
+# Reduce TCP keepalive time
+sysctl -w net.ipv4.tcp_keepalive_time=60
+sysctl -w net.ipv4.tcp_keepalive_intvl=10
+sysctl -w net.ipv4.tcp_keepalive_probes=6
+
+# Persist kernel parameters
+cat >> /etc/sysctl.d/99-omnibridge.conf << 'SYSCTL'
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+net.core.rmem_default=1048576
+net.core.wmem_default=1048576
+net.ipv4.tcp_rmem=4096 1048576 16777216
+net.ipv4.tcp_wmem=4096 1048576 16777216
+net.ipv4.tcp_keepalive_time=60
+net.ipv4.tcp_keepalive_intvl=10
+net.ipv4.tcp_keepalive_probes=6
+SYSCTL
+
+# -----------------------------------------------------------------------------
+# Deploy Application from S3
+# -----------------------------------------------------------------------------
+
+APP_TYPE="${app_type}"
+APP_VERSION="${app_version}"
+S3_BUCKET="${s3_bucket}"
+ENVIRONMENT="${environment}"
+
+echo "Deploying $APP_TYPE-samples version $APP_VERSION from s3://$S3_BUCKET"
+
+# Download distribution package from S3
+aws s3 cp \
+  "s3://$S3_BUCKET/omnibridge/$ENVIRONMENT/$APP_TYPE-samples-$APP_VERSION-dist.tar.gz" \
+  "/tmp/$APP_TYPE-samples-$APP_VERSION-dist.tar.gz"
+
+# Extract to application directory
+tar -xzf "/tmp/$APP_TYPE-samples-$APP_VERSION-dist.tar.gz" \
+  -C "$MOUNT_POINT/app" --strip-components=1
+
+# Clean up
+rm -f "/tmp/$APP_TYPE-samples-$APP_VERSION-dist.tar.gz"
+
+# -----------------------------------------------------------------------------
+# Create systemd Service
+# -----------------------------------------------------------------------------
+
+ADMIN_PORT="${admin_port}"
+
+cat > /etc/systemd/system/omnibridge-$APP_TYPE.service << SERVICE
+[Unit]
+Description=OmniBridge $APP_TYPE Protocol Engine
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$MOUNT_POINT/app
+ExecStart=/usr/bin/java \\
+  -server \\
+  -Xms2g -Xmx2g \\
+  -XX:+UseZGC \\
+  -XX:+AlwaysPreTouch \\
+  -Djava.net.preferIPv4Stack=true \\
+  -Domnibridge.admin.port=$ADMIN_PORT \\
+  -Domnibridge.data.dir=$MOUNT_POINT/data \\
+  -Domnibridge.log.dir=$MOUNT_POINT/logs \\
+  -jar $MOUNT_POINT/app/lib/*.jar
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65535
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+# Enable and start the service
+systemctl daemon-reload
+systemctl enable "omnibridge-$APP_TYPE"
+systemctl start "omnibridge-$APP_TYPE"
+
+echo "=== OmniBridge $APP_TYPE Bootstrap Complete ==="
+echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

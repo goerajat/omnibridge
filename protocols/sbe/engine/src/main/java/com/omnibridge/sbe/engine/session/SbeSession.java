@@ -13,6 +13,12 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Objects;
@@ -83,6 +89,13 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
     // Listeners
     protected final List<SessionStateListener> stateListeners = new CopyOnWriteArrayList<>();
     protected final List<MessageListener> messageListeners = new CopyOnWriteArrayList<>();
+
+    // Metrics (pre-resolved for zero-allocation on hot path)
+    protected Counter messagesReceivedCounter;
+    protected Counter messagesSentCounter;
+    protected Counter disconnectCounter;
+    protected Counter connectFailedCounter;
+    protected DistributionSummary processingTimeSummary;
 
     // Configuration
     protected static final int DEFAULT_SEND_BUFFER_SIZE = 65536;
@@ -155,6 +168,98 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
      * Typically sends Negotiate or similar message.
      */
     protected abstract void initiateHandshake();
+
+    /**
+     * Gets the protocol name for metric tagging.
+     *
+     * @return the protocol name (e.g., "iLink3", "Optiq", "Pillar")
+     */
+    protected abstract String getProtocolName();
+
+    // =====================================================
+    // Metrics
+    // =====================================================
+
+    /**
+     * Binds Micrometer metrics to this session.
+     * <p>
+     * Pre-resolves all meters during initialization so that hot-path
+     * instrumentation is zero-allocation (only {@code counter.increment()}
+     * and {@code summary.record()} calls on the critical path).
+     * <p>
+     * Subclasses should override this method to add protocol-specific metrics,
+     * calling {@code super.bindMetrics(registry)} first.
+     *
+     * @param registry the meter registry (may be null to disable metrics)
+     */
+    public void bindMetrics(MeterRegistry registry) {
+        if (registry == null) {
+            return;
+        }
+
+        Tags sessionTags = Tags.of(
+                "session_id", sessionId,
+                "protocol", getProtocolName(),
+                "role", isInitiator ? "initiator" : "acceptor"
+        );
+
+        // Session state gauges
+        Gauge.builder("omnibridge.session.state", state, s -> s.get().ordinal())
+                .tags(sessionTags)
+                .description("Session state ordinal")
+                .register(registry);
+
+        Gauge.builder("omnibridge.session.connected", state, s -> s.get().isConnected() ? 1.0 : 0.0)
+                .tags(sessionTags)
+                .description("TCP connected (0/1)")
+                .register(registry);
+
+        Gauge.builder("omnibridge.session.logged_on", state, s -> s.get().isEstablished() ? 1.0 : 0.0)
+                .tags(sessionTags)
+                .description("Session established (0/1)")
+                .register(registry);
+
+        // Sequence number gauges
+        Gauge.builder("omnibridge.sequence.outgoing", outboundSeqNum, AtomicLong::doubleValue)
+                .tags(sessionTags)
+                .description("Current outbound sequence number")
+                .register(registry);
+
+        Gauge.builder("omnibridge.sequence.incoming_expected", inboundSeqNum, AtomicLong::doubleValue)
+                .tags(sessionTags)
+                .description("Current inbound sequence number")
+                .register(registry);
+
+        // Pre-resolved counters
+        messagesReceivedCounter = Counter.builder("omnibridge.messages.received.total")
+                .tags(sessionTags)
+                .description("Messages received")
+                .register(registry);
+
+        messagesSentCounter = Counter.builder("omnibridge.messages.sent.total")
+                .tags(sessionTags)
+                .description("Messages sent")
+                .register(registry);
+
+        disconnectCounter = Counter.builder("omnibridge.session.disconnect.total")
+                .tags(sessionTags)
+                .description("Disconnect count")
+                .register(registry);
+
+        connectFailedCounter = Counter.builder("omnibridge.session.connect_failed.total")
+                .tags(sessionTags)
+                .description("Connection failure count")
+                .register(registry);
+
+        // Latency distribution
+        processingTimeSummary = DistributionSummary.builder("omnibridge.message.processing.time")
+                .tags(sessionTags)
+                .description("Message processing time in nanoseconds")
+                .publishPercentiles(0.5, 0.9, 0.95, 0.99, 0.999)
+                .register(registry);
+
+        log.info("[{}] Metrics bound (protocol={})", sessionId, getProtocolName());
+    }
 
     // =====================================================
     // Session Identity
@@ -264,6 +369,9 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
             if (reason != null) {
                 log.warn("[{}] Disconnected: {}", sessionId, reason.getMessage());
             }
+            if (disconnectCounter != null) {
+                disconnectCounter.increment();
+            }
             forceState(SbeSessionState.DISCONNECTED);
         }
     }
@@ -272,6 +380,9 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
     public void onConnectFailed(String remoteAddress, Throwable reason) {
         log.error("[{}] Connect failed to {}: {}", sessionId, remoteAddress,
                 reason != null ? reason.getMessage() : "unknown");
+        if (connectFailedCounter != null) {
+            connectFailedCounter.increment();
+        }
         forceState(SbeSessionState.DISCONNECTED);
     }
 
@@ -337,6 +448,9 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
             if (sent) {
                 log.debug("[{}] Sent message: templateId={}", sessionId, message.getTemplateId());
                 outboundSeqNum.incrementAndGet();
+                if (messagesSentCounter != null) {
+                    messagesSentCounter.increment();
+                }
             }
 
             return sent;
@@ -388,8 +502,18 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
             // Read and process the message
             SbeMessage msg = getMessageFactory().readMessage(receiveBuffer, processed, expectedLength);
             if (msg != null) {
+                long processingStart = processingTimeSummary != null ? System.nanoTime() : 0;
+
                 inboundSeqNum.incrementAndGet();
+                if (messagesReceivedCounter != null) {
+                    messagesReceivedCounter.increment();
+                }
+
                 processIncomingMessage(msg);
+
+                if (processingTimeSummary != null) {
+                    processingTimeSummary.record(System.nanoTime() - processingStart);
+                }
 
                 // Log to persistence
                 if (logStore != null && config.isPersistMessages()) {

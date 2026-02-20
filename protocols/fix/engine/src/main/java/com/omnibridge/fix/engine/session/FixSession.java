@@ -15,6 +15,7 @@ import com.omnibridge.network.NetworkHandler;
 import com.omnibridge.network.TcpChannel;
 import com.omnibridge.persistence.LogEntry;
 import com.omnibridge.persistence.LogStore;
+import io.micrometer.core.instrument.*;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.slf4j.Logger;
@@ -80,6 +81,27 @@ public class FixSession implements NetworkHandler {
     // Configuration for ring buffer messages
     private final MessagePoolConfig poolConfig;
 
+    // ==================== Metrics (pre-resolved for hot path) ====================
+    private Counter messagesReceivedCounter;
+    private Counter messagesSentCounter;
+    private Counter messagesRejectedCounter;
+    private Counter businessRejectsCounter;
+    private Counter logonCounter;
+    private Counter logoutCounter;
+    private Counter disconnectCounter;
+    private Counter connectFailedCounter;
+    private Counter heartbeatSentCounter;
+    private Counter heartbeatReceivedCounter;
+    private Counter testRequestSentCounter;
+    private Counter testRequestReceivedCounter;
+    private Counter heartbeatTimeoutCounter;
+    private Counter sequenceGapCounter;
+    private Counter sequenceResetCounter;
+    private Counter resendRequestSentCounter;
+    private Counter resendRequestReceivedCounter;
+    private Counter claimFailedCounter;
+    private DistributionSummary processingTimeSummary;
+
     public FixSession(SessionConfig config, LogStore logStore) {
         this.config = config;
         this.logStore = logStore;
@@ -119,6 +141,127 @@ public class FixSession implements NetworkHandler {
                 .build();
         this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
         log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), 64);
+    }
+
+    // ==================== Metrics Binding ====================
+
+    /**
+     * Bind Micrometer metrics for this session.
+     * Pre-resolves all meters with session tags for zero-allocation hot-path use.
+     *
+     * @param registry the meter registry (null to disable metrics)
+     */
+    public void bindMetrics(MeterRegistry registry) {
+        if (registry == null) {
+            return;
+        }
+
+        Tags sessionTags = Tags.of(
+                "session_id", config.getSessionId(),
+                "protocol", "FIX",
+                "role", config.isAcceptor() ? "acceptor" : "initiator"
+        );
+
+        // Session state gauge
+        Gauge.builder("omnibridge.session.state", state, s -> s.get().ordinal())
+                .tags(sessionTags)
+                .description("Session state ordinal")
+                .register(registry);
+
+        Gauge.builder("omnibridge.session.logged_on", state, s -> s.get() == SessionState.LOGGED_ON ? 1.0 : 0.0)
+                .tags(sessionTags)
+                .description("Fully authenticated (0/1)")
+                .register(registry);
+
+        Gauge.builder("omnibridge.session.connected", state,
+                        s -> s.get().isConnected() ? 1.0 : 0.0)
+                .tags(sessionTags)
+                .description("TCP connected (0/1)")
+                .register(registry);
+
+        // Sequence number gauges
+        Gauge.builder("omnibridge.sequence.outgoing", outgoingSeqNum, AtomicInteger::doubleValue)
+                .tags(sessionTags)
+                .description("Current outgoing seqnum")
+                .register(registry);
+
+        Gauge.builder("omnibridge.sequence.incoming_expected", expectedIncomingSeqNum, AtomicInteger::doubleValue)
+                .tags(sessionTags)
+                .description("Expected incoming seqnum")
+                .register(registry);
+
+        // Heartbeat timing gauges
+        Gauge.builder("omnibridge.heartbeat.last_received.seconds", this,
+                        s -> (s.clockProvider.currentTimeMillis() - s.lastReceivedTime) / 1000.0)
+                .tags(sessionTags)
+                .description("Seconds since last message received")
+                .register(registry);
+
+        Gauge.builder("omnibridge.heartbeat.last_sent.seconds", this,
+                        s -> (s.clockProvider.currentTimeMillis() - s.lastSentTime) / 1000.0)
+                .tags(sessionTags)
+                .description("Seconds since last message sent")
+                .register(registry);
+
+        Gauge.builder("omnibridge.heartbeat.interval.seconds", config, c -> c.getHeartbeatInterval())
+                .tags(sessionTags)
+                .description("Configured heartbeat interval")
+                .register(registry);
+
+        // Message counters
+        messagesReceivedCounter = Counter.builder("omnibridge.messages.received.total")
+                .tags(sessionTags).description("Messages received").register(registry);
+        messagesSentCounter = Counter.builder("omnibridge.messages.sent.total")
+                .tags(sessionTags).description("Messages sent").register(registry);
+        messagesRejectedCounter = Counter.builder("omnibridge.messages.rejected.total")
+                .tags(sessionTags).description("Session-level rejects").register(registry);
+        businessRejectsCounter = Counter.builder("omnibridge.messages.business_rejected.total")
+                .tags(sessionTags).description("Business rejects").register(registry);
+
+        // Session lifecycle counters
+        logonCounter = Counter.builder("omnibridge.session.logon.total")
+                .tags(sessionTags).description("Cumulative logon count").register(registry);
+        logoutCounter = Counter.builder("omnibridge.session.logout.total")
+                .tags(sessionTags).description("Logout count").register(registry);
+        disconnectCounter = Counter.builder("omnibridge.session.disconnect.total")
+                .tags(sessionTags).description("Disconnect count").register(registry);
+        connectFailedCounter = Counter.builder("omnibridge.session.connect_failed.total")
+                .tags(sessionTags).description("Connection failures").register(registry);
+
+        // Heartbeat counters
+        heartbeatSentCounter = Counter.builder("omnibridge.heartbeat.sent.total")
+                .tags(sessionTags).description("Heartbeats sent").register(registry);
+        heartbeatReceivedCounter = Counter.builder("omnibridge.heartbeat.received.total")
+                .tags(sessionTags).description("Heartbeats received").register(registry);
+        testRequestSentCounter = Counter.builder("omnibridge.heartbeat.test_request.sent.total")
+                .tags(sessionTags).description("Test requests sent").register(registry);
+        testRequestReceivedCounter = Counter.builder("omnibridge.heartbeat.test_request.received.total")
+                .tags(sessionTags).description("Test requests received").register(registry);
+        heartbeatTimeoutCounter = Counter.builder("omnibridge.heartbeat.timeout.total")
+                .tags(sessionTags).description("Heartbeat timeout disconnects").register(registry);
+
+        // Sequence counters
+        sequenceGapCounter = Counter.builder("omnibridge.sequence.gap.total")
+                .tags(sessionTags).description("Sequence gaps detected").register(registry);
+        sequenceResetCounter = Counter.builder("omnibridge.sequence.reset.total")
+                .tags(sessionTags).description("Sequence resets").register(registry);
+        resendRequestSentCounter = Counter.builder("omnibridge.resend.request.total")
+                .tags(sessionTags).tag("direction", "sent").description("Resend requests sent").register(registry);
+        resendRequestReceivedCounter = Counter.builder("omnibridge.resend.request.total")
+                .tags(sessionTags).tag("direction", "received").description("Resend requests received").register(registry);
+
+        // Ring buffer
+        claimFailedCounter = Counter.builder("omnibridge.ringbuffer.claim_failed.total")
+                .tags(sessionTags).description("Ring buffer claim failures").register(registry);
+
+        // Latency
+        processingTimeSummary = DistributionSummary.builder("omnibridge.message.processing.time")
+                .tags(sessionTags)
+                .description("Message processing time in nanoseconds")
+                .publishPercentiles(0.5, 0.9, 0.95, 0.99, 0.999)
+                .register(registry);
+
+        log.info("[{}] Metrics bound", config.getSessionId());
     }
 
     // ==================== Session Management ====================
@@ -290,6 +433,10 @@ public class FixSession implements NetworkHandler {
         log.info("[{}] Disconnected: {}", config.getSessionId(),
                 cause != null ? cause.getMessage() : "clean disconnect");
 
+        if (disconnectCounter != null) {
+            disconnectCounter.increment();
+        }
+
         SessionState oldState = state.get();
         setState(SessionState.DISCONNECTED);
 
@@ -312,6 +459,11 @@ public class FixSession implements NetworkHandler {
     @Override
     public void onConnectFailed(String remoteAddress, Throwable cause) {
         log.error("[{}] Connect failed to {}: {}", config.getSessionId(), remoteAddress, cause.getMessage());
+
+        if (connectFailedCounter != null) {
+            connectFailedCounter.increment();
+        }
+
         setState(SessionState.DISCONNECTED);
 
         for (SessionStateListener listener : stateListeners) {
@@ -335,8 +487,13 @@ public class FixSession implements NetworkHandler {
      * The message will be released back to the pool after this method returns.
      */
     private void processIncomingMessage(IncomingFixMessage message) {
+        long processingStart = System.nanoTime();
         String msgType = message.getMsgType();
         int seqNum = message.getSeqNum();
+
+        if (messagesReceivedCounter != null) {
+            messagesReceivedCounter.increment();
+        }
 
         log.debug("[{}] Received: {} SeqNum={}", config.getSessionId(), msgType, seqNum);
         log.debug("[{}] IN  >>> {}", config.getSessionId(), formatRawMessage(message.getRawMessage()));
@@ -354,6 +511,9 @@ public class FixSession implements NetworkHandler {
             !msgType.equals(FixTags.MSG_TYPE_SEQUENCE_RESET)) {
             if (seqNum > expectedIncomingSeqNum.get()) {
                 // Gap detected, request resend
+                if (sequenceGapCounter != null) {
+                    sequenceGapCounter.increment();
+                }
                 sendResendRequest(expectedIncomingSeqNum.get(), 0);
                 return;
             } else if (seqNum < expectedIncomingSeqNum.get()) {
@@ -418,6 +578,11 @@ public class FixSession implements NetworkHandler {
             seqNumResetDuringLogon = false;
         } else if (seqNum >= expectedIncomingSeqNum.get()) {
             expectedIncomingSeqNum.set(seqNum + 1);
+        }
+
+        // Record processing time
+        if (processingTimeSummary != null) {
+            processingTimeSummary.record(System.nanoTime() - processingStart);
         }
     }
 
@@ -547,6 +712,10 @@ public class FixSession implements NetworkHandler {
 
         setState(SessionState.LOGGED_ON);
         testRequestPending = false;
+
+        if (logonCounter != null) {
+            logonCounter.increment();
+        }
     }
 
     private void processIncomingLogout(IncomingFixMessage message) {
@@ -562,6 +731,10 @@ public class FixSession implements NetworkHandler {
 
         if (config.isResetOnLogout()) {
             resetSequenceNumbers();
+        }
+
+        if (logoutCounter != null) {
+            logoutCounter.increment();
         }
 
         for (SessionStateListener listener : stateListeners) {
@@ -580,6 +753,10 @@ public class FixSession implements NetworkHandler {
         String testReqId = testReqIdCs != null ? testReqIdCs.toString() : null;
         log.debug("[{}] Heartbeat received, TestReqID={}", config.getSessionId(), testReqId);
 
+        if (heartbeatReceivedCounter != null) {
+            heartbeatReceivedCounter.increment();
+        }
+
         if (testRequestPending && testReqId != null) {
             testRequestPending = false;
         }
@@ -589,6 +766,11 @@ public class FixSession implements NetworkHandler {
         CharSequence testReqIdCs = message.getCharSequence(FixTags.TEST_REQ_ID);
         String testReqId = testReqIdCs != null ? testReqIdCs.toString() : null;
         log.debug("[{}] TestRequest received, TestReqID={}", config.getSessionId(), testReqId);
+
+        if (testRequestReceivedCounter != null) {
+            testRequestReceivedCounter.increment();
+        }
+
         sendHeartbeat(testReqId);
     }
 
@@ -597,6 +779,10 @@ public class FixSession implements NetworkHandler {
         int endSeqNo = message.getInt(FixTags.END_SEQ_NO);
 
         log.info("[{}] ResendRequest received: {} to {}", config.getSessionId(), beginSeqNo, endSeqNo);
+
+        if (resendRequestReceivedCounter != null) {
+            resendRequestReceivedCounter.increment();
+        }
 
         setState(SessionState.RESENDING);
 
@@ -642,6 +828,10 @@ public class FixSession implements NetworkHandler {
         log.info("[{}] SequenceReset received: NewSeqNo={}, GapFill={}",
                 config.getSessionId(), newSeqNo, gapFill);
 
+        if (sequenceResetCounter != null) {
+            sequenceResetCounter.increment();
+        }
+
         if (gapFill) {
             if (newSeqNo >= expectedIncomingSeqNum.get()) {
                 expectedIncomingSeqNum.set(newSeqNo);
@@ -665,6 +855,10 @@ public class FixSession implements NetworkHandler {
         log.warn("[{}] Reject received: RefSeqNum={}, RefMsgType={}, Reason={}, Text={}",
                 config.getSessionId(), refSeqNum, refMsgType, rejectReason, text);
 
+        if (messagesRejectedCounter != null) {
+            messagesRejectedCounter.increment();
+        }
+
         for (MessageListener listener : messageListeners) {
             try {
                 listener.onReject(this, refSeqNum, refMsgType, rejectReason, text);
@@ -682,6 +876,10 @@ public class FixSession implements NetworkHandler {
 
         log.warn("[{}] BusinessReject received: RefSeqNum={}, Reason={}, Text={}",
                 config.getSessionId(), refSeqNum, businessRejectReason, text);
+
+        if (businessRejectsCounter != null) {
+            businessRejectsCounter.increment();
+        }
 
         for (MessageListener listener : messageListeners) {
             try {
@@ -745,6 +943,9 @@ public class FixSession implements NetworkHandler {
         int claimIndex = ch.tryClaim(claimSize);
         if (claimIndex < 0) {
             // Ring buffer is full
+            if (claimFailedCounter != null) {
+                claimFailedCounter.increment();
+            }
             return null;
         }
 
@@ -784,6 +985,11 @@ public class FixSession implements NetworkHandler {
         if (ch != null) {
             ch.commit(msg.getClaimIndex());
             lastSentTime = clockProvider.currentTimeMillis();
+
+            if (messagesSentCounter != null) {
+                messagesSentCounter.increment();
+            }
+
             log.debug("[{}] Committed to ring buffer: {} SeqNum={}",
                     config.getSessionId(), msg.getMsgType(), msg.getSeqNum());
             if (config.isLogMessages()) {
@@ -904,6 +1110,10 @@ public class FixSession implements NetworkHandler {
     }
 
     private void sendHeartbeat(String testReqId) {
+        if (heartbeatSentCounter != null) {
+            heartbeatSentCounter.increment();
+        }
+
         sendAdminMessage(FixTags.MSG_TYPE_HEARTBEAT, msg -> {
             if (testReqId != null) {
                 msg.setField(FixTags.TEST_REQ_ID, testReqId);
@@ -919,6 +1129,10 @@ public class FixSession implements NetworkHandler {
         String testReqId = String.valueOf(++testRequestId);
         log.debug("[{}] Sending TestRequest: {}", config.getSessionId(), testReqId);
 
+        if (testRequestSentCounter != null) {
+            testRequestSentCounter.increment();
+        }
+
         sendAdminMessage(FixTags.MSG_TYPE_TEST_REQUEST, msg -> {
             msg.setField(FixTags.TEST_REQ_ID, testReqId);
         });
@@ -928,6 +1142,10 @@ public class FixSession implements NetworkHandler {
 
     private void sendResendRequest(int beginSeqNo, int endSeqNo) {
         log.info("[{}] Sending ResendRequest: {} to {}", config.getSessionId(), beginSeqNo, endSeqNo);
+
+        if (resendRequestSentCounter != null) {
+            resendRequestSentCounter.increment();
+        }
 
         sendAdminMessage(FixTags.MSG_TYPE_RESEND_REQUEST, msg -> {
             msg.setField(FixTags.BEGIN_SEQ_NO, beginSeqNo);
@@ -1143,6 +1361,9 @@ public class FixSession implements NetworkHandler {
             } else {
                 // Test request timeout - disconnect
                 log.warn("[{}] TestRequest timeout, disconnecting", config.getSessionId());
+                if (heartbeatTimeoutCounter != null) {
+                    heartbeatTimeoutCounter.increment();
+                }
                 disconnect("TestRequest timeout");
             }
         }

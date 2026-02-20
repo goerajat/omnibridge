@@ -33,6 +33,12 @@ This document describes the architecture, design patterns, and code structure us
 9. [Multi-Version Protocol Support](#9-multi-version-protocol-support)
 10. [Creating a New Protocol](#10-creating-a-new-protocol)
 11. [Performance Considerations](#11-performance-considerations)
+12. [Metrics and Monitoring](#12-metrics-and-monitoring)
+    - [12.1 Architecture](#121-architecture)
+    - [12.2 Base Session Metrics (SbeSession / FixSession)](#122-base-session-metrics)
+    - [12.3 Protocol-Specific Metrics](#123-protocol-specific-metrics)
+    - [12.4 Hot-Path Rules](#124-hot-path-rules)
+    - [12.5 Adding Metrics to a New Protocol](#125-adding-metrics-to-a-new-protocol)
 
 ---
 
@@ -2820,6 +2826,209 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
+## 12. Metrics and Monitoring
+
+OmniBridge uses [Micrometer](https://micrometer.io/) for application metrics, exposed in Prometheus format via the Admin API at `/api/metrics`.
+
+### 12.1 Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  MetricsComponent (metrics module)                      │
+│  - Wraps PrometheusMeterRegistry                        │
+│  - Registers JVM binders (memory, GC, threads, CPU)     │
+│  - Exposes /api/metrics via MetricsRouteProvider         │
+└───────────────┬─────────────────────────────────────────┘
+                │ MeterRegistry injected via
+                │ ComponentProvider + reflection
+    ┌───────────┼───────────┐
+    │           │           │
+┌───▼───┐  ┌───▼───┐  ┌───▼───┐
+│  FIX  │  │ OUCH  │  │  SBE  │  Engine factories call
+│Engine │  │Engine │  │Engine │  engine.setMeterRegistry()
+└───┬───┘  └───┬───┘  └───┬───┘
+    │          │          │
+    │  session.bindMetrics(registry)
+    │          │          │
+┌───▼───┐  ┌──▼────┐  ┌─▼──────────────────────┐
+│FixSes │  │OuchSes│  │SbeSession (base)        │
+│sion   │  │sion   │  │  ├─ ILink3Session        │
+│       │  │       │  │  ├─ OptiqSession         │
+│       │  │       │  │  └─ PillarSession        │
+└───────┘  └───────┘  └────────────────────────────┘
+```
+
+The `MetricsComponent` is created early in the component lifecycle (no dependencies). Engine factories access it via reflection to avoid a hard compile-time dependency:
+
+```java
+// In SbeEngineFactory.create() / FixEngineFactory.create()
+Class<?> metricsClass = Class.forName("com.omnibridge.metrics.MetricsComponent");
+Object metricsComponent = provider.getComponent(metricsClass.asSubclass(Component.class));
+MeterRegistry registry = (MeterRegistry) metricsComponent.getClass()
+    .getMethod("getMeterRegistry").invoke(metricsComponent);
+engine.setMeterRegistry(registry);
+```
+
+When sessions are added to an engine, `SbeEngine.addSession()` / `FixEngine.addSession()` calls `session.bindMetrics(meterRegistry)` to pre-resolve all meters.
+
+### 12.2 Base Session Metrics
+
+The base session classes (`SbeSession`, `FixSession`) register common metrics in `bindMetrics(MeterRegistry)`:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `omnibridge.session.state` | Gauge | Session state ordinal |
+| `omnibridge.session.connected` | Gauge (0/1) | TCP connected |
+| `omnibridge.session.logged_on` | Gauge (0/1) | Fully authenticated |
+| `omnibridge.messages.received.total` | Counter | Messages received |
+| `omnibridge.messages.sent.total` | Counter | Messages sent |
+| `omnibridge.session.disconnect.total` | Counter | Disconnections |
+| `omnibridge.session.connect_failed.total` | Counter | Connection failures |
+| `omnibridge.message.processing.time` | DistributionSummary (ns) | Processing latency (p50/p90/p95/p99/p99.9) |
+| `omnibridge.sequence.outgoing` | Gauge | Current outgoing sequence number |
+| `omnibridge.sequence.incoming_expected` | Gauge | Expected incoming sequence number |
+
+All metrics are tagged with `session_id`, `protocol`, and `role` (initiator/acceptor).
+
+### 12.3 Protocol-Specific Metrics
+
+Protocol subclasses override `bindMetrics()` to add protocol-specific counters:
+
+**FIX Protocol:**
+| Metric | Description |
+|--------|-------------|
+| `omnibridge.session.logon.total` | Logon count |
+| `omnibridge.session.logout.total` | Logout count |
+| `omnibridge.heartbeat.sent.total` | Heartbeats sent |
+| `omnibridge.heartbeat.received.total` | Heartbeats received |
+| `omnibridge.heartbeat.test_request.sent.total` | Test requests sent |
+| `omnibridge.messages.rejected.total` | Session-level rejects |
+| `omnibridge.heartbeat.interval.seconds` | Configured heartbeat interval |
+
+**CME iLink 3:**
+| Metric | Description |
+|--------|-------------|
+| `omnibridge.ilink3.negotiation.total` | Negotiation attempts |
+| `omnibridge.ilink3.establishment.total` | Establishment attempts |
+| `omnibridge.ilink3.termination.total` | Termination count |
+| `omnibridge.heartbeat.sent.total` | Sequence messages sent |
+| `omnibridge.heartbeat.received.total` | Sequence messages received |
+| `omnibridge.heartbeat.interval.seconds` | Keep alive interval |
+
+**Euronext Optiq:**
+| Metric | Description |
+|--------|-------------|
+| `omnibridge.session.logon.total` | Logon count |
+| `omnibridge.session.logout.total` | Logout count |
+| `omnibridge.heartbeat.sent.total` | Heartbeats sent |
+| `omnibridge.heartbeat.received.total` | Heartbeats received |
+| `omnibridge.messages.rejected.total` | Reject messages |
+| `omnibridge.heartbeat.interval.seconds` | Heartbeat interval |
+
+**NYSE Pillar:**
+| Metric | Description |
+|--------|-------------|
+| `omnibridge.session.logon.total` | Login count |
+| `omnibridge.pillar.stream.open.total` | Stream open count |
+| `omnibridge.heartbeat.sent.total` | Heartbeats sent |
+| `omnibridge.heartbeat.received.total` | Heartbeats received |
+| `omnibridge.messages.rejected.total` | Order/cancel/replace rejects |
+| `omnibridge.heartbeat.interval.seconds` | Heartbeat interval |
+
+### 12.4 Hot-Path Rules
+
+Metrics instrumentation in a low-latency engine must follow these rules:
+
+1. **Pre-resolve all meters** in `bindMetrics()` during session initialization. Store as instance fields. Never call `registry.counter()` on the hot path.
+
+2. **Use `Counter.increment()`** — same cost as `AtomicLong.incrementAndGet()`. No allocations.
+
+3. **Use `DistributionSummary.record(nanos)`** for latency — not `Timer.record(Runnable)` which creates wrapper objects.
+
+4. **Use `Gauge.builder().register()` with lambda** — supplier is captured once, evaluated only during Prometheus scrape (off the hot path).
+
+5. **Never create `Tag` objects on the hot path** — use `Tags.of()` during init.
+
+6. **Null-check before increment** — `if (counter != null) counter.increment()`. This keeps metrics optional and avoids NPE when no registry is bound.
+
+```java
+// GOOD: Pre-resolved in bindMetrics(), null-safe increment on hot path
+private Counter messagesReceivedCounter;
+
+public void bindMetrics(MeterRegistry registry) {
+    messagesReceivedCounter = Counter.builder("omnibridge.messages.received.total")
+            .tags(sessionTags).register(registry);
+}
+
+protected void processMessage(SbeMessage msg) {
+    if (messagesReceivedCounter != null) {
+        messagesReceivedCounter.increment();  // ~20ns, no allocation
+    }
+}
+
+// BAD: Creates Tag objects on every message — allocations on hot path
+protected void processMessage(SbeMessage msg) {
+    registry.counter("messages.received", "type", msg.getType()).increment();
+}
+```
+
+### 12.5 Adding Metrics to a New Protocol
+
+When implementing a new protocol, follow these steps to add metrics:
+
+1. **Add `getProtocolName()`** — return a string identifier (e.g., `"MyProtocol"`):
+
+```java
+@Override
+protected String getProtocolName() {
+    return "MyProtocol";
+}
+```
+
+2. **Declare counter fields** — add private `Counter` fields for protocol-specific events:
+
+```java
+private Counter handshakeCounter;
+private Counter heartbeatSentCounter;
+private Counter heartbeatReceivedCounter;
+private Counter rejectCounter;
+```
+
+3. **Override `bindMetrics()`** — call `super.bindMetrics()` first, then register protocol-specific meters:
+
+```java
+@Override
+public void bindMetrics(MeterRegistry registry) {
+    super.bindMetrics(registry);  // registers base session metrics
+    if (registry == null) return;
+
+    Tags sessionTags = Tags.of(
+            "session_id", sessionId,
+            "protocol", "MyProtocol",
+            "role", isInitiator ? "initiator" : "acceptor"
+    );
+
+    handshakeCounter = Counter.builder("omnibridge.myprotocol.handshake.total")
+            .tags(sessionTags).description("Handshake count").register(registry);
+    // ... more counters
+}
+```
+
+4. **Increment counters** — add null-safe increments at the appropriate points in message handlers:
+
+```java
+private void handleHandshakeAck(HandshakeAckMessage msg) {
+    if (handshakeCounter != null) {
+        handshakeCounter.increment();
+    }
+    // ... rest of handler
+}
+```
+
+5. **Engine factory injection** — if using `SbeEngineFactory`, MeterRegistry injection is automatic. For custom factories, follow the reflection pattern in `FixEngineFactory`.
+
+---
+
 ## Appendix A: Key Classes Reference
 
 ### Core Framework
@@ -2849,6 +3058,7 @@ JVM_OPTS="-Xms256m -Xmx512m \
 | FIX Engine | FixEngineFactory | FixEngine |
 | OUCH Engine | OuchEngineFactory | OuchEngine |
 | Admin | AdminServerFactory | AdminServer |
+| Metrics | MetricsFactory | MetricsComponent |
 
 ### Session Management
 
@@ -2910,6 +3120,10 @@ JVM_OPTS="-Xms256m -Xmx512m \
 |--------|-------|---------|
 | Apps Common | ApplicationBase | Base class with lifecycle hooks |
 | Apps Common | LatencyTracker | Latency measurement utility |
+| Metrics | MetricsComponent | PrometheusMeterRegistry wrapper component |
+| Metrics | MetricsConfig | HOCON config parsing for metrics |
+| Metrics | MetricsFactory | ComponentFactory for MetricsComponent |
+| Metrics | MetricsRouteProvider | `/api/metrics` Prometheus endpoint |
 
 ---
 
@@ -3012,6 +3226,12 @@ JVM_OPTS="-Xms256m -Xmx512m \
     config/SbeEngineConfig.java # Engine configuration base
     factory/SbeEngineFactory.java # Abstract component factory
 
+/metrics/src/main/java/com/omnibridge/metrics/
+    MetricsComponent.java       # PrometheusMeterRegistry wrapper
+    MetricsConfig.java          # HOCON metrics configuration
+    MetricsFactory.java         # ComponentFactory for MetricsComponent
+    MetricsRouteProvider.java   # /api/metrics Prometheus endpoint
+
 /apps/common/src/main/java/com/omnibridge/apps/common/
     ApplicationBase.java        # Application lifecycle hooks
     LatencyTracker.java
@@ -3022,9 +3242,13 @@ JVM_OPTS="-Xms256m -Xmx512m \
 
 ---
 
-*Document Version: 1.7*
-*Last Updated: January 2026*
+*Document Version: 1.8*
+*Last Updated: February 2026*
 *Changes:
+- Added Section 12: Metrics and Monitoring with Micrometer bindMetrics() pattern
+- Documented hot-path instrumentation rules for zero-allocation metrics
+- Added protocol-specific metrics catalog (FIX, iLink 3, Optiq, Pillar)
+- Added MetricsComponent, MetricsFactory, MetricsRouteProvider to appendices
 - Restructured module hierarchy: all protocols now under protocols/ directory
   - protocols/fix/, protocols/ouch/, protocols/sbe/
   - SBE-based protocols (ilink3, optiq, pillar) under protocols/sbe/

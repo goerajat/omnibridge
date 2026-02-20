@@ -33,6 +33,8 @@
         <module>persistence</module>
         <!-- Admin API (Javalin-based) -->
         <module>admin</module>
+        <!-- Metrics (Micrometer + Prometheus) -->
+        <module>metrics</module>
         <!-- Protocol implementations (FIX, OUCH, SBE-based) -->
         <module>protocols</module>
         <!-- Sample applications (FIX, OUCH, iLink3, Optiq, Pillar) -->
@@ -176,6 +178,11 @@
             <dependency>
                 <groupId>com.omnibridge</groupId>
                 <artifactId>admin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>metrics</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

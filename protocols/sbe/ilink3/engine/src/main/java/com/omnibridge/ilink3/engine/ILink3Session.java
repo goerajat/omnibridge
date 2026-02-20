@@ -9,6 +9,10 @@ import com.omnibridge.sbe.engine.session.SbeSession;
 import com.omnibridge.sbe.engine.session.SbeSessionState;
 import com.omnibridge.sbe.message.SbeMessage;
 import com.omnibridge.sbe.message.SbeMessageFactory;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +53,13 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
     /** Last time a message was received */
     private volatile long lastReceivedTime;
 
+    // Protocol-specific metrics
+    private Counter negotiationCounter;
+    private Counter establishmentCounter;
+    private Counter terminationCounter;
+    private Counter heartbeatSentCounter;
+    private Counter heartbeatReceivedCounter;
+
     /**
      * Creates a new iLink 3 session.
      *
@@ -59,6 +70,38 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
         super(config, logStore);
         this.uuid = new AtomicLong(config.getUuid());
         this.keepAliveInterval = config.getKeepAliveInterval();
+    }
+
+    @Override
+    protected String getProtocolName() {
+        return "iLink3";
+    }
+
+    @Override
+    public void bindMetrics(MeterRegistry registry) {
+        super.bindMetrics(registry);
+        if (registry == null) return;
+
+        Tags sessionTags = Tags.of(
+                "session_id", sessionId,
+                "protocol", "iLink3",
+                "role", isInitiator ? "initiator" : "acceptor"
+        );
+
+        negotiationCounter = Counter.builder("omnibridge.ilink3.negotiation.total")
+                .tags(sessionTags).description("Negotiation attempts").register(registry);
+        establishmentCounter = Counter.builder("omnibridge.ilink3.establishment.total")
+                .tags(sessionTags).description("Establishment attempts").register(registry);
+        terminationCounter = Counter.builder("omnibridge.ilink3.termination.total")
+                .tags(sessionTags).description("Termination count").register(registry);
+        heartbeatSentCounter = Counter.builder("omnibridge.heartbeat.sent.total")
+                .tags(sessionTags).description("Heartbeats sent (Sequence)").register(registry);
+        heartbeatReceivedCounter = Counter.builder("omnibridge.heartbeat.received.total")
+                .tags(sessionTags).description("Heartbeats received (Sequence)").register(registry);
+
+        Gauge.builder("omnibridge.heartbeat.interval.seconds", this,
+                        s -> s.keepAliveInterval / 1000.0)
+                .tags(sessionTags).description("Keep alive interval in seconds").register(registry);
     }
 
     @Override
@@ -172,6 +215,9 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
         }
 
         // Proceed to establishment
+        if (negotiationCounter != null) {
+            negotiationCounter.increment();
+        }
         forceState(SbeSessionState.ESTABLISHING);
         sendEstablish(previousSeqNo);
     }
@@ -232,6 +278,9 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
         this.keepAliveInterval = ackKeepAlive;
         setInboundSeqNum(nextSeqNo);
 
+        if (establishmentCounter != null) {
+            establishmentCounter.increment();
+        }
         forceState(SbeSessionState.ESTABLISHED);
         log.info("[{}] Session established", sessionId);
     }
@@ -253,6 +302,9 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
 
         log.info("[{}] Received Terminate: errorCode={}, reason={}", sessionId, errorCode, reason);
 
+        if (terminationCounter != null) {
+            terminationCounter.increment();
+        }
         forceState(SbeSessionState.TERMINATED);
     }
 
@@ -264,6 +316,9 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
         long nextSeqNo = msg.getNextSeqNo();
 
         log.debug("[{}] Received Sequence: nextSeqNo={}", sessionId, nextSeqNo);
+        if (heartbeatReceivedCounter != null) {
+            heartbeatReceivedCounter.increment();
+        }
 
         // Respond with Sequence if needed
         if (state.get() == SbeSessionState.ESTABLISHED) {
@@ -287,6 +342,9 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
 
             if (commit(msg)) {
                 lastSentTime = System.currentTimeMillis();
+                if (heartbeatSentCounter != null) {
+                    heartbeatSentCounter.increment();
+                }
                 log.debug("[{}] Sent Sequence", sessionId);
             }
         } catch (Exception e) {

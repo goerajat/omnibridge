@@ -21,6 +21,7 @@ import com.omnibridge.sbe.engine.session.SbeSessionAdapter;
 import com.omnibridge.sbe.engine.session.SbeSessionState;
 import com.omnibridge.sbe.message.SbeMessage;
 import org.agrona.DirectBuffer;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,6 +78,8 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
     protected SessionScheduler scheduler;
     protected ClockProvider clockProvider;
     protected SessionManagementService sessionManagementService;
+
+    protected MeterRegistry meterRegistry;
 
     protected volatile ComponentState componentState = ComponentState.UNINITIALIZED;
     protected volatile boolean running = false;
@@ -198,6 +201,14 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
         return sessionManagementService;
     }
 
+    public void setMeterRegistry(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
+
+    public MeterRegistry getMeterRegistry() {
+        return meterRegistry;
+    }
+
     public E getConfig() {
         return config;
     }
@@ -239,6 +250,11 @@ public abstract class SbeEngine<S extends SbeSession<C>, C extends SbeSessionCon
         }
 
         S session = createSession(sessionConfig);
+
+        // Bind metrics if registry available
+        if (meterRegistry != null) {
+            session.bindMetrics(meterRegistry);
+        }
 
         // Add internal listeners
         session.addStateListener((s, oldState, newState) -> onSessionStateChange(session, oldState, newState));

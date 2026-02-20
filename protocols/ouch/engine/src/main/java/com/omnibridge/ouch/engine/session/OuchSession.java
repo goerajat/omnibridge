@@ -8,6 +8,7 @@ import com.omnibridge.ouch.message.v42.V42MessageFactory;
 import com.omnibridge.ouch.message.v50.V50MessageFactory;
 import com.omnibridge.persistence.LogEntry;
 import com.omnibridge.persistence.LogStore;
+import io.micrometer.core.instrument.*;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -104,6 +105,15 @@ public class OuchSession implements NetworkHandler {
     private static final int SEND_BUFFER_SIZE = 65536;
     private static final int RECEIVE_BUFFER_SIZE = 65536;
 
+    // Metrics (pre-resolved for hot path)
+    private Counter messagesReceivedCounter;
+    private Counter messagesSentCounter;
+    private Counter disconnectCounter;
+    private Counter connectFailedCounter;
+    private Counter ordersReceivedCounter;
+    private Counter ordersSentCounter;
+    private DistributionSummary processingTimeSummary;
+
     /**
      * Create a new OUCH session with default V42 protocol version.
      */
@@ -140,6 +150,59 @@ public class OuchSession implements NetworkHandler {
             case V42 -> new V42MessageFactory();
             case V50 -> new V50MessageFactory();
         };
+    }
+
+    // =====================================================
+    // Metrics Binding
+    // =====================================================
+
+    /**
+     * Bind Micrometer metrics for this session.
+     *
+     * @param registry the meter registry (null to disable metrics)
+     */
+    public void bindMetrics(MeterRegistry registry) {
+        if (registry == null) {
+            return;
+        }
+
+        Tags sessionTags = Tags.of(
+                "session_id", sessionId,
+                "protocol", "OUCH",
+                "role", isInitiator ? "initiator" : "acceptor"
+        );
+
+        Gauge.builder("omnibridge.session.state", state, s -> s.get().ordinal())
+                .tags(sessionTags).description("Session state ordinal").register(registry);
+
+        Gauge.builder("omnibridge.session.logged_on", state,
+                        s -> s.get() == SessionState.LOGGED_IN ? 1.0 : 0.0)
+                .tags(sessionTags).description("Fully authenticated (0/1)").register(registry);
+
+        Gauge.builder("omnibridge.session.connected", state,
+                        s -> s.get().canSendOrders() ? 1.0 : 0.0)
+                .tags(sessionTags).description("TCP connected (0/1)").register(registry);
+
+        messagesReceivedCounter = Counter.builder("omnibridge.messages.received.total")
+                .tags(sessionTags).description("Messages received").register(registry);
+        messagesSentCounter = Counter.builder("omnibridge.messages.sent.total")
+                .tags(sessionTags).description("Messages sent").register(registry);
+        disconnectCounter = Counter.builder("omnibridge.session.disconnect.total")
+                .tags(sessionTags).description("Disconnect count").register(registry);
+        connectFailedCounter = Counter.builder("omnibridge.session.connect_failed.total")
+                .tags(sessionTags).description("Connection failures").register(registry);
+        ordersReceivedCounter = Counter.builder("omnibridge.orders.new.total")
+                .tags(sessionTags).description("Orders received").register(registry);
+        ordersSentCounter = Counter.builder("omnibridge.orders.new.total")
+                .tags(sessionTags).tag("direction", "sent").description("Orders sent").register(registry);
+
+        processingTimeSummary = DistributionSummary.builder("omnibridge.message.processing.time")
+                .tags(sessionTags)
+                .description("Message processing time in nanoseconds")
+                .publishPercentiles(0.5, 0.9, 0.95, 0.99, 0.999)
+                .register(registry);
+
+        log.info("[{}] Metrics bound", sessionId);
     }
 
     // =====================================================
@@ -269,6 +332,9 @@ public class OuchSession implements NetworkHandler {
             if (reason != null) {
                 log.warn("[{}] Disconnected: {}", sessionId, reason.getMessage());
             }
+            if (disconnectCounter != null) {
+                disconnectCounter.increment();
+            }
             forceState(SessionState.DISCONNECTED);
         }
     }
@@ -277,6 +343,9 @@ public class OuchSession implements NetworkHandler {
     public void onConnectFailed(String remoteAddress, Throwable reason) {
         log.error("[{}] Connect failed to {}: {}", sessionId, remoteAddress,
                 reason != null ? reason.getMessage() : "unknown");
+        if (connectFailedCounter != null) {
+            connectFailedCounter.increment();
+        }
         forceState(SessionState.DISCONNECTED);
     }
 
@@ -430,6 +499,10 @@ public class OuchSession implements NetworkHandler {
     }
 
     private void processIncomingMessage(OuchMessage msg) {
+        if (messagesReceivedCounter != null) {
+            messagesReceivedCounter.increment();
+        }
+
         log.debug("[{}] Received: {}", sessionId, msg.getMessageType());
 
         // Check if V50 message for version-specific dispatch
@@ -826,6 +899,10 @@ public class OuchSession implements NetworkHandler {
     private boolean sendMessage(DirectBuffer buffer, int offset, int length) {
         if (channel == null || !channel.isConnected()) {
             return false;
+        }
+
+        if (messagesSentCounter != null) {
+            messagesSentCounter.increment();
         }
 
         // Log to persistence

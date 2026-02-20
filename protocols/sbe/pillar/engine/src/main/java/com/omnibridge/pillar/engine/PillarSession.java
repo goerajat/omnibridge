@@ -11,6 +11,10 @@ import com.omnibridge.sbe.engine.session.SbeSession;
 import com.omnibridge.sbe.engine.session.SbeSessionState;
 import com.omnibridge.sbe.message.SbeMessage;
 import com.omnibridge.sbe.message.SbeMessageFactory;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +54,13 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
     private boolean tgStreamOpen;
     private boolean gtStreamOpen;
 
+    // Protocol-specific metrics
+    private Counter loginCounter;
+    private Counter streamOpenCounter;
+    private Counter heartbeatSentCounter;
+    private Counter heartbeatReceivedCounter;
+    private Counter orderRejectCounter;
+
     /**
      * Creates a new Pillar session.
      *
@@ -58,6 +69,38 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
      */
     public PillarSession(PillarSessionConfig config, LogStore logStore) {
         super(config, logStore);
+    }
+
+    @Override
+    protected String getProtocolName() {
+        return "Pillar";
+    }
+
+    @Override
+    public void bindMetrics(MeterRegistry registry) {
+        super.bindMetrics(registry);
+        if (registry == null) return;
+
+        Tags sessionTags = Tags.of(
+                "session_id", sessionId,
+                "protocol", "Pillar",
+                "role", isInitiator ? "initiator" : "acceptor"
+        );
+
+        loginCounter = Counter.builder("omnibridge.session.logon.total")
+                .tags(sessionTags).description("Login count").register(registry);
+        streamOpenCounter = Counter.builder("omnibridge.pillar.stream.open.total")
+                .tags(sessionTags).description("Stream open count").register(registry);
+        heartbeatSentCounter = Counter.builder("omnibridge.heartbeat.sent.total")
+                .tags(sessionTags).description("Heartbeats sent").register(registry);
+        heartbeatReceivedCounter = Counter.builder("omnibridge.heartbeat.received.total")
+                .tags(sessionTags).description("Heartbeats received").register(registry);
+        orderRejectCounter = Counter.builder("omnibridge.messages.rejected.total")
+                .tags(sessionTags).description("Order/cancel/replace rejects").register(registry);
+
+        Gauge.builder("omnibridge.heartbeat.interval.seconds", this,
+                        s -> s.config.getHeartbeatIntervalNanos() / 1_000_000_000.0)
+                .tags(sessionTags).description("Heartbeat interval in seconds").register(registry);
     }
 
     @Override
@@ -125,6 +168,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
         if (response.isSuccess()) {
             pillarSessionId = response.getSessionId();
             loggedIn = true;
+            if (loginCounter != null) {
+                loginCounter.increment();
+            }
             log.info("[{}] Login successful, sessionId={}", sessionId, pillarSessionId);
             forceState(SbeSessionState.CONNECTED);
         } else {
@@ -153,6 +199,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
     private void handleOpenResponse(OpenResponseMessage response) {
         if (response.isSuccess()) {
             long streamId = response.getStreamId();
+            if (streamOpenCounter != null) {
+                streamOpenCounter.increment();
+            }
             if (streamId == tgStreamId) {
                 tgStreamOpen = true;
                 log.info("[{}] TG stream opened", sessionId);
@@ -176,7 +225,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
     }
 
     private void handleHeartbeat(HeartbeatMessage heartbeat) {
-        // Heartbeat received - connection is alive
+        if (heartbeatReceivedCounter != null) {
+            heartbeatReceivedCounter.increment();
+        }
         log.trace("[{}] Heartbeat received", sessionId);
     }
 
@@ -187,6 +238,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
 
     private void handleOrderReject(OrderRejectMessage reject) {
         log.warn("[{}] Order rejected: clOrdId={}", sessionId, reject.getClOrdId());
+        if (orderRejectCounter != null) {
+            orderRejectCounter.increment();
+        }
         notifyMessage(reject);
     }
 
@@ -203,6 +257,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
 
     private void handleCancelReject(CancelRejectMessage reject) {
         log.warn("[{}] Cancel rejected: clOrdId={}", sessionId, reject.getClOrdId());
+        if (orderRejectCounter != null) {
+            orderRejectCounter.increment();
+        }
         notifyMessage(reject);
     }
 
@@ -213,6 +270,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
 
     private void handleReplaceReject(ReplaceRejectMessage reject) {
         log.warn("[{}] Replace rejected: clOrdId={}", sessionId, reject.getClOrdId());
+        if (orderRejectCounter != null) {
+            orderRejectCounter.increment();
+        }
         notifyMessage(reject);
     }
 
@@ -279,6 +339,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
 
             if (commit(heartbeat)) {
                 lastHeartbeatSent = System.nanoTime();
+                if (heartbeatSentCounter != null) {
+                    heartbeatSentCounter.increment();
+                }
                 log.trace("[{}] Sent Heartbeat", sessionId);
             }
         } catch (Exception e) {

@@ -27,6 +27,7 @@ import com.omnibridge.network.TcpChannel;
 import com.omnibridge.persistence.LogEntry;
 import com.omnibridge.persistence.LogStore;
 import com.omnibridge.persistence.memory.MemoryMappedLogStore;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,6 +89,9 @@ public class FixEngine implements Component {
     private final List<SessionStateListener> globalStateListeners = new CopyOnWriteArrayList<>();
     private final List<MessageListener> globalMessageListeners = new CopyOnWriteArrayList<>();
     private final List<EodEventListener> eodListeners = new CopyOnWriteArrayList<>();
+
+    // Optional metrics registry
+    private MeterRegistry meterRegistry;
 
     // Schedule listener for SessionScheduler integration
     private final ScheduleListener scheduleListener = this::onScheduleEvent;
@@ -383,6 +387,11 @@ public class FixEngine implements Component {
         }
         for (MessageListener listener : globalMessageListeners) {
             session.addMessageListener(listener);
+        }
+
+        // Bind metrics if registry is available
+        if (meterRegistry != null) {
+            session.bindMetrics(meterRegistry);
         }
 
         sessions.put(sessionId, session);
@@ -1389,6 +1398,23 @@ public class FixEngine implements Component {
      */
     public void setSessionManagementService(SessionManagementService service) {
         this.sessionManagementService = service;
+    }
+
+    /**
+     * Set the meter registry for metrics instrumentation.
+     * Should be called before creating sessions.
+     *
+     * @param registry the Micrometer meter registry
+     */
+    public void setMeterRegistry(MeterRegistry registry) {
+        this.meterRegistry = registry;
+    }
+
+    /**
+     * Get the meter registry.
+     */
+    public MeterRegistry getMeterRegistry() {
+        return meterRegistry;
     }
 
     /**

@@ -46,6 +46,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Metrics -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>metrics</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>ch.qos.logback</groupId>

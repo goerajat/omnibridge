@@ -1,0 +1,139 @@
+groups:
+  - name: omnibridge-critical
+    rules:
+      - alert: SessionDisconnected
+        expr: omnibridge_session_logged_on == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Session disconnected ({{ $labels.instance }})"
+          description: "Session {{ $labels.session }} on {{ $labels.app }} has been disconnected for more than 30 seconds."
+
+      - alert: AllSessionsDown
+        expr: sum(omnibridge_session_logged_on) by (instance, app) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "All sessions down ({{ $labels.instance }})"
+          description: "All sessions on {{ $labels.app }} have been down for more than 1 minute."
+
+      - alert: RingBufferClaimFailures
+        expr: rate(omnibridge_ring_buffer_claim_failed_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ring buffer claim failures ({{ $labels.instance }})"
+          description: "Ring buffer on {{ $labels.app }} is experiencing claim failures, indicating backpressure."
+
+      - alert: HighRejectRate
+        expr: rate(omnibridge_messages_rejected_total[1m]) > 0.5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High message reject rate ({{ $labels.instance }})"
+          description: "{{ $labels.app }} is rejecting messages at a rate of {{ $value }}/s."
+
+      - alert: ProcessingLatencyCritical
+        expr: omnibridge_processing_latency_seconds{quantile="0.999"} > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Processing latency critical ({{ $labels.instance }})"
+          description: "p99.9 processing latency on {{ $labels.app }} is {{ $value }}s, exceeding 10ms threshold."
+
+      - alert: GCPauseCritical
+        expr: jvm_gc_pause_seconds_max > 0.5
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "GC pause critical ({{ $labels.instance }})"
+          description: "GC pause on {{ $labels.app }} reached {{ $value }}s, exceeding 500ms threshold."
+
+      - alert: HeartbeatTimeout
+        expr: omnibridge_session_last_received_seconds > 60
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Heartbeat timeout ({{ $labels.instance }})"
+          description: "Session {{ $labels.session }} on {{ $labels.app }} has not received a message in {{ $value }} seconds."
+
+  - name: omnibridge-warning
+    rules:
+      - alert: LogonFailureSpike
+        expr: rate(omnibridge_session_connect_failed_total[2m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Logon failure spike ({{ $labels.instance }})"
+          description: "{{ $labels.app }} is experiencing logon failures at a rate of {{ $value }}/s."
+
+      - alert: ProcessingLatencyHigh
+        expr: omnibridge_processing_latency_seconds{quantile="0.99"} > 0.001
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Processing latency high ({{ $labels.instance }})"
+          description: "p99 processing latency on {{ $labels.app }} is {{ $value }}s, exceeding 1ms threshold."
+
+      - alert: ThroughputDrop
+        expr: rate(omnibridge_messages_received_total[5m]) < 0.1 and omnibridge_session_logged_on == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Throughput drop detected ({{ $labels.instance }})"
+          description: "Session {{ $labels.session }} on {{ $labels.app }} is logged on but receiving very few messages."
+
+      - alert: RingBufferHighUtilization
+        expr: omnibridge_ring_buffer_utilization_ratio > 0.8
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ring buffer high utilization ({{ $labels.instance }})"
+          description: "Ring buffer on {{ $labels.app }} is at {{ $value | humanizePercentage }} utilization."
+
+      - alert: SequenceNumberGap
+        expr: increase(omnibridge_session_sequence_gap_total[1m]) > 0
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sequence number gap detected ({{ $labels.instance }})"
+          description: "Session {{ $labels.session }} on {{ $labels.app }} detected a sequence number gap."
+
+      - alert: GCPauseHigh
+        expr: rate(jvm_gc_pause_seconds_sum[5m]) / rate(jvm_gc_pause_seconds_count[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Average GC pause high ({{ $labels.instance }})"
+          description: "Average GC pause on {{ $labels.app }} is {{ $value }}s, exceeding 50ms threshold."
+
+      - alert: DirectBufferNearCapacity
+        expr: jvm_buffer_memory_used_bytes{id="direct"} / jvm_buffer_total_capacity_bytes{id="direct"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Direct buffer near capacity ({{ $labels.instance }})"
+          description: "Direct buffer usage on {{ $labels.app }} is at {{ $value | humanizePercentage }}."
+
+      - alert: HeapUtilizationHigh
+        expr: jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Heap utilization high ({{ $labels.instance }})"
+          description: "Heap usage on {{ $labels.app }} is at {{ $value | humanizePercentage }} for more than 10 minutes."

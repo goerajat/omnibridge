@@ -21,6 +21,7 @@ import com.omnibridge.ouch.engine.session.OuchSessionAdapter;
 import com.omnibridge.ouch.engine.session.SessionState;
 import com.omnibridge.ouch.message.OuchMessage;
 import com.omnibridge.persistence.LogStore;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +81,7 @@ public class OuchEngine implements Component, ScheduleListener {
 
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
     private volatile boolean running = false;
+    private MeterRegistry meterRegistry;
 
     /**
      * Create a new OUCH engine with configuration.
@@ -214,6 +216,11 @@ public class OuchEngine implements Component, ScheduleListener {
                 logStore,
                 sessionConfig.getProtocolVersion()
         );
+
+        // Bind metrics if registry is available
+        if (meterRegistry != null) {
+            session.bindMetrics(meterRegistry);
+        }
 
         // Add internal listeners
         session.addStateListener(this::onSessionStateChange);
@@ -625,6 +632,20 @@ public class OuchEngine implements Component, ScheduleListener {
      */
     public SessionScheduler getScheduler() {
         return scheduler;
+    }
+
+    /**
+     * Set the meter registry for metrics instrumentation.
+     */
+    public void setMeterRegistry(MeterRegistry registry) {
+        this.meterRegistry = registry;
+    }
+
+    /**
+     * Get the meter registry.
+     */
+    public MeterRegistry getMeterRegistry() {
+        return meterRegistry;
     }
 
     /**

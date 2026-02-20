@@ -36,6 +36,14 @@
             <artifactId>persistence</artifactId>
         </dependency>
 
+        <!-- Metrics (optional - for bindMetrics support) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>1.12.3</version>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Configuration -->
         <dependency>
             <groupId>com.typesafe</groupId>

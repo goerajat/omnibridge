@@ -9,6 +9,10 @@ import com.omnibridge.sbe.engine.session.SbeSession;
 import com.omnibridge.sbe.engine.session.SbeSessionState;
 import com.omnibridge.sbe.message.SbeMessage;
 import com.omnibridge.sbe.message.SbeMessageFactory;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +50,13 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
     /** Last time a message was received */
     private volatile long lastReceivedTime;
 
+    // Protocol-specific metrics
+    private Counter logonCounter;
+    private Counter logoutCounter;
+    private Counter heartbeatSentCounter;
+    private Counter heartbeatReceivedCounter;
+    private Counter rejectCounter;
+
     /**
      * Creates a new Optiq session.
      *
@@ -56,6 +67,38 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
         super(config, logStore);
         this.logicalAccessId = config.getLogicalAccessId();
         this.heartbeatInterval = config.getHeartbeatInterval();
+    }
+
+    @Override
+    protected String getProtocolName() {
+        return "Optiq";
+    }
+
+    @Override
+    public void bindMetrics(MeterRegistry registry) {
+        super.bindMetrics(registry);
+        if (registry == null) return;
+
+        Tags sessionTags = Tags.of(
+                "session_id", sessionId,
+                "protocol", "Optiq",
+                "role", isInitiator ? "initiator" : "acceptor"
+        );
+
+        logonCounter = Counter.builder("omnibridge.session.logon.total")
+                .tags(sessionTags).description("Logon count").register(registry);
+        logoutCounter = Counter.builder("omnibridge.session.logout.total")
+                .tags(sessionTags).description("Logout count").register(registry);
+        heartbeatSentCounter = Counter.builder("omnibridge.heartbeat.sent.total")
+                .tags(sessionTags).description("Heartbeats sent").register(registry);
+        heartbeatReceivedCounter = Counter.builder("omnibridge.heartbeat.received.total")
+                .tags(sessionTags).description("Heartbeats received").register(registry);
+        rejectCounter = Counter.builder("omnibridge.messages.rejected.total")
+                .tags(sessionTags).description("Messages rejected").register(registry);
+
+        Gauge.builder("omnibridge.heartbeat.interval.seconds", this,
+                        s -> (double) s.heartbeatInterval)
+                .tags(sessionTags).description("Heartbeat interval in seconds").register(registry);
     }
 
     @Override
@@ -165,6 +208,9 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
         this.heartbeatInterval = serverHeartbeat;
         setInboundSeqNum(lastMsgSeqNum);
 
+        if (logonCounter != null) {
+            logonCounter.increment();
+        }
         forceState(SbeSessionState.ESTABLISHED);
         log.info("[{}] Session established", sessionId);
     }
@@ -185,7 +231,9 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
         String reason = msg.getLogoutReasonText();
 
         log.info("[{}] Received Logout: reasonCode={}, reason={}", sessionId, reasonCode, reason);
-
+        if (logoutCounter != null) {
+            logoutCounter.increment();
+        }
         forceState(SbeSessionState.TERMINATED);
     }
 
@@ -194,6 +242,9 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
      */
     private void handleHeartbeat(HeartbeatMessage msg) {
         log.debug("[{}] Received Heartbeat", sessionId);
+        if (heartbeatReceivedCounter != null) {
+            heartbeatReceivedCounter.increment();
+        }
 
         // Respond with Heartbeat if needed
         if (state.get() == SbeSessionState.ESTABLISHED) {
@@ -216,6 +267,9 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
 
             if (commit(msg)) {
                 lastSentTime = System.currentTimeMillis();
+                if (heartbeatSentCounter != null) {
+                    heartbeatSentCounter.increment();
+                }
                 log.debug("[{}] Sent Heartbeat", sessionId);
             }
         } catch (Exception e) {
@@ -268,7 +322,9 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
 
         log.warn("[{}] Received Reject: clientOrderId={}, errorCode={}",
                 sessionId, clientOrderId, errorCode);
-
+        if (rejectCounter != null) {
+            rejectCounter.increment();
+        }
         notifyMessage(msg);
     }
 

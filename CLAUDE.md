@@ -1,5 +1,22 @@
 # Claude Code Project Notes
 
+## Code Navigation
+
+Use the index MCP (IDE integration) tools for code navigation and refactoring instead of raw text search when possible:
+
+- **`ide_find_definition`** — go to where a symbol is defined
+- **`ide_find_references`** — find all usages of a symbol before modifying or removing it
+- **`ide_find_implementations`** — find concrete implementations of interfaces/abstract classes
+- **`ide_find_class`** / **`ide_find_file`** — fast lookup by name (supports camelCase and substring matching)
+- **`ide_search_text`** — word index search (faster than file scanning for exact matches)
+- **`ide_call_hierarchy`** — trace callers/callees of a method
+- **`ide_type_hierarchy`** — view inheritance chains
+- **`ide_diagnostics`** — check for compilation errors and available quick fixes
+- **`ide_refactor_rename`** — safe rename across the entire project
+- **`ide_refactor_safe_delete`** — delete with usage check to avoid breaking references
+
+Prefer these over Grep/Glob for navigating Java code (finding definitions, tracing usage, understanding inheritance). Use `ide_sync_files` after creating or modifying files outside the IDE to keep the index current.
+
 ## Build
 
 Always use Maven for builds:
