@@ -118,6 +118,15 @@ public class DefaultComponentProvider implements ComponentProvider, ComponentReg
             }
         }
 
+        // For @Singleton types with a named lookup, reuse any existing instance
+        if (name != null && !name.isEmpty() && type.isAnnotationPresent(Singleton.class)) {
+            Component existing = findExistingSingleton(type, key);
+            if (existing != null) {
+                instances.put(key, existing);
+                return type.cast(existing);
+            }
+        }
+
         // Get factory for this type
         ComponentFactory<?> factory = factories.get(type);
         if (factory == null) {
@@ -138,6 +147,15 @@ public class DefaultComponentProvider implements ComponentProvider, ComponentReg
                     if (entry.getKey().startsWith(type.getName() + ":")) {
                         return type.cast(entry.getValue());
                     }
+                }
+            }
+
+            // Double-check singleton under lock
+            if (name != null && !name.isEmpty() && type.isAnnotationPresent(Singleton.class)) {
+                Component existing = findExistingSingleton(type, key);
+                if (existing != null) {
+                    instances.put(key, existing);
+                    return type.cast(existing);
                 }
             }
 
@@ -424,6 +442,25 @@ public class DefaultComponentProvider implements ComponentProvider, ComponentReg
     }
 
     // ==================== Helper Methods ====================
+
+    /**
+     * Find an existing instance of a singleton type under any key (type-only or any name).
+     * Returns null if no instance exists yet.
+     */
+    private Component findExistingSingleton(Class<?> type, String excludeKey) {
+        String typeOnlyKey = type.getName();
+        Component existing = instances.get(typeOnlyKey);
+        if (existing != null) {
+            return existing;
+        }
+        String prefix = typeOnlyKey + ":";
+        for (var entry : instances.entrySet()) {
+            if (entry.getKey().startsWith(prefix)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
 
     private String makeKey(Class<?> type, String name) {
         if (name == null || name.isEmpty()) {

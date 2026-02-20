@@ -8,6 +8,7 @@ import com.omnibridge.admin.routes.RouteProvider;
 import com.omnibridge.admin.websocket.WebSocketHandler;
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
+import com.omnibridge.config.Singleton;
 import io.javalin.Javalin;
 import io.javalin.http.HttpStatus;
 import io.javalin.json.JavalinJackson;
@@ -52,6 +53,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * server.startActive();
  * }</pre>
  */
+@Singleton
 public class AdminServer implements Component {
 
     private static final Logger log = LoggerFactory.getLogger(AdminServer.class);

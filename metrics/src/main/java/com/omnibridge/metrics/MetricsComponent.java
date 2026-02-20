@@ -2,6 +2,7 @@ package com.omnibridge.metrics;
 
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
+import com.omnibridge.config.Singleton;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.*;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * Metrics component wrapping a {@link PrometheusMeterRegistry}.
  * Registers JVM binders (memory, GC, threads, direct buffers, CPU) on initialization.
  */
+@Singleton
 public class MetricsComponent implements Component {
 
     private static final Logger log = LoggerFactory.getLogger(MetricsComponent.class);

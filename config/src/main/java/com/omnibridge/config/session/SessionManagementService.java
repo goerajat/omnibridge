@@ -1,6 +1,7 @@
 package com.omnibridge.config.session;
 
 import com.omnibridge.config.Component;
+import com.omnibridge.config.Singleton;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -33,6 +34,7 @@ import java.util.Optional;
  * });
  * }</pre>
  */
+@Singleton
 public interface SessionManagementService extends Component {
 
     // ========== Registration ==========

@@ -3,6 +3,7 @@ package com.omnibridge.config.schedule;
 import com.omnibridge.config.ClockProvider;
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
+import com.omnibridge.config.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,7 @@ import java.util.concurrent.TimeUnit;
  * scheduler.start();
  * }</pre>
  */
+@Singleton
 public class SessionScheduler implements Component {
 
     private static final Logger log = LoggerFactory.getLogger(SessionScheduler.class);

@@ -1,6 +1,7 @@
 package com.omnibridge.persistence;
 
 import com.omnibridge.config.Component;
+import com.omnibridge.config.Singleton;
 
 import java.io.Closeable;
 import java.util.Collection;
@@ -14,6 +15,7 @@ import java.util.Collection;
  * <p>The store organizes messages by stream name (typically a session identifier)
  * and supports filtering by direction (inbound/outbound) and sequence number.</p>
  */
+@Singleton
 public interface LogStore extends Closeable, Component {
 
     /**

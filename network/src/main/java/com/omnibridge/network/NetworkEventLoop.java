@@ -2,6 +2,7 @@ package com.omnibridge.network;
 
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
+import com.omnibridge.config.Singleton;
 import com.omnibridge.config.provider.ComponentProvider;
 import com.omnibridge.network.affinity.CpuAffinity;
 import com.omnibridge.network.config.NetworkConfig;
@@ -32,6 +33,7 @@ import java.util.function.Consumer;
  *   <li><b>Busy spin mode</b>: Uses selectNow() for minimal latency at cost of CPU usage</li>
  * </ul>
  */
+@Singleton
 public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
 
     private static final Logger log = LoggerFactory.getLogger(NetworkEventLoop.class);

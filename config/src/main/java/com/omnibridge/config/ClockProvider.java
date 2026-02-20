@@ -31,6 +31,7 @@ import java.time.ZoneId;
  *
  * @see java.time.Clock
  */
+@Singleton
 public class ClockProvider implements Component {
 
     private final Clock clock;
