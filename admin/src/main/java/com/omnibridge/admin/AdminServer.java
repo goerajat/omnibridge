@@ -94,6 +94,14 @@ public class AdminServer implements Component {
      * @return this server for chaining
      */
     public AdminServer addRouteProvider(RouteProvider provider) {
+        // Skip if a provider with the same base path is already registered
+        for (RouteProvider existing : routeProviders) {
+            if (existing.getBasePath().equals(provider.getBasePath())) {
+                log.debug("[{}] Route provider already registered for path {}, skipping duplicate",
+                        name, provider.getBasePath());
+                return this;
+            }
+        }
         routeProviders.add(provider);
         log.debug("[{}] Added route provider: {} -> {}",
                 name, provider.getBasePath(), provider.getDescription());
