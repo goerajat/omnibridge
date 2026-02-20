@@ -23,6 +23,35 @@ jobs:
       - name: Build and test
         run: mvn verify -DskipITs -DskipIntegrationTests=true -Pskip-frontend
 
+      - name: Unit test summary
+        if: always()
+        run: |
+          echo "## Unit Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          passed=0; failed=0; errors=0; skipped=0
+          for report in $(find . -path '*/surefire-reports/*.xml' -name 'TEST-*.xml' 2>/dev/null); do
+            t=$(grep -oP 'tests="\K[0-9]+' "$report" | head -1)
+            f=$(grep -oP 'failures="\K[0-9]+' "$report" | head -1)
+            e=$(grep -oP 'errors="\K[0-9]+' "$report" | head -1)
+            s=$(grep -oP 'skipped="\K[0-9]+' "$report" | head -1)
+            passed=$((passed + ${t:-0} - ${f:-0} - ${e:-0} - ${s:-0}))
+            failed=$((failed + ${f:-0}))
+            errors=$((errors + ${e:-0}))
+            skipped=$((skipped + ${s:-0}))
+          done
+          total=$((passed + failed + errors + skipped))
+
+          if [ $total -gt 0 ]; then
+            if [ $((failed + errors)) -eq 0 ]; then
+              echo "**All $total tests passed** :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**$failed failed, $errors errors** out of $total tests :x:" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "No unit test results found." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -52,10 +81,97 @@ jobs:
         run: chmod +x run-*.sh
 
       - name: Run reference tests
-        run: ./run-reference-test.sh all
+        id: ref-tests
+        run: |
+          ./run-reference-test.sh all 2>&1 | tee reference-test-output.txt
+          exit ${PIPESTATUS[0]}
 
       - name: Run session tests
-        run: ./run-session-test.sh all
+        id: session-tests
+        if: success() || failure()
+        run: |
+          ./run-session-test.sh all text 2>&1 | tee session-test-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Test results summary
+        if: always()
+        run: |
+          echo "## Integration Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # --- Reference Tests ---
+          echo "### Reference Tests (QuickFIX/J)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f reference-test-output.txt ]; then
+            echo "| | Test | Result | Details |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            # Parse: "  ✓ PASS  TestName                     Message"
+            grep -E '^\s+(✓|✗|!|-)\s+(PASS|FAIL|ERROR|SKIP)' reference-test-output.txt | while IFS= read -r line; do
+              status=$(echo "$line" | sed -E 's/^\s+(✓|✗|!|-)\s+//' | awk '{print $1}')
+              testname=$(echo "$line" | sed -E 's/^\s+(✓|✗|!|-)\s+//' | awk '{print $2}')
+              msg=$(echo "$line" | sed -E 's/^\s+(✓|✗|!|-)\s+(PASS|FAIL|ERROR|SKIP)\s+\S+\s+//')
+              case "$status" in
+                PASS)  icon=":white_check_mark:" ;;
+                FAIL)  icon=":x:" ;;
+                ERROR) icon=":warning:" ;;
+                SKIP)  icon=":fast_forward:" ;;
+                *)     icon=":grey_question:" ;;
+              esac
+              echo "| $icon | $testname | **$status** | $msg |" >> $GITHUB_STEP_SUMMARY
+            done
+            # Summary line
+            summary=$(grep -E '^Total:' reference-test-output.txt || true)
+            if [ -n "$summary" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "> $summary" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo ":warning: Reference tests did not run." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # --- Session Tests ---
+          echo "### Session Tests (OmniBridge Engine)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f session-test-output.txt ]; then
+            echo "| | Test | Result | Duration | Details |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
+            # Parse blocks: test name line followed by Status/Duration/Message lines
+            awk '
+              /^\[/ {
+                testname = $0
+                sub(/^\[.\] /, "", testname)
+                sub(/^\[..\] /, "", testname)
+              }
+              /^\s+Status:/ {
+                status = $NF
+              }
+              /^\s+Duration:/ {
+                duration = ""
+                for(i=2;i<=NF;i++) duration = duration (i>2?" ":"") $i
+              }
+              /^\s+Message:/ {
+                msg = $0
+                sub(/^\s+Message:\s+/, "", msg)
+                if (status == "PASSED") icon = ":white_check_mark:"
+                else if (status == "FAILED") icon = ":x:"
+                else if (status == "ERROR") icon = ":warning:"
+                else if (status == "SKIPPED") icon = ":fast_forward:"
+                else icon = ":grey_question:"
+                printf "| %s | %s | **%s** | %s | %s |\n", icon, testname, status, duration, msg
+              }
+            ' session-test-output.txt >> $GITHUB_STEP_SUMMARY
+            # Summary line
+            if grep -q "ALL TESTS PASSED" session-test-output.txt; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "> **All session tests passed** :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+            elif grep -q "SOME TESTS FAILED" session-test-output.txt; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "> **Some session tests failed** :x:" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo ":warning: Session tests did not run." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload acceptor logs
         if: always()
