@@ -105,20 +105,30 @@ jobs:
           if [ -f reference-test-output.txt ]; then
             echo "| | Test | Result | Details |" >> $GITHUB_STEP_SUMMARY
             echo "|---|------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-            # Parse: "  ✓ PASS  TestName                     Message"
-            grep -E '^\s+(✓|✗|!|-)\s+(PASS|FAIL|ERROR|SKIP)' reference-test-output.txt | while IFS= read -r line; do
-              status=$(echo "$line" | sed -E 's/^\s+(✓|✗|!|-)\s+//' | awk '{print $1}')
-              testname=$(echo "$line" | sed -E 's/^\s+(✓|✗|!|-)\s+//' | awk '{print $2}')
-              msg=$(echo "$line" | sed -E 's/^\s+(✓|✗|!|-)\s+(PASS|FAIL|ERROR|SKIP)\s+\S+\s+//')
-              case "$status" in
-                PASS)  icon=":white_check_mark:" ;;
-                FAIL)  icon=":x:" ;;
-                ERROR) icon=":warning:" ;;
-                SKIP)  icon=":fast_forward:" ;;
-                *)     icon=":grey_question:" ;;
-              esac
-              echo "| $icon | $testname | **$status** | $msg |" >> $GITHUB_STEP_SUMMARY
-            done
+            # Parse lines containing PASS/FAIL/ERROR/SKIP followed by a test name
+            # Format: "  ✓ PASS  TestName                     Message"
+            # Use awk to find the status keyword and extract fields
+            awk '
+              {
+                for (i = 1; i <= NF; i++) {
+                  if ($i == "PASS" || $i == "FAIL" || $i == "ERROR" || $i == "SKIP") {
+                    status = $i
+                    testname = $(i+1)
+                    # Verify testname looks like a test name (contains "Test")
+                    if (testname ~ /Test/) {
+                      msg = ""
+                      for (j = i+2; j <= NF; j++) msg = msg (j>i+2?" ":"") $j
+                      if (status == "PASS") icon = ":white_check_mark:"
+                      else if (status == "FAIL") icon = ":x:"
+                      else if (status == "ERROR") icon = ":warning:"
+                      else icon = ":fast_forward:"
+                      printf "| %s | %s | **%s** | %s |\n", icon, testname, status, msg
+                    }
+                    break
+                  }
+                }
+              }
+            ' reference-test-output.txt >> $GITHUB_STEP_SUMMARY
             # Summary line
             summary=$(grep -E '^Total:' reference-test-output.txt || true)
             if [ -n "$summary" ]; then
@@ -136,23 +146,24 @@ jobs:
           if [ -f session-test-output.txt ]; then
             echo "| | Test | Result | Duration | Details |" >> $GITHUB_STEP_SUMMARY
             echo "|---|------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
-            # Parse blocks: test name line followed by Status/Duration/Message lines
+            # Parse blocks: look for Status/Duration/Message lines
+            # Test name is on the preceding line matching [icon] TestName
             awk '
-              /^\[/ {
+              /^\[.*\] / {
                 testname = $0
-                sub(/^\[.\] /, "", testname)
-                sub(/^\[..\] /, "", testname)
+                # Remove everything up to and including "] "
+                sub(/^\[.*\] /, "", testname)
               }
-              /^\s+Status:/ {
+              /^[[:space:]]+Status:/ {
                 status = $NF
               }
-              /^\s+Duration:/ {
+              /^[[:space:]]+Duration:/ {
                 duration = ""
                 for(i=2;i<=NF;i++) duration = duration (i>2?" ":"") $i
               }
-              /^\s+Message:/ {
+              /^[[:space:]]+Message:/ {
                 msg = $0
-                sub(/^\s+Message:\s+/, "", msg)
+                sub(/^[[:space:]]+Message:[[:space:]]+/, "", msg)
                 if (status == "PASSED") icon = ":white_check_mark:"
                 else if (status == "FAILED") icon = ":x:"
                 else if (status == "ERROR") icon = ":warning:"
