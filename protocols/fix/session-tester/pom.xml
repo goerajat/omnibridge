@@ -35,6 +35,13 @@
             <artifactId>picocli</artifactId>
         </dependency>
 
+        <!-- Metrics (optional in engine, needed explicitly for MetricsValidationTest) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>1.12.3</version>
+        </dependency>
+
         <!-- JSON for report generation -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

@@ -419,6 +419,7 @@ public class ReferenceTester implements Callable<Integer> {
                 new MultipleOrdersTest(),
                 new Fix42LogonTest(),   // FIX 4.2 specific test
                 new Fix50LogonTest(),   // FIX 5.0 specific test
+                new MaxMessageSizeTest(),
                 new LogonLogoutTest()   // Run last as it logs out
         );
 
