@@ -29,24 +29,58 @@ jobs:
           echo "## Unit Tests" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          passed=0; failed=0; errors=0; skipped=0
-          for report in $(find . -path '*/surefire-reports/*.xml' -name 'TEST-*.xml' 2>/dev/null); do
-            t=$(grep -oP 'tests="\K[0-9]+' "$report" | head -1)
-            f=$(grep -oP 'failures="\K[0-9]+' "$report" | head -1)
-            e=$(grep -oP 'errors="\K[0-9]+' "$report" | head -1)
-            s=$(grep -oP 'skipped="\K[0-9]+' "$report" | head -1)
-            passed=$((passed + ${t:-0} - ${f:-0} - ${e:-0} - ${s:-0}))
-            failed=$((failed + ${f:-0}))
-            errors=$((errors + ${e:-0}))
-            skipped=$((skipped + ${s:-0}))
-          done
-          total=$((passed + failed + errors + skipped))
+          total_passed=0; total_failed=0; total_errors=0; total_skipped=0
+          total_time=0; found=0
 
-          if [ $total -gt 0 ]; then
-            if [ $((failed + errors)) -eq 0 ]; then
-              echo "**All $total tests passed** :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          # Collect per-class results
+          rows=""
+          for report in $(find . -path '*/surefire-reports/*.xml' -name 'TEST-*.xml' 2>/dev/null | sort); do
+            # Extract attributes from <testsuite> tag using sed
+            name=$(sed -n 's/.*<testsuite[^>]* name="\([^"]*\)".*/\1/p' "$report" | head -1)
+            t=$(sed -n 's/.*<testsuite[^>]* tests="\([0-9]*\)".*/\1/p' "$report" | head -1)
+            f=$(sed -n 's/.*<testsuite[^>]* failures="\([0-9]*\)".*/\1/p' "$report" | head -1)
+            e=$(sed -n 's/.*<testsuite[^>]* errors="\([0-9]*\)".*/\1/p' "$report" | head -1)
+            s=$(sed -n 's/.*<testsuite[^>]* skipped="\([0-9]*\)".*/\1/p' "$report" | head -1)
+            time=$(sed -n 's/.*<testsuite[^>]* time="\([^"]*\)".*/\1/p' "$report" | head -1)
+
+            t=${t:-0}; f=${f:-0}; e=${e:-0}; s=${s:-0}; time=${time:-0}
+            p=$((t - f - e - s))
+
+            # Determine icon
+            if [ $((f + e)) -gt 0 ]; then
+              icon=":x:"
+            elif [ "$s" -gt 0 ] && [ "$t" -eq "$s" ]; then
+              icon=":fast_forward:"
             else
-              echo "**$failed failed, $errors errors** out of $total tests :x:" >> $GITHUB_STEP_SUMMARY
+              icon=":white_check_mark:"
+            fi
+
+            # Short class name (strip package)
+            short_name="${name##*.}"
+
+            # Module from path
+            module=$(echo "$report" | sed 's|^\./\(.*\)/target/.*|\1|' | sed 's|/|-|g')
+
+            rows="${rows}| ${icon} | ${module} | ${short_name} | ${t} | ${p} | ${f} | ${e} | ${s} | ${time}s |\n"
+
+            total_passed=$((total_passed + p))
+            total_failed=$((total_failed + f))
+            total_errors=$((total_errors + e))
+            total_skipped=$((total_skipped + s))
+            found=$((found + 1))
+          done
+
+          total=$((total_passed + total_failed + total_errors + total_skipped))
+
+          if [ $found -gt 0 ]; then
+            echo "| | Module | Test Class | Tests | Passed | Failed | Errors | Skipped | Duration |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|--------|------------|-------|--------|--------|--------|---------|----------|" >> $GITHUB_STEP_SUMMARY
+            printf "$rows" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ $((total_failed + total_errors)) -eq 0 ]; then
+              echo "> **All $total tests passed** ($found test classes) :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "> **$total_failed failed, $total_errors errors** out of $total tests ($found test classes) :x:" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "No unit test results found." >> $GITHUB_STEP_SUMMARY
