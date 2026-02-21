@@ -94,6 +94,7 @@ public class TestSuite {
                             .build();
                 }
 
+                result.setDescription(test.getDescription());
                 results.add(result);
                 log.info("Test {}: {} - {}",
                         test.getName(),
@@ -207,6 +208,9 @@ public class TestSuite {
             };
             System.out.printf("  %s  %-30s  %s%n",
                     status, result.getTestName(), result.getMessage());
+            if (result.getDescription() != null && !result.getDescription().isEmpty()) {
+                System.out.printf("          Validates: %s%n", result.getDescription());
+            }
         }
 
         System.out.println();

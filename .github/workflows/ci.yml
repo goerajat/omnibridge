@@ -103,18 +103,17 @@ jobs:
           echo "### Reference Tests (QuickFIX/J)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f reference-test-output.txt ]; then
-            echo "| | Test | Result | Details |" >> $GITHUB_STEP_SUMMARY
-            echo "|---|------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-            # Parse lines containing PASS/FAIL/ERROR/SKIP followed by a test name
+            echo "| | Test | Validates | Result | Details |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|------|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            # Parse result lines and the "Validates:" line that follows each test
             # Format: "  ✓ PASS  TestName                     Message"
-            # Use awk to find the status keyword and extract fields
+            #         "          Validates: description text"
             awk '
               {
                 for (i = 1; i <= NF; i++) {
                   if ($i == "PASS" || $i == "FAIL" || $i == "ERROR" || $i == "SKIP") {
                     status = $i
                     testname = $(i+1)
-                    # Verify testname looks like a test name (contains "Test")
                     if (testname ~ /Test/) {
                       msg = ""
                       for (j = i+2; j <= NF; j++) msg = msg (j>i+2?" ":"") $j
@@ -122,7 +121,14 @@ jobs:
                       else if (status == "FAIL") icon = ":x:"
                       else if (status == "ERROR") icon = ":warning:"
                       else icon = ":fast_forward:"
-                      printf "| %s | %s | **%s** | %s |\n", icon, testname, status, msg
+                      # Read next line for Validates:
+                      if ((getline nextline) > 0 && nextline ~ /Validates:/) {
+                        desc = nextline
+                        sub(/.*Validates:[[:space:]]*/, "", desc)
+                      } else {
+                        desc = ""
+                      }
+                      printf "| %s | %s | %s | **%s** | %s |\n", icon, testname, desc, status, msg
                     }
                     break
                   }
@@ -144,15 +150,18 @@ jobs:
           echo "### Session Tests (OmniBridge Engine)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f session-test-output.txt ]; then
-            echo "| | Test | Result | Duration | Details |" >> $GITHUB_STEP_SUMMARY
-            echo "|---|------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
-            # Parse blocks: look for Status/Duration/Message lines
-            # Test name is on the preceding line matching [icon] TestName
+            echo "| | Test | Validates | Result | Duration | Details |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|------|-----------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
+            # Parse blocks: test name, Validates, Status, Duration, Message lines
             awk '
               /^\[.*\] / {
                 testname = $0
-                # Remove everything up to and including "] "
                 sub(/^\[.*\] /, "", testname)
+                desc = ""
+              }
+              /^[[:space:]]+Validates:/ {
+                desc = $0
+                sub(/^[[:space:]]+Validates:[[:space:]]+/, "", desc)
               }
               /^[[:space:]]+Status:/ {
                 status = $NF
@@ -169,7 +178,7 @@ jobs:
                 else if (status == "ERROR") icon = ":warning:"
                 else if (status == "SKIPPED") icon = ":fast_forward:"
                 else icon = ":grey_question:"
-                printf "| %s | %s | **%s** | %s | %s |\n", icon, testname, status, duration, msg
+                printf "| %s | %s | %s | **%s** | %s | %s |\n", icon, testname, desc, status, duration, msg
               }
             ' session-test-output.txt >> $GITHUB_STEP_SUMMARY
             # Summary line

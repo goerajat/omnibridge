@@ -407,9 +407,17 @@ public class ReferenceTester implements Callable<Integer> {
                 new SequenceNumberTest(),
                 new NewOrderTest(),
                 new MarketOrderTest(),
+                new SellOrderTest(),
                 new OrderCancelTest(),
                 new OrderModifyTest(),
+                new OrderRejectTest(),
+                new OrderStatusRequestTest(),
+                new CancelRejectTest(),
+                new TimeInForceTest(),
+                new PartialFillTest(),
+                new FillDelayTest(),
                 new MultipleOrdersTest(),
+                new Fix42LogonTest(),   // FIX 4.2 specific test
                 new Fix50LogonTest(),   // FIX 5.0 specific test
                 new LogonLogoutTest()   // Run last as it logs out
         );

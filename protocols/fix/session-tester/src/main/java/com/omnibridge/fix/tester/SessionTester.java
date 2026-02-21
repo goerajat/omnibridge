@@ -70,14 +70,29 @@ public class SessionTester implements Callable<Integer> {
         registerTest(new SequenceNumberTest());
         registerTest(new TestRequestTest());
         registerTest(new HeartbeatTest());
+        registerTest(new HeartbeatTimeoutTest());
         registerTest(new ResendRequestTest());
         registerTest(new ConcurrentOrderTest());
         registerTest(new DuplicateLogonTest());
         registerTest(new ResetSeqNumOnLogonTest());
+        registerTest(new ResetOnLogoutTest());
+        registerTest(new ResetOnDisconnectTest());
         registerTest(new MultipleReconnectTest());
         registerTest(new SendInWrongStateTest());
         registerTest(new GapDetectionTest());
         registerTest(new DuplicateMessageTest());
+        registerTest(new PossDupFlagTest());
+        registerTest(new ResendReplayTest());
+        registerTest(new SequenceResetNonGapFillTest());
+        registerTest(new SequenceGapBothDirectionsTest());
+        registerTest(new BackpressureTest());
+        registerTest(new LargeMessageTest());
+        registerTest(new ConcurrentReconnectTest());
+        registerTest(new CompIdValidationTest());
+        registerTest(new LogonWhileConnectedTest());
+        registerTest(new MessageLoggingTest());
+        registerTest(new MaxReconnectAttemptsTest());
+        registerTest(new SessionStateListenerTest());
         registerTest(new LogoutAcknowledgmentTest());
         registerTest(new RejectNotificationTest());
         registerTest(new Fix50LogonTest());
@@ -177,6 +192,7 @@ public class SessionTester implements Callable<Integer> {
             for (SessionTest test : testsToRun) {
                 log.info("Running test: {}", test.getName());
                 TestResult result = test.execute(context);
+                result.setDescription(test.getDescription());
                 suite.addResult(result);
                 log.info("Test {}: {} - {}", test.getName(), result.getStatus(), result.getMessage());
             }

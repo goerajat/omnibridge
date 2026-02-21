@@ -77,6 +77,9 @@ public class ReportGenerator {
         for (TestResult result : suite.getResults()) {
             String statusIcon = getStatusIcon(result.getStatus());
             sb.append(String.format("[%s] %s%n", statusIcon, result.getTestName()));
+            if (result.getDescription() != null && !result.getDescription().isEmpty()) {
+                sb.append(String.format("    Validates: %s%n", result.getDescription()));
+            }
             sb.append(String.format("    Status:   %s%n", result.getStatus()));
             sb.append(String.format("    Duration: %d ms%n", result.getDurationMs()));
             sb.append(String.format("    Message:  %s%n", result.getMessage()));
@@ -125,6 +128,9 @@ public class ReportGenerator {
             for (TestResult result : suite.getResults()) {
                 ObjectNode resultNode = results.addObject();
                 resultNode.put("testName", result.getTestName());
+                if (result.getDescription() != null) {
+                    resultNode.put("description", result.getDescription());
+                }
                 resultNode.put("status", result.getStatus().name());
                 resultNode.put("message", result.getMessage());
                 resultNode.put("durationMs", result.getDurationMs());
@@ -222,6 +228,7 @@ public class ReportGenerator {
         sb.append("                <tr>\n");
         sb.append("                    <th></th>\n");
         sb.append("                    <th>Test Name</th>\n");
+        sb.append("                    <th>Validates</th>\n");
         sb.append("                    <th>Status</th>\n");
         sb.append("                    <th>Duration</th>\n");
         sb.append("                    <th>Message</th>\n");
@@ -233,6 +240,7 @@ public class ReportGenerator {
             sb.append("                <tr>\n");
             sb.append("                    <td class=\"result-icon\">").append(getStatusIcon(result.getStatus())).append("</td>\n");
             sb.append("                    <td>").append(escapeHtml(result.getTestName())).append("</td>\n");
+            sb.append("                    <td>").append(result.getDescription() != null ? escapeHtml(result.getDescription()) : "").append("</td>\n");
             sb.append("                    <td><span class=\"status-badge status-").append(result.getStatus().name())
                     .append("\">").append(result.getStatus()).append("</span></td>\n");
             sb.append("                    <td>").append(result.getDurationMs()).append(" ms</td>\n");

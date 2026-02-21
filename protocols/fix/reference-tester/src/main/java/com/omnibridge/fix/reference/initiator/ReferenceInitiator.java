@@ -34,6 +34,7 @@ public class ReferenceInitiator implements Application {
     // Execution report tracking
     private final Map<String, CompletableFuture<ExecutionReport>> pendingOrders = new ConcurrentHashMap<>();
     private final BlockingQueue<ExecutionReport> executionReports = new LinkedBlockingQueue<>();
+    private final BlockingQueue<quickfix.Message> cancelRejects = new LinkedBlockingQueue<>();
     private Consumer<ExecutionReport> executionReportListener;
 
     public ReferenceInitiator(InitiatorConfig config) {
@@ -236,6 +237,8 @@ public class ReferenceInitiator implements Application {
 
         log.warn("OrderCancelReject: ClOrdID={}, OrigClOrdID={}, Text={}",
                 clOrdId, origClOrdId, text);
+
+        cancelRejects.offer(message);
     }
 
     // ==================== Order Operations ====================
@@ -379,6 +382,63 @@ public class ReferenceInitiator implements Application {
     }
 
     /**
+     * Send a new order with explicit TimeInForce.
+     */
+    public String sendNewOrderSingle(String symbol, char side, double quantity,
+                                      char ordType, double price, char timeInForce) {
+        String clOrdId = generateClOrdId();
+
+        try {
+            NewOrderSingle order = new NewOrderSingle(
+                    new ClOrdID(clOrdId),
+                    new Side(side),
+                    new TransactTime(LocalDateTime.now()),
+                    new OrdType(ordType)
+            );
+
+            order.set(new Symbol(symbol));
+            order.set(new OrderQty(quantity));
+            order.set(new HandlInst('1'));
+            order.set(new TimeInForce(timeInForce));
+
+            if (ordType == OrdType.LIMIT && price > 0) {
+                order.set(new Price(price));
+            }
+
+            Session.sendToTarget(order, currentSession);
+            log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}, TIF={}",
+                    clOrdId, symbol, side == Side.BUY ? "BUY" : "SELL", quantity, price, timeInForce);
+
+            return clOrdId;
+
+        } catch (SessionNotFound e) {
+            log.error("Failed to send order: session not found", e);
+            return null;
+        }
+    }
+
+    /**
+     * Send an order status request.
+     */
+    public String sendOrderStatusRequest(String clOrdId, String symbol, char side) {
+        try {
+            quickfix.fix44.OrderStatusRequest request = new quickfix.fix44.OrderStatusRequest(
+                    new ClOrdID(clOrdId),
+                    new Side(side)
+            );
+            request.set(new Symbol(symbol));
+
+            Session.sendToTarget(request, currentSession);
+            log.info("Sent OrderStatusRequest: ClOrdID={}", clOrdId);
+            return clOrdId;
+
+        } catch (SessionNotFound e) {
+            log.error("Failed to send order status request: session not found", e);
+            return null;
+        }
+    }
+
+    /**
      * Send a test request.
      */
     public String sendTestRequest() {
@@ -421,6 +481,20 @@ public class ReferenceInitiator implements Application {
      */
     public void clearExecutionReports() {
         executionReports.clear();
+    }
+
+    /**
+     * Get the next cancel reject from the queue.
+     */
+    public quickfix.Message pollCancelReject(long timeoutMs) throws InterruptedException {
+        return cancelRejects.poll(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Clear cancel reject queue.
+     */
+    public void clearCancelRejects() {
+        cancelRejects.clear();
     }
 
     /**

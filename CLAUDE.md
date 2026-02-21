@@ -69,7 +69,7 @@ run-reference-test.bat [test-names]
 ./run-reference-test.sh [test-names]
 ```
 
-Available tests: HeartbeatTest, SequenceNumberTest, NewOrderTest, MarketOrderTest, OrderCancelTest, OrderModifyTest, MultipleOrdersTest, LogonLogoutTest
+Available tests: HeartbeatTest, SequenceNumberTest, NewOrderTest, MarketOrderTest, SellOrderTest, OrderCancelTest, OrderModifyTest, OrderRejectTest, OrderStatusRequestTest, CancelRejectTest, TimeInForceTest, PartialFillTest, FillDelayTest, MultipleOrdersTest, Fix42LogonTest, Fix50LogonTest, LogonLogoutTest
 
 Example:
 ```bash
@@ -89,7 +89,7 @@ run-session-test.bat [test-names] [report-format]
 ./run-session-test.sh [test-names] [report-format]
 ```
 
-Available tests: LogonLogoutTest, SequenceNumberTest, TestRequestTest, HeartbeatTest, ResendRequestTest, DuplicateLogonTest, ResetSeqNumOnLogonTest, MultipleReconnectTest, SendInWrongStateTest, GapDetectionTest, DuplicateMessageTest, LogoutAcknowledgmentTest, RejectNotificationTest
+Available tests: LogonLogoutTest, SequenceNumberTest, TestRequestTest, HeartbeatTest, HeartbeatTimeoutTest, ResendRequestTest, ConcurrentOrderTest, DuplicateLogonTest, ResetSeqNumOnLogonTest, ResetOnLogoutTest, ResetOnDisconnectTest, MultipleReconnectTest, SendInWrongStateTest, GapDetectionTest, DuplicateMessageTest, PossDupFlagTest, ResendReplayTest, SequenceResetNonGapFillTest, SequenceGapBothDirectionsTest, BackpressureTest, LargeMessageTest, ConcurrentReconnectTest, CompIdValidationTest, LogonWhileConnectedTest, MessageLoggingTest, MaxReconnectAttemptsTest, SessionStateListenerTest, LogoutAcknowledgmentTest, RejectNotificationTest, Fix50LogonTest
 
 Report formats: text (default), json, html
 

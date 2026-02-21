@@ -35,14 +35,17 @@ public class DuplicateMessageTest implements SessionTest {
         long startTime = System.currentTimeMillis();
 
         try {
-            // Ensure logged on
-            if (!context.isLoggedOn()) {
-                context.connect();
-                if (!context.waitForLogon()) {
-                    return TestResult.failed(getName(),
-                            "Could not establish logged on state",
-                            System.currentTimeMillis() - startTime);
-                }
+            // Ensure a clean session with low sequence numbers
+            if (context.isLoggedOn()) {
+                context.disconnect();
+                context.waitForDisconnect(5000);
+                context.sleep(500);
+            }
+            context.connect();
+            if (!context.waitForLogon()) {
+                return TestResult.failed(getName(),
+                        "Could not establish logged on state",
+                        System.currentTimeMillis() - startTime);
             }
 
             int incomingBefore = context.getExpectedIncomingSeqNum();
@@ -50,8 +53,9 @@ public class DuplicateMessageTest implements SessionTest {
 
             // Set expectedIncomingSeqNum very high so the next incoming message
             // has seqNum < expected, triggering the "Sequence number too low" path
-            context.setExpectedIncomingSeqNum(10000);
-            log.info("Set expectedIncomingSeqNum to 10000");
+            int highSeqNum = Math.max(10000, incomingBefore + 10000);
+            context.setExpectedIncomingSeqNum(highSeqNum);
+            log.info("Set expectedIncomingSeqNum to {}", highSeqNum);
 
             // Send TestRequest to trigger a Heartbeat from the acceptor
             // The Heartbeat will have the acceptor's actual seqNum (e.g., 5),
@@ -68,7 +72,11 @@ public class DuplicateMessageTest implements SessionTest {
                 log.warn("Session did not disconnect within timeout");
 
                 // Restore and reconnect
-                context.setExpectedIncomingSeqNum(incomingBefore);
+                context.disconnect();
+                context.waitForDisconnect(5000);
+                context.sleep(500);
+                context.connect();
+                context.waitForLogon();
                 return TestResult.failed(getName(),
                         "Session did not disconnect when receiving message with seqnum < expected",
                         System.currentTimeMillis() - startTime);
@@ -94,8 +102,8 @@ public class DuplicateMessageTest implements SessionTest {
 
             return TestResult.passed(getName(),
                     String.format("Session correctly disconnected on seqnum too low " +
-                                    "(expected=10000, actual=~%d), recovered after reconnect",
-                            incomingBefore),
+                                    "(expected=%d, actual=~%d), recovered after reconnect",
+                            highSeqNum, incomingBefore),
                     System.currentTimeMillis() - startTime);
 
         } catch (Exception e) {

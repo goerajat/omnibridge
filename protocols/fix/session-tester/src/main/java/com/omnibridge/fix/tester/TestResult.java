@@ -20,6 +20,7 @@ public class TestResult {
     private final String message;
     private final long durationMs;
     private final Throwable error;
+    private String description;
 
     private TestResult(String testName, Status status, String message, long durationMs, Throwable error) {
         this.testName = testName;
@@ -75,6 +76,14 @@ public class TestResult {
 
     public Throwable getError() {
         return error;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public boolean isPassed() {

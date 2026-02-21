@@ -22,6 +22,7 @@ public class TestResult {
     private final Instant endTime;
     private final Duration duration;
     private final Throwable exception;
+    private String description;
 
     private TestResult(Builder builder) {
         this.testName = builder.testName;
@@ -63,6 +64,14 @@ public class TestResult {
 
     public Throwable getException() {
         return exception;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public boolean isPassed() {
