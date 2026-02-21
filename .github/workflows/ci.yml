@@ -30,7 +30,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           total_passed=0; total_failed=0; total_errors=0; total_skipped=0
-          total_time=0; found=0
+          found=0; failure_details=""
 
           # Collect per-class results
           rows=""
@@ -63,6 +63,35 @@ jobs:
 
             rows="${rows}| ${icon} | ${module} | ${short_name} | ${t} | ${p} | ${f} | ${e} | ${s} | ${time}s |\n"
 
+            # Extract individual failure/error details
+            if [ $((f + e)) -gt 0 ]; then
+              details=$(awk '
+                /<testcase / {
+                  match($0, /name="([^"]*)"/, m); method = m[1]
+                }
+                /<failure / {
+                  match($0, /message="([^"]*)"/, mm); fmsg = mm[1]
+                  match($0, /type="([^"]*)"/, mt); ftype = mt[1]
+                  # Short type name
+                  sub(/.*\./, "", ftype)
+                  printf "| :x: | `%s` | `%s` | %s | %s |\n", method, ftype, "FAILURE", fmsg
+                }
+                /<error / {
+                  match($0, /message="([^"]*)"/, mm); emsg = mm[1]
+                  match($0, /type="([^"]*)"/, mt); etype = mt[1]
+                  sub(/.*\./, "", etype)
+                  printf "| :x: | `%s` | `%s` | %s | %s |\n", method, etype, "ERROR", emsg
+                }
+              ' "$report")
+              if [ -n "$details" ]; then
+                failure_details="${failure_details}<details>\n<summary>:x: <b>${module}</b> / ${short_name} (${f} failures, ${e} errors)</summary>\n\n"
+                failure_details="${failure_details}| | Method | Exception | Type | Message |\n"
+                failure_details="${failure_details}|---|--------|-----------|------|---------|\n"
+                failure_details="${failure_details}${details}\n\n"
+                failure_details="${failure_details}</details>\n\n"
+              fi
+            fi
+
             total_passed=$((total_passed + p))
             total_failed=$((total_failed + f))
             total_errors=$((total_errors + e))
@@ -81,6 +110,10 @@ jobs:
               echo "> **All $total tests passed** ($found test classes) :white_check_mark:" >> $GITHUB_STEP_SUMMARY
             else
               echo "> **$total_failed failed, $total_errors errors** out of $total tests ($found test classes) :x:" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              printf "$failure_details" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "No unit test results found." >> $GITHUB_STEP_SUMMARY
