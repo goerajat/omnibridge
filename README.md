@@ -40,10 +40,91 @@ Three persistence modes for message logging and replay:
 | `memory-mapped` | Custom `MemoryMappedLogStore` | Lightweight memory-mapped files without Chronicle dependency |
 | `none` | — | No persistence; lowest latency |
 
-Features:
-- Replay from any sequence number for gap-fill and recovery
-- Per-session log streams with configurable max file size
-- CLI `LogViewer` for offline log inspection and filtering
+### Architecture
+
+The persistence layer is protocol-agnostic. A single `LogStore` interface is backed by either Chronicle Queue or custom memory-mapped files, selected via `store-type` config. Each protocol session (FIX, OUCH, etc.) writes to its own **stream** — a separate Chronicle Queue directory or memory-mapped file.
+
+**Binary entry format** (written via Chronicle Queue's raw `Bytes` API — no named Wire fields):
+
+```
+timestamp       8 bytes (long)     Epoch milliseconds
+direction       1 byte             0 = INBOUND, 1 = OUTBOUND
+sequenceNumber  4 bytes (int)      Protocol-level sequence number
+metadataLen     2 bytes (short)    Length of metadata
+metadata        N bytes            Protocol-specific metadata
+rawMessageLen   4 bytes (int)      Length of raw message
+rawMessage      N bytes            Raw protocol message bytes
+```
+
+### Streams
+
+Streams are created **lazily on first write** — no pre-configuration needed. Stream names come from session IDs:
+
+- **FIX**: `senderCompId + "->" + targetCompId` (e.g., `EXCHANGE->CLIENT`)
+- **OUCH**: the session ID string
+
+Stream names are sanitized for the file system (`->` becomes `_to_`, invalid chars replaced with `_`).
+
+### File System Layout
+
+```
+fix-logs/acceptor/                      # basePath from config
+  EXCHANGE_to_CLIENT/                   # sanitized stream name = directory
+    metadata.cq4t                       # Chronicle Queue metadata
+    20260219F.cq4                       # data file (daily rolling)
+    20260220F.cq4
+  CLIENT_to_EXCHANGE/
+    metadata.cq4t
+    20260219F.cq4
+```
+
+On startup, existing streams are auto-discovered by scanning for subdirectories containing `.cq4` files.
+
+### Write Path
+
+FIX sessions enforce **single-writer semantics** per stream:
+- **Incoming messages** — logged on the session's receive thread
+- **Outgoing messages** — logged via `TcpChannel.OutgoingMessageListener` on the event loop thread (fires during ring buffer drain)
+
+Writes use a flyweight `LogEntry` with pre-allocated byte buffers to avoid allocation on the hot path.
+
+### Readers
+
+- **Single-stream reader** (`ChronicleLogReader`) — backed by a Chronicle `ExcerptTailer` with `poll()`, `drain()`, and `setPosition()` support
+- **All-streams reader** (`ChronicleAllStreamsLogReader`) — merge-sorts entries from all streams by timestamp using per-stream peek buffers
+
+### Decoder Integration
+
+The `Decoder` interface provides protocol-specific message interpretation:
+
+| Decoder | Protocol | Capabilities |
+|---------|----------|-------------|
+| `FIXDecoder` | FIX | Extracts tag 35 (MsgType), tag 34 (MsgSeqNum), formats with `\|` separators |
+| `OuchDecoder` | OUCH | Decodes binary messages via flyweight wrappers, formats as JSON |
+
+Decoders are attached per-stream via `logStore.setDecoder(streamName, decoder)` and stored in-memory.
+
+### CLI Log Viewer
+
+The `LogViewer` CLI tool (`persistence-*-cli.jar`) provides offline log inspection:
+
+```bash
+alias fixlog="java -jar persistence/target/persistence-*-cli.jar"
+```
+
+| Command | Description |
+|---------|-------------|
+| `fixlog list <path>` | List streams with entry counts and last sequence numbers |
+| `fixlog show <path>` | Show messages with filters (direction, type, time/seq range) |
+| `fixlog search <path>` | Regex search across raw messages and metadata |
+| `fixlog stats <path>` | Statistics with optional `--by-type` breakdown |
+| `fixlog tail <path>` | Real-time follow (like `tail -f`) |
+| `fixlog export <path>` | Export to text, JSON, CSV, or raw format |
+| `fixlog msgtypes` | List all known FIX message type codes |
+
+Common filter options: `--stream`, `--direction in/out`, `--type D/8/A`, `--from-time`/`--to-time`, `--from-seq`/`--to-seq`, `--skip-admin`, `--decode-types`, `-n count`, `-f format`.
+
+The CLI auto-detects whether a directory uses Chronicle Queue or memory-mapped files. See `persistence/CLI.md` for full documentation.
 
 ## OmniView — Real-Time Monitoring
 

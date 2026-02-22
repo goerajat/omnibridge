@@ -1,4 +1,4 @@
-# FIX Log Viewer CLI Documentation
+Up# FIX Log Viewer CLI Documentation
 
 The FIX Log Viewer (`fixlog`) is a command-line tool for viewing, searching, and exporting FIX message logs from the shared memory persistence store.
 
