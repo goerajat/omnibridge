@@ -37,6 +37,13 @@
             <groupId>info.picocli</groupId>
             <artifactId>picocli</artifactId>
         </dependency>
+
+        <!-- Aeron Remote Persistence (optional, loaded via reflection by LogStoreFactory) -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>persistence-aeron</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

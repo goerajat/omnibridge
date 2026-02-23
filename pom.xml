@@ -31,6 +31,7 @@
         <module>config</module>
         <module>network</module>
         <module>persistence</module>
+        <module>persistence-aeron</module>
         <!-- Admin API (Javalin-based) -->
         <module>admin</module>
         <!-- Metrics (Micrometer + Prometheus) -->
@@ -60,6 +61,7 @@
         <jackson.version>2.16.1</jackson.version>
         <picocli.version>4.7.5</picocli.version>
         <typesafe.config.version>1.4.3</typesafe.config.version>
+        <aeron.version>1.44.1</aeron.version>
     </properties>
 
     <dependencyManagement>
@@ -200,6 +202,11 @@
                 <artifactId>omniview</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.omnibridge</groupId>
+                <artifactId>persistence-aeron</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Logging -->
             <dependency>
@@ -237,6 +244,18 @@
                 <groupId>net.openhft</groupId>
                 <artifactId>chronicle-queue</artifactId>
                 <version>${chronicle.version}</version>
+            </dependency>
+
+            <!-- Aeron for remote persistence transport -->
+            <dependency>
+                <groupId>io.aeron</groupId>
+                <artifactId>aeron-client</artifactId>
+                <version>${aeron.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.aeron</groupId>
+                <artifactId>aeron-driver</artifactId>
+                <version>${aeron.version}</version>
             </dependency>
 
             <!-- JSON/XML processing -->

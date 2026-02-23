@@ -13,6 +13,7 @@ public final class PersistenceConfig {
     public enum StoreType {
         MEMORY_MAPPED,
         CHRONICLE,
+        AERON,
         NONE
     }
 
