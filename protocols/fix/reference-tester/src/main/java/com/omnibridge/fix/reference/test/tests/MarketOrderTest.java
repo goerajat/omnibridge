@@ -51,19 +51,15 @@ public class MarketOrderTest implements ReferenceTest {
             context.assertNotNull(clOrdId, "ClOrdID should not be null");
             context.log("Market order sent with ClOrdID: " + clOrdId);
 
-            // Wait for execution report
-            ExecutionReport execReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(execReport, "Should receive an execution report");
+            // Wait for execution report matching our ClOrdID (discards stale reports)
+            ExecutionReport execReport = context.waitForExecutionReport(initiator, clOrdId, 10000);
+            context.assertNotNull(execReport, "Should receive an execution report for " + clOrdId);
 
             char execType = execReport.getChar(ExecType.FIELD);
             char ordStatus = execReport.getChar(OrdStatus.FIELD);
-            String returnedClOrdId = execReport.getString(ClOrdID.FIELD);
 
             context.log("Received ExecutionReport: ExecType=" + execType +
-                    ", OrdStatus=" + ordStatus + ", ClOrdID=" + returnedClOrdId);
-
-            // Verify the execution report is for our order
-            context.assertEquals(clOrdId, returnedClOrdId, "ClOrdID should match");
+                    ", OrdStatus=" + ordStatus + ", ClOrdID=" + clOrdId);
 
             // Verify we got an acknowledgment or fill
             context.assertTrue(

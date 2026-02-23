@@ -89,16 +89,16 @@ class MultiPublisherIntegrationTest {
 
         awaitReplication(remoteStore, 20, 15000);
 
-        // Remote store should have entries under pub-1/SESSION-A and pub-2/SESSION-A
+        // Remote store should have entries under pub~1~SESSION-A and pub~2~SESSION-A
         ChronicleLogStore remote = remoteStore.getStore();
         Collection<String> streams = remote.getStreamNames();
-        assertTrue(streams.contains("pub-1/SESSION-A"),
-                "Should have pub-1/SESSION-A, got: " + streams);
-        assertTrue(streams.contains("pub-2/SESSION-A"),
-                "Should have pub-2/SESSION-A, got: " + streams);
+        assertTrue(streams.contains("pub~1~SESSION-A"),
+                "Should have pub~1~SESSION-A, got: " + streams);
+        assertTrue(streams.contains("pub~2~SESSION-A"),
+                "Should have pub~2~SESSION-A, got: " + streams);
 
-        assertEquals(10, remote.getEntryCount("pub-1/SESSION-A"));
-        assertEquals(10, remote.getEntryCount("pub-2/SESSION-A"));
+        assertEquals(10, remote.getEntryCount("pub~1~SESSION-A"));
+        assertEquals(10, remote.getEntryCount("pub~2~SESSION-A"));
     }
 
     @Test
@@ -266,8 +266,8 @@ class MultiPublisherIntegrationTest {
         awaitReplication(remoteStore, 20, 20000);
 
         ChronicleLogStore remote = remoteStore.getStore();
-        assertEquals(10, remote.getEntryCount("pub-1/CATCHUP-SESSION"));
-        assertEquals(10, remote.getEntryCount("pub-2/CATCHUP-SESSION"));
+        assertEquals(10, remote.getEntryCount("pub~1~CATCHUP-SESSION"));
+        assertEquals(10, remote.getEntryCount("pub~2~CATCHUP-SESSION"));
     }
 
     @Test
@@ -283,7 +283,7 @@ class MultiPublisherIntegrationTest {
         awaitReplication(remoteStore, 3, 15000);
 
         // Verify remote stores with prefix
-        assertTrue(remoteStore.getStore().getStreamNames().contains("pub-1/" + originalStream));
+        assertTrue(remoteStore.getStore().getStreamNames().contains("pub~1~" + originalStream));
 
         // Now recover — entries should come back with original stream name
         publisher1.stop();

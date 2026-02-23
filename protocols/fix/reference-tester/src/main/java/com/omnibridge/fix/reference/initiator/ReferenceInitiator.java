@@ -477,6 +477,30 @@ public class ReferenceInitiator implements Application {
     }
 
     /**
+     * Poll for an execution report matching a specific ClOrdID, discarding stale reports.
+     * This avoids races where a late response from a previous test leaks into the queue.
+     */
+    public ExecutionReport pollExecutionReport(String clOrdId, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0) break;
+            ExecutionReport report = executionReports.poll(remaining, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (report == null) return null;
+            try {
+                if (clOrdId.equals(report.getString(ClOrdID.FIELD))) {
+                    return report;
+                }
+                log.debug("Discarding stale ExecutionReport with ClOrdID={}, waiting for {}",
+                        report.getString(ClOrdID.FIELD), clOrdId);
+            } catch (FieldNotFound e) {
+                log.warn("ExecutionReport missing ClOrdID field, discarding");
+            }
+        }
+        return null;
+    }
+
+    /**
      * Clear execution report queue.
      */
     public void clearExecutionReports() {

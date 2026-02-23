@@ -48,9 +48,9 @@ public class OrderCancelTest implements ReferenceTest {
             context.assertNotNull(clOrdId, "ClOrdID should not be null");
             context.log("Order sent with ClOrdID: " + clOrdId);
 
-            // Wait for acknowledgment
-            ExecutionReport ackReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(ackReport, "Should receive acknowledgment");
+            // Wait for acknowledgment matching our ClOrdID
+            ExecutionReport ackReport = context.waitForExecutionReport(initiator, clOrdId, 10000);
+            context.assertNotNull(ackReport, "Should receive acknowledgment for " + clOrdId);
 
             char ackExecType = ackReport.getChar(ExecType.FIELD);
             context.log("Received acknowledgment: ExecType=" + ackExecType);
@@ -90,9 +90,9 @@ public class OrderCancelTest implements ReferenceTest {
             context.assertNotNull(cancelClOrdId, "Cancel ClOrdID should not be null");
             context.log("Cancel request sent with ClOrdID: " + cancelClOrdId);
 
-            // Wait for cancel confirmation
-            ExecutionReport cancelReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(cancelReport, "Should receive cancel confirmation");
+            // Wait for cancel confirmation matching our cancel ClOrdID
+            ExecutionReport cancelReport = context.waitForExecutionReport(initiator, cancelClOrdId, 10000);
+            context.assertNotNull(cancelReport, "Should receive cancel confirmation for " + cancelClOrdId);
 
             char cancelExecType = cancelReport.getChar(ExecType.FIELD);
             char cancelOrdStatus = cancelReport.getChar(OrdStatus.FIELD);

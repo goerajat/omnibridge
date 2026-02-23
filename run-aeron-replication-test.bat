@@ -155,7 +155,7 @@ echo Store Validation
 echo ==========================================================================
 
 set VALIDATE_EXIT_CODE=0
-java %CHRONICLE_OPTS% -cp "%ACCEPTOR_JAR%" com.omnibridge.persistence.aeron.StoreValidator --local data\local-cache --remote data\remote-store --fix-validate --verbose
+java %CHRONICLE_OPTS% -cp "%ACCEPTOR_JAR%" com.omnibridge.persistence.aeron.StoreValidator --local data\local-cache --remote data\remote-store --publisher-id 1 --fix-validate --verbose
 set VALIDATE_EXIT_CODE=!errorlevel!
 
 REM Step 7: Report combined result

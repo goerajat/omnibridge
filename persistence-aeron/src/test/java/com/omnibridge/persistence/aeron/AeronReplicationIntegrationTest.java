@@ -33,7 +33,7 @@ class AeronReplicationIntegrationTest {
     // Port allocation: start high to avoid conflicts, increment by 3 per test (data, control, replay)
     private static final AtomicInteger PORT_COUNTER = new AtomicInteger(41000);
     private static final long PUBLISHER_ID = 1;
-    private static final String PUB_PREFIX = "pub-" + PUBLISHER_ID + "/";
+    private static final String PUB_PREFIX = "pub~" + PUBLISHER_ID + "~";
 
     private Path localCacheDir;
     private Path remoteStoreDir;
@@ -178,7 +178,7 @@ class AeronReplicationIntegrationTest {
 
     private void assertStoresMatch(ChronicleLogStore local, ChronicleLogStore remote) {
         Collection<String> localStreams = local.getStreamNames();
-        // Remote stores entries under prefixed stream names (pub-{id}/streamName)
+        // Remote stores entries under prefixed stream names (pub~{id}/streamName)
         Set<String> expectedRemoteStreams = new TreeSet<>();
         for (String s : localStreams) {
             expectedRemoteStreams.add(PUB_PREFIX + s);

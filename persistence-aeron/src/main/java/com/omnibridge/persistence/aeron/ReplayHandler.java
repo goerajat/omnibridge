@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * and publishes replay entries back to the requesting engine.
  *
  * <p>Supports publisher-scoped replay: when a publisherId is specified in the request,
- * only streams prefixed with {@code "pub-{publisherId}/"} are replayed. The prefix
+ * only streams prefixed with {@code "pub~{publisherId}~"} are replayed. The prefix
  * is stripped from stream names in replayed entries so the requesting engine receives
  * its original stream names.
  */
@@ -102,7 +102,7 @@ public class ReplayHandler {
                                      LogEntry.Direction dirFilter, int fromSeqNum, int toSeqNum,
                                      long fromTimestamp, long toTimestamp, long maxEntries,
                                      AtomicLong entryCount) {
-        String prefix = "pub-" + publisherId + "/";
+        String prefix = "pub~" + publisherId + "~";
 
         if (streamName != null && !streamName.isEmpty()) {
             // Specific stream — add the publisher prefix
@@ -134,11 +134,11 @@ public class ReplayHandler {
 
             // Also replay any publisher-prefixed versions of this stream
             for (String storeStream : store.getStreamNames()) {
-                if (storeStream.endsWith("/" + streamName) && storeStream.startsWith("pub-")) {
+                if (storeStream.endsWith("~" + streamName) && storeStream.startsWith("pub~")) {
                     if (maxEntries > 0 && entryCount.get() >= maxEntries) {
                         break;
                     }
-                    String prefix = storeStream.substring(0, storeStream.indexOf('/') + 1);
+                    String prefix = storeStream.substring(0, storeStream.indexOf('~', 4) + 1);
                     replayStream(correlationId, storeStream, prefix, dirFilter,
                             fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
                 }
@@ -150,8 +150,8 @@ public class ReplayHandler {
                     break;
                 }
                 String prefix = null;
-                if (storeStream.startsWith("pub-") && storeStream.contains("/")) {
-                    prefix = storeStream.substring(0, storeStream.indexOf('/') + 1);
+                if (storeStream.startsWith("pub~") && storeStream.indexOf('~', 4) > 0) {
+                    prefix = storeStream.substring(0, storeStream.indexOf('~', 4) + 1);
                 }
                 replayStream(correlationId, storeStream, prefix, dirFilter,
                         fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
@@ -209,7 +209,7 @@ public class ReplayHandler {
 
         String stream;
         if (requestPublisherId > 0 && streamName != null && !streamName.isEmpty()) {
-            stream = "pub-" + requestPublisherId + "/" + streamName;
+            stream = "pub~" + requestPublisherId + "~" + streamName;
         } else if (streamName != null && !streamName.isEmpty()) {
             stream = streamName;
         } else {

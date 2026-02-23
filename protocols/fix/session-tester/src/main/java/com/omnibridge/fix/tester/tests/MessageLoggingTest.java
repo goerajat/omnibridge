@@ -83,6 +83,18 @@ public class MessageLoggingTest implements SessionTest {
             }
 
             int outgoingAfter = context.getOutgoingSeqNum();
+
+            // The expectedIncomingSeqNum is updated on the I/O thread AFTER the message
+            // listener callback fires (which counts down our latch). Wait briefly for it
+            // to catch up to avoid a race between the main thread reading the seqnum and
+            // the I/O thread updating it.
+            int expectedMinIncoming = incomingBefore + MESSAGE_COUNT;
+            long waitDeadline = System.currentTimeMillis() + 2000;
+            while (context.getExpectedIncomingSeqNum() < expectedMinIncoming
+                    && System.currentTimeMillis() < waitDeadline) {
+                Thread.sleep(1);
+            }
+
             int incomingAfter = context.getExpectedIncomingSeqNum();
 
             log.info("After: outgoing={}, expectedIncoming={}", outgoingAfter, incomingAfter);

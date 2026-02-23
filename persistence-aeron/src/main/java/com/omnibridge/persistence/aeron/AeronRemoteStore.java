@@ -95,7 +95,7 @@ public class AeronRemoteStore implements Component, Runnable {
             long publisherId = decoded.publisherId();
 
             // Prefix stream name with publisher ID for isolation
-            String prefixedStream = "pub-" + publisherId + "/" + entry.getStreamName();
+            String prefixedStream = "pub~" + publisherId + "~" + entry.getStreamName();
             LogEntry prefixedEntry = LogEntry.builder()
                     .timestamp(entry.getTimestamp())
                     .direction(entry.getDirection())

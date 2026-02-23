@@ -48,9 +48,9 @@ public class OrderStatusRequestTest implements ReferenceTest {
             String clOrdId = initiator.sendNewOrderSingle(symbol, side, 100, OrdType.LIMIT, 155.00);
             context.assertNotNull(clOrdId, "ClOrdID should not be null");
 
-            // Wait for and consume the execution report(s) from the new order
-            ExecutionReport orderReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(orderReport, "Should receive execution report for new order");
+            // Wait for and consume the execution report matching our ClOrdID
+            ExecutionReport orderReport = context.waitForExecutionReport(initiator, clOrdId, 10000);
+            context.assertNotNull(orderReport, "Should receive execution report for " + clOrdId);
             context.log("Order acknowledged: ExecType=" + orderReport.getChar(ExecType.FIELD));
 
             // Consume any additional reports (fill, etc.)
@@ -62,8 +62,8 @@ public class OrderStatusRequestTest implements ReferenceTest {
             String statusReqId = initiator.sendOrderStatusRequest(clOrdId, symbol, side);
             context.assertNotNull(statusReqId, "OrderStatusRequest should be sent");
 
-            // Wait for status response
-            ExecutionReport statusReport = context.waitForExecutionReport(initiator, 10000);
+            // Wait for status response matching our ClOrdID
+            ExecutionReport statusReport = context.waitForExecutionReport(initiator, clOrdId, 10000);
 
             if (statusReport == null) {
                 return TestResult.builder(getName())
@@ -74,12 +74,9 @@ public class OrderStatusRequestTest implements ReferenceTest {
 
             char execType = statusReport.getChar(ExecType.FIELD);
             char ordStatus = statusReport.getChar(OrdStatus.FIELD);
-            String returnedClOrdId = statusReport.getString(ClOrdID.FIELD);
 
             context.log("Status response: ExecType=" + execType + ", OrdStatus=" + ordStatus +
-                    ", ClOrdID=" + returnedClOrdId);
-
-            context.assertEquals(clOrdId, returnedClOrdId, "ClOrdID should match");
+                    ", ClOrdID=" + clOrdId);
 
             return TestResult.builder(getName())
                     .passed("OrderStatusRequest handled — ExecType=" + execType +

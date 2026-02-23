@@ -49,21 +49,17 @@ public class SellOrderTest implements ReferenceTest {
             context.assertNotNull(clOrdId, "ClOrdID should not be null");
             context.log("Order sent with ClOrdID: " + clOrdId);
 
-            // Wait for execution report
-            ExecutionReport execReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(execReport, "Should receive an execution report");
+            // Wait for execution report matching our ClOrdID (discards stale reports)
+            ExecutionReport execReport = context.waitForExecutionReport(initiator, clOrdId, 10000);
+            context.assertNotNull(execReport, "Should receive an execution report for " + clOrdId);
 
             char execType = execReport.getChar(ExecType.FIELD);
             char ordStatus = execReport.getChar(OrdStatus.FIELD);
-            String returnedClOrdId = execReport.getString(ClOrdID.FIELD);
             char returnedSide = execReport.getChar(Side.FIELD);
 
             context.log("Received ExecutionReport: ExecType=" + execType +
                     ", OrdStatus=" + ordStatus + ", Side=" + returnedSide +
-                    ", ClOrdID=" + returnedClOrdId);
-
-            // Verify the execution report is for our order
-            context.assertEquals(clOrdId, returnedClOrdId, "ClOrdID should match");
+                    ", ClOrdID=" + clOrdId);
 
             // Verify the side is SELL
             context.assertTrue(returnedSide == Side.SELL,

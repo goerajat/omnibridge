@@ -41,7 +41,7 @@ public class StoreValidator implements Callable<Integer> {
     @CommandLine.Option(names = "--remote", description = "Path to remote Chronicle store", required = true)
     private String remotePath;
 
-    @CommandLine.Option(names = "--publisher-id", description = "Publisher ID to validate (prefixes local stream names with pub-{id}/)")
+    @CommandLine.Option(names = "--publisher-id", description = "Publisher ID to validate (prefixes local stream names with pub~{id}~)")
     private Long publisherId;
 
     @CommandLine.Option(names = "--fix-validate", description = "Enable FIX-specific message type validation")
@@ -119,7 +119,7 @@ public class StoreValidator implements Callable<Integer> {
         Set<String> localSet;
         if (publisherId != null) {
             localSet = new TreeSet<>();
-            String prefix = "pub-" + publisherId + "/";
+            String prefix = "pub~" + publisherId + "~";
             for (String stream : localStreams) {
                 localSet.add(prefix + stream);
             }
@@ -130,7 +130,7 @@ public class StoreValidator implements Callable<Integer> {
 
         // When publisherId is set, only compare remote streams for this publisher
         if (publisherId != null) {
-            String prefix = "pub-" + publisherId + "/";
+            String prefix = "pub~" + publisherId + "~";
             remoteSet.removeIf(s -> !s.startsWith(prefix));
         }
 
@@ -158,7 +158,7 @@ public class StoreValidator implements Callable<Integer> {
         long totalLocal = 0;
         long totalRemote = 0;
 
-        String prefix = publisherId != null ? "pub-" + publisherId + "/" : null;
+        String prefix = publisherId != null ? "pub~" + publisherId + "~" : null;
 
         for (String localStream : local.getStreamNames()) {
             String remoteStream = prefix != null ? prefix + localStream : localStream;
@@ -176,7 +176,7 @@ public class StoreValidator implements Callable<Integer> {
     private void validateEntryByEntry(ChronicleLogStore local, ChronicleLogStore remote) {
         System.out.println("--- Entry-by-Entry Comparison ---");
 
-        String prefix = publisherId != null ? "pub-" + publisherId + "/" : null;
+        String prefix = publisherId != null ? "pub~" + publisherId + "~" : null;
 
         int totalCompared = 0;
         int totalMismatches = 0;

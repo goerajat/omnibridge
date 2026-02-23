@@ -50,9 +50,9 @@ public class OrderModifyTest implements ReferenceTest {
             context.assertNotNull(clOrdId, "ClOrdID should not be null");
             context.log("Order sent with ClOrdID: " + clOrdId);
 
-            // Wait for acknowledgment
-            ExecutionReport ackReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(ackReport, "Should receive acknowledgment");
+            // Wait for acknowledgment matching our ClOrdID
+            ExecutionReport ackReport = context.waitForExecutionReport(initiator, clOrdId, 10000);
+            context.assertNotNull(ackReport, "Should receive acknowledgment for " + clOrdId);
 
             char ackExecType = ackReport.getChar(ExecType.FIELD);
             context.log("Received acknowledgment: ExecType=" + ackExecType);
@@ -96,9 +96,9 @@ public class OrderModifyTest implements ReferenceTest {
             context.assertNotNull(replaceClOrdId, "Replace ClOrdID should not be null");
             context.log("Replace request sent with ClOrdID: " + replaceClOrdId);
 
-            // Wait for replace confirmation
-            ExecutionReport replaceReport = context.waitForExecutionReport(initiator, 10000);
-            context.assertNotNull(replaceReport, "Should receive replace confirmation");
+            // Wait for replace confirmation matching our replace ClOrdID
+            ExecutionReport replaceReport = context.waitForExecutionReport(initiator, replaceClOrdId, 10000);
+            context.assertNotNull(replaceReport, "Should receive replace confirmation for " + replaceClOrdId);
 
             char replaceExecType = replaceReport.getChar(ExecType.FIELD);
             context.log("Received replace response: ExecType=" + replaceExecType);

@@ -48,7 +48,7 @@ public class TimeInForceTest implements ReferenceTest {
                     OrdType.LIMIT, 150.00, TimeInForce.DAY);
             context.assertNotNull(dayOrdId, "DAY order ClOrdID should not be null");
 
-            ExecutionReport dayReport = context.waitForExecutionReport(initiator, 10000);
+            ExecutionReport dayReport = context.waitForExecutionReport(initiator, dayOrdId, 10000);
             context.assertNotNull(dayReport, "Should receive execution report for DAY order");
             char dayExecType = dayReport.getChar(ExecType.FIELD);
             results.append("DAY=").append(dayExecType);
@@ -64,7 +64,7 @@ public class TimeInForceTest implements ReferenceTest {
                     OrdType.LIMIT, 300.00, TimeInForce.IMMEDIATE_OR_CANCEL);
             context.assertNotNull(iocOrdId, "IOC order ClOrdID should not be null");
 
-            ExecutionReport iocReport = context.waitForExecutionReport(initiator, 10000);
+            ExecutionReport iocReport = context.waitForExecutionReport(initiator, iocOrdId, 10000);
             context.assertNotNull(iocReport, "Should receive execution report for IOC order");
             char iocExecType = iocReport.getChar(ExecType.FIELD);
             results.append(", IOC=").append(iocExecType);
@@ -79,7 +79,7 @@ public class TimeInForceTest implements ReferenceTest {
                     OrdType.LIMIT, 140.00, TimeInForce.FILL_OR_KILL);
             context.assertNotNull(fokOrdId, "FOK order ClOrdID should not be null");
 
-            ExecutionReport fokReport = context.waitForExecutionReport(initiator, 10000);
+            ExecutionReport fokReport = context.waitForExecutionReport(initiator, fokOrdId, 10000);
             context.assertNotNull(fokReport, "Should receive execution report for FOK order");
             char fokExecType = fokReport.getChar(ExecType.FIELD);
             results.append(", FOK=").append(fokExecType);

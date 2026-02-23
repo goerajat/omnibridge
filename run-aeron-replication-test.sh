@@ -193,7 +193,7 @@ echo "==========================================================================
 
 VALIDATE_EXIT_CODE=0
 java $CHRONICLE_OPTS -cp "$ACCEPTOR_JAR" com.omnibridge.persistence.aeron.StoreValidator \
-    --local ./data/local-cache --remote ./data/remote-store --fix-validate --verbose || VALIDATE_EXIT_CODE=$?
+    --local ./data/local-cache --remote ./data/remote-store --publisher-id 1 --fix-validate --verbose || VALIDATE_EXIT_CODE=$?
 
 # Step 8: Report combined result
 echo ""

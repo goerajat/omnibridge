@@ -68,6 +68,14 @@ public class TestContext {
     }
 
     /**
+     * Wait for an execution report matching a specific ClOrdID, discarding stale reports.
+     */
+    public ExecutionReport waitForExecutionReport(ReferenceInitiator initiator, String clOrdId, long timeoutMs)
+            throws InterruptedException {
+        return initiator.pollExecutionReport(clOrdId, timeoutMs);
+    }
+
+    /**
      * Sleep for the specified duration.
      */
     public void sleep(long millis) throws InterruptedException {
