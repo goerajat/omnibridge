@@ -164,7 +164,14 @@ jobs:
         id: aeron-ref-tests
         if: success() || failure()
         run: |
-          ./run-aeron-replication-test.sh reference all 2>&1 | tee aeron-replication-output.txt
+          ./run-aeron-replication-test.sh reference all 2>&1 | tee aeron-ref-replication-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Run Aeron replication tests (session)
+        id: aeron-session-tests
+        if: success() || failure()
+        run: |
+          ./run-aeron-replication-test.sh session all 2>&1 | tee aeron-session-replication-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Test results summary
@@ -271,35 +278,45 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Aeron Replication Tests" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f aeron-replication-output.txt ]; then
-            # Extract test result and validation result
-            test_result=$(grep '^Test result:' aeron-replication-output.txt | awk '{print $NF}' || echo "UNKNOWN")
-            validation_result=$(grep '^Validation result:' aeron-replication-output.txt | awk '{print $NF}' || echo "UNKNOWN")
-            overall=$(grep '^OVERALL:' aeron-replication-output.txt | awk '{print $NF}' || echo "UNKNOWN")
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
 
-            echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
-            echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          aeron_all_passed=true
 
-            if [ "$test_result" = "PASSED" ]; then
-              echo "| Reference tests (Aeron persistence) | :white_check_mark: **PASSED** |" >> $GITHUB_STEP_SUMMARY
+          for aeron_file in aeron-ref-replication-output.txt aeron-session-replication-output.txt; do
+            if [ "$aeron_file" = "aeron-ref-replication-output.txt" ]; then
+              label="Reference"
             else
-              echo "| Reference tests (Aeron persistence) | :x: **FAILED** |" >> $GITHUB_STEP_SUMMARY
+              label="Session"
             fi
 
-            if [ "$validation_result" = "PASSED" ]; then
-              echo "| Store validation (local vs remote) | :white_check_mark: **PASSED** |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| Store validation (local vs remote) | :x: **FAILED** |" >> $GITHUB_STEP_SUMMARY
-            fi
+            if [ -f "$aeron_file" ]; then
+              test_result=$(grep '^Test result:' "$aeron_file" | awk '{print $NF}' || echo "UNKNOWN")
+              validation_result=$(grep '^Validation result:' "$aeron_file" | awk '{print $NF}' || echo "UNKNOWN")
 
-            echo "" >> $GITHUB_STEP_SUMMARY
-            if [ "$overall" = "PASSED" ]; then
-              echo "> **Aeron replication validation passed** :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+              if [ "$test_result" = "PASSED" ]; then
+                echo "| ${label} tests (Aeron persistence) | :white_check_mark: **PASSED** |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| ${label} tests (Aeron persistence) | :x: **FAILED** |" >> $GITHUB_STEP_SUMMARY
+                aeron_all_passed=false
+              fi
+
+              if [ "$validation_result" = "PASSED" ]; then
+                echo "| ${label} store validation (local vs remote) | :white_check_mark: **PASSED** |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| ${label} store validation (local vs remote) | :x: **FAILED** |" >> $GITHUB_STEP_SUMMARY
+                aeron_all_passed=false
+              fi
             else
-              echo "> **Aeron replication validation failed** :x:" >> $GITHUB_STEP_SUMMARY
+              echo "| ${label} tests (Aeron persistence) | :warning: Did not run |" >> $GITHUB_STEP_SUMMARY
             fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$aeron_all_passed" = "true" ]; then
+            echo "> **Aeron replication validation passed** :white_check_mark:" >> $GITHUB_STEP_SUMMARY
           else
-            echo ":warning: Aeron replication tests did not run." >> $GITHUB_STEP_SUMMARY
+            echo "> **Aeron replication validation failed** :x:" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload acceptor logs
