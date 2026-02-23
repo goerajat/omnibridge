@@ -22,8 +22,8 @@ import org.agrona.concurrent.YieldingIdleStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Server-side component that receives replicated log entries via Aeron
@@ -42,6 +42,7 @@ public class AeronRemoteStore implements Component, Runnable {
     private final AeronRemoteStoreConfig config;
     private final ChronicleLogStore store;
     private final List<ReplayHandler> replayHandlers = new ArrayList<>();
+    private final Map<Long, PublisherState> publishers = new ConcurrentHashMap<>();
 
     private MediaDriver mediaDriver;
     private Aeron aeron;
@@ -89,9 +90,27 @@ public class AeronRemoteStore implements Component, Runnable {
         int templateId = AeronMessageHeader.readTemplateId(buffer, offset);
 
         if (templateId == MessageTypes.LOG_ENTRY) {
-            LogEntry entry = LogEntryCodec.decode(buffer, offset);
-            store.write(entry);
+            LogEntryCodec.DecodedEntry decoded = LogEntryCodec.decodeWithPublisherId(buffer, offset);
+            LogEntry entry = decoded.entry();
+            long publisherId = decoded.publisherId();
+
+            // Prefix stream name with publisher ID for isolation
+            String prefixedStream = "pub-" + publisherId + "/" + entry.getStreamName();
+            LogEntry prefixedEntry = LogEntry.builder()
+                    .timestamp(entry.getTimestamp())
+                    .direction(entry.getDirection())
+                    .sequenceNumber(entry.getSequenceNumber())
+                    .streamName(prefixedStream)
+                    .metadata(entry.getMetadata())
+                    .rawMessage(entry.getRawMessage())
+                    .build();
+
+            store.write(prefixedEntry);
             entriesReceived++;
+
+            // Update per-publisher tracking
+            publishers.computeIfAbsent(publisherId, PublisherState::new)
+                    .update(entry.getTimestamp(), entry.getSequenceNumber());
         } else {
             log.warn("Unknown template ID on data channel: {}", templateId);
         }
@@ -103,13 +122,26 @@ public class AeronRemoteStore implements Component, Runnable {
 
         switch (templateId) {
             case MessageTypes.REPLAY_REQUEST -> {
+                long publisherId = ReplayRequestCodec.decodePublisherId(buffer, offset);
+                // Route to the replay handler for the requesting engine's publisherId
+                boolean handled = false;
                 for (ReplayHandler rh : replayHandlers) {
-                    rh.handleReplayRequest(buffer, offset);
+                    if (rh.getPublisherId() == publisherId || rh.getPublisherId() == 0) {
+                        rh.handleReplayRequest(buffer, offset, publisherId);
+                        handled = true;
+                        break;
+                    }
+                }
+                if (!handled && !replayHandlers.isEmpty()) {
+                    // Fallback: use first handler
+                    replayHandlers.get(0).handleReplayRequest(buffer, offset, publisherId);
                 }
             }
             case MessageTypes.STREAM_INFO_REQUEST -> {
+                long publisherId = StreamInfoRequestCodec.decodePublisherId(buffer, offset);
                 for (ReplayHandler rh : replayHandlers) {
-                    rh.handleStreamInfoRequest(buffer, offset);
+                    rh.handleStreamInfoRequest(buffer, offset, publisherId);
+                    break; // Only need one handler to respond
                 }
             }
             case MessageTypes.HEARTBEAT -> {
@@ -221,8 +253,9 @@ public class AeronRemoteStore implements Component, Runnable {
             Publication replayPub = aeron.addPublication(
                     engine.getReplayChannel(), MessageTypes.REPLAY_STREAM_ID);
             replayPublications.add(replayPub);
-            replayHandlers.add(new ReplayHandler(store, replayPub));
-            log.info("Replay publication created for engine {}: {}", engine.getName(), engine.getReplayChannel());
+            replayHandlers.add(new ReplayHandler(store, replayPub, engine.getPublisherId()));
+            log.info("Replay publication created for engine {} (publisherId={}): {}",
+                    engine.getName(), engine.getPublisherId(), engine.getReplayChannel());
         }
 
         idleStrategy = createIdleStrategy();
@@ -290,5 +323,55 @@ public class AeronRemoteStore implements Component, Runnable {
 
     public long getEntriesReceived() {
         return entriesReceived;
+    }
+
+    /**
+     * Returns the per-publisher tracking state for monitoring and validation.
+     */
+    public Map<Long, PublisherState> getPublisherStates() {
+        return Collections.unmodifiableMap(publishers);
+    }
+
+    /**
+     * Tracks per-publisher state: entries received, last timestamp, and last sequence number.
+     */
+    public static class PublisherState {
+        private final long publisherId;
+        private long entriesReceived;
+        private long lastTimestamp;
+        private int lastSeqNum;
+
+        public PublisherState(long publisherId) {
+            this.publisherId = publisherId;
+        }
+
+        void update(long timestamp, int seqNum) {
+            entriesReceived++;
+            lastTimestamp = timestamp;
+            lastSeqNum = seqNum;
+        }
+
+        public long getPublisherId() {
+            return publisherId;
+        }
+
+        public long getEntriesReceived() {
+            return entriesReceived;
+        }
+
+        public long getLastTimestamp() {
+            return lastTimestamp;
+        }
+
+        public int getLastSeqNum() {
+            return lastSeqNum;
+        }
+
+        @Override
+        public String toString() {
+            return "PublisherState{publisherId=" + publisherId +
+                    ", entriesReceived=" + entriesReceived +
+                    ", lastSeqNum=" + lastSeqNum + '}';
+        }
     }
 }

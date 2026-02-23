@@ -32,6 +32,8 @@ class AeronReplicationIntegrationTest {
 
     // Port allocation: start high to avoid conflicts, increment by 3 per test (data, control, replay)
     private static final AtomicInteger PORT_COUNTER = new AtomicInteger(41000);
+    private static final long PUBLISHER_ID = 1;
+    private static final String PUB_PREFIX = "pub-" + PUBLISHER_ID + "/";
 
     private Path localCacheDir;
     private Path remoteStoreDir;
@@ -90,7 +92,7 @@ class AeronReplicationIntegrationTest {
                     aeron {
                         media-driver { embedded = true, aeron-dir = "" }
                         listen { host = "0.0.0.0", data-port = %d, control-port = %d }
-                        engines = [{ name = "test-engine", host = "localhost", replay-port = %d }]
+                        engines = [{ name = "test-engine", host = "localhost", replay-port = %d, publisher-id = 1 }]
                         idle-strategy = "sleeping"
                         fragment-limit = 256
                     }
@@ -176,19 +178,24 @@ class AeronReplicationIntegrationTest {
 
     private void assertStoresMatch(ChronicleLogStore local, ChronicleLogStore remote) {
         Collection<String> localStreams = local.getStreamNames();
-        Collection<String> remoteStreams = remote.getStreamNames();
-        assertEquals(new TreeSet<>(localStreams), new TreeSet<>(remoteStreams),
-                "Stream names should match");
+        // Remote stores entries under prefixed stream names (pub-{id}/streamName)
+        Set<String> expectedRemoteStreams = new TreeSet<>();
+        for (String s : localStreams) {
+            expectedRemoteStreams.add(PUB_PREFIX + s);
+        }
+        assertEquals(expectedRemoteStreams, new TreeSet<>(remote.getStreamNames()),
+                "Stream names should match (with publisher prefix)");
 
         for (String stream : localStreams) {
+            String remoteStream = PUB_PREFIX + stream;
             long localCount = local.getEntryCount(stream);
-            long remoteCount = remote.getEntryCount(stream);
+            long remoteCount = remote.getEntryCount(remoteStream);
             assertEquals(localCount, remoteCount,
                     "Entry count should match for stream: " + stream);
 
             // Compare entry-by-entry
             List<LogEntry> localEntries = replayAll(local, stream);
-            List<LogEntry> remoteEntries = replayAll(remote, stream);
+            List<LogEntry> remoteEntries = replayAll(remote, remoteStream);
 
             assertEquals(localEntries.size(), remoteEntries.size(),
                     "Replayed entry count should match for stream: " + stream);
@@ -275,9 +282,9 @@ class AeronReplicationIntegrationTest {
 
         ChronicleLogStore remote = aeronRemoteStore.getStore();
         assertEquals(3, remote.getStreamNames().size(), "Should have 3 streams");
-        assertEquals(30, remote.getEntryCount("SESSION-A"));
-        assertEquals(20, remote.getEntryCount("SESSION-B"));
-        assertEquals(10, remote.getEntryCount("SESSION-C"));
+        assertEquals(30, remote.getEntryCount(PUB_PREFIX + "SESSION-A"));
+        assertEquals(20, remote.getEntryCount(PUB_PREFIX + "SESSION-B"));
+        assertEquals(10, remote.getEntryCount(PUB_PREFIX + "SESSION-C"));
 
         assertStoresMatch(aeronLogStore.getLocalStore(), remote);
     }
@@ -298,11 +305,11 @@ class AeronReplicationIntegrationTest {
         ChronicleLogStore remote = aeronRemoteStore.getStore();
         long[] inboundCount = {0};
         long[] outboundCount = {0};
-        remote.replay("BIDIR-SESSION", LogEntry.Direction.INBOUND, 0, 0, entry -> {
+        remote.replay(PUB_PREFIX + "BIDIR-SESSION", LogEntry.Direction.INBOUND, 0, 0, entry -> {
             inboundCount[0]++;
             return true;
         });
-        remote.replay("BIDIR-SESSION", LogEntry.Direction.OUTBOUND, 0, 0, entry -> {
+        remote.replay(PUB_PREFIX + "BIDIR-SESSION", LogEntry.Direction.OUTBOUND, 0, 0, entry -> {
             outboundCount[0]++;
             return true;
         });
@@ -325,7 +332,7 @@ class AeronReplicationIntegrationTest {
 
         awaitReplication(aeronRemoteStore, 1, 10000);
 
-        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), "FIX-SESSION");
+        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), PUB_PREFIX + "FIX-SESSION");
         assertEquals(1, remoteEntries.size());
         assertArrayEquals(fixMessage, remoteEntries.get(0).getRawMessage(),
                 "Raw message bytes (including SOH) should be exactly preserved");
@@ -349,7 +356,7 @@ class AeronReplicationIntegrationTest {
 
         awaitReplication(aeronRemoteStore, 3, 10000);
 
-        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), "META-SESSION");
+        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), PUB_PREFIX + "META-SESSION");
         assertEquals(3, remoteEntries.size());
         assertArrayEquals(metadata1, remoteEntries.get(0).getMetadata());
         assertArrayEquals(metadata2, remoteEntries.get(1).getMetadata());
@@ -374,7 +381,7 @@ class AeronReplicationIntegrationTest {
 
         awaitReplication(aeronRemoteStore, 3, 10000);
 
-        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), "TS-SESSION");
+        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), PUB_PREFIX + "TS-SESSION");
         assertEquals(3, remoteEntries.size());
 
         assertEquals(ts1, remoteEntries.get(0).getTimestamp());
@@ -433,7 +440,7 @@ class AeronReplicationIntegrationTest {
         // Wait for catch-up (the catch-up thread checks every 1 second, then replays)
         awaitReplication(aeronRemoteStore, 50, 15000);
 
-        assertEquals(50, aeronRemoteStore.getStore().getEntryCount("CATCHUP-SESSION"));
+        assertEquals(50, aeronRemoteStore.getStore().getEntryCount(PUB_PREFIX + "CATCHUP-SESSION"));
         assertStoresMatch(aeronLogStore.getLocalStore(), aeronRemoteStore.getStore());
     }
 
@@ -451,7 +458,7 @@ class AeronReplicationIntegrationTest {
 
         awaitReplication(aeronRemoteStore, 1, 10000);
 
-        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), "LARGE-SESSION");
+        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), PUB_PREFIX + "LARGE-SESSION");
         assertEquals(1, remoteEntries.size());
         assertArrayEquals(largeMessage, remoteEntries.get(0).getRawMessage(),
                 "64KB message should be exactly preserved");
@@ -473,7 +480,7 @@ class AeronReplicationIntegrationTest {
         awaitReplication(aeronRemoteStore, count, 30000);
 
         assertEquals(count, aeronLogStore.getLocalStore().getEntryCount("VOLUME-SESSION"));
-        assertEquals(count, aeronRemoteStore.getStore().getEntryCount("VOLUME-SESSION"));
+        assertEquals(count, aeronRemoteStore.getStore().getEntryCount(PUB_PREFIX + "VOLUME-SESSION"));
     }
 
     @Test
@@ -490,7 +497,7 @@ class AeronReplicationIntegrationTest {
 
         // Verify both stores have 50
         assertEquals(50, aeronLogStore.getLocalStore().getEntryCount("RECOVER-SESSION"));
-        assertEquals(50, aeronRemoteStore.getStore().getEntryCount("RECOVER-SESSION"));
+        assertEquals(50, aeronRemoteStore.getStore().getEntryCount(PUB_PREFIX + "RECOVER-SESSION"));
 
         // Stop the local store
         aeronLogStore.stop();
@@ -563,7 +570,7 @@ class AeronReplicationIntegrationTest {
 
         awaitReplication(aeronRemoteStore, 200, 10000);
 
-        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), "ORDER-SESSION");
+        List<LogEntry> remoteEntries = replayAll(aeronRemoteStore.getStore(), PUB_PREFIX + "ORDER-SESSION");
         assertEquals(200, remoteEntries.size());
 
         for (int i = 0; i < remoteEntries.size(); i++) {

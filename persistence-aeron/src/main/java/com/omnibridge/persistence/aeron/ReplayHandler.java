@@ -17,6 +17,11 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Server-side handler for replay requests. Reads from a local ChronicleLogStore
  * and publishes replay entries back to the requesting engine.
+ *
+ * <p>Supports publisher-scoped replay: when a publisherId is specified in the request,
+ * only streams prefixed with {@code "pub-{publisherId}/"} are replayed. The prefix
+ * is stripped from stream names in replayed entries so the requesting engine receives
+ * its original stream names.
  */
 public class ReplayHandler {
 
@@ -25,15 +30,28 @@ public class ReplayHandler {
 
     private final ChronicleLogStore store;
     private final Publication replayPublication;
+    private final long publisherId;
     private final MutableDirectBuffer encodeBuffer = new ExpandableDirectByteBuffer(8192);
     private final IdleStrategy offerIdleStrategy = new SleepingIdleStrategy(100_000); // 100us
 
     public ReplayHandler(ChronicleLogStore store, Publication replayPublication) {
-        this.store = store;
-        this.replayPublication = replayPublication;
+        this(store, replayPublication, 0);
     }
 
-    public void handleReplayRequest(DirectBuffer buffer, int offset) {
+    public ReplayHandler(ChronicleLogStore store, Publication replayPublication, long publisherId) {
+        this.store = store;
+        this.replayPublication = replayPublication;
+        this.publisherId = publisherId;
+    }
+
+    public long getPublisherId() {
+        return publisherId;
+    }
+
+    /**
+     * Handle a replay request with publisher-scoped filtering.
+     */
+    public void handleReplayRequest(DirectBuffer buffer, int offset, long requestPublisherId) {
         long correlationId = ReplayRequestCodec.decodeCorrelationId(buffer, offset);
         byte direction = ReplayRequestCodec.decodeDirection(buffer, offset);
         int fromSeqNum = ReplayRequestCodec.decodeFromSeqNum(buffer, offset);
@@ -44,31 +62,23 @@ public class ReplayHandler {
         String streamName = ReplayRequestCodec.decodeStreamName(buffer, offset);
 
         log.info("Handling replay request: correlationId={}, stream={}, direction={}, " +
-                        "fromSeq={}, toSeq={}, fromTs={}, toTs={}, maxEntries={}",
+                        "fromSeq={}, toSeq={}, fromTs={}, toTs={}, maxEntries={}, publisherId={}",
                 correlationId, streamName.isEmpty() ? "ALL" : streamName,
-                direction, fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries);
+                direction, fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries,
+                requestPublisherId);
 
         LogEntry.Direction dirFilter = mapDirection(direction);
-        String stream = streamName.isEmpty() ? null : streamName;
         AtomicLong entryCount = new AtomicLong(0);
 
         try {
-            if (fromTimestamp > 0 || toTimestamp > 0) {
-                store.replayByTime(stream, dirFilter, fromTimestamp, toTimestamp, entry -> {
-                    if (maxEntries > 0 && entryCount.get() >= maxEntries) {
-                        return false;
-                    }
-                    publishReplayEntry(correlationId, entry, entryCount.incrementAndGet());
-                    return true;
-                });
+            if (requestPublisherId > 0) {
+                // Publisher-scoped replay: replay only streams for this publisher
+                replayForPublisher(correlationId, requestPublisherId, streamName, dirFilter,
+                        fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
             } else {
-                store.replay(stream, dirFilter, fromSeqNum, toSeqNum, entry -> {
-                    if (maxEntries > 0 && entryCount.get() >= maxEntries) {
-                        return false;
-                    }
-                    publishReplayEntry(correlationId, entry, entryCount.incrementAndGet());
-                    return true;
-                });
+                // Legacy: replay all streams (no publisher scoping)
+                replayAllPublishers(correlationId, streamName, dirFilter,
+                        fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
             }
 
             publishReplayComplete(correlationId, entryCount.get(), MessageTypes.STATUS_SUCCESS, null);
@@ -81,11 +91,131 @@ public class ReplayHandler {
         }
     }
 
-    public void handleStreamInfoRequest(DirectBuffer buffer, int offset) {
+    /**
+     * Handle a replay request (backward compatible — no publisher ID).
+     */
+    public void handleReplayRequest(DirectBuffer buffer, int offset) {
+        handleReplayRequest(buffer, offset, 0);
+    }
+
+    private void replayForPublisher(long correlationId, long publisherId, String streamName,
+                                     LogEntry.Direction dirFilter, int fromSeqNum, int toSeqNum,
+                                     long fromTimestamp, long toTimestamp, long maxEntries,
+                                     AtomicLong entryCount) {
+        String prefix = "pub-" + publisherId + "/";
+
+        if (streamName != null && !streamName.isEmpty()) {
+            // Specific stream — add the publisher prefix
+            String prefixedStream = prefix + streamName;
+            replayStream(correlationId, prefixedStream, prefix, dirFilter,
+                    fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
+        } else {
+            // All streams for this publisher — find streams with matching prefix
+            for (String storeStream : store.getStreamNames()) {
+                if (storeStream.startsWith(prefix)) {
+                    if (maxEntries > 0 && entryCount.get() >= maxEntries) {
+                        break;
+                    }
+                    replayStream(correlationId, storeStream, prefix, dirFilter,
+                            fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
+                }
+            }
+        }
+    }
+
+    private void replayAllPublishers(long correlationId, String streamName,
+                                      LogEntry.Direction dirFilter, int fromSeqNum, int toSeqNum,
+                                      long fromTimestamp, long toTimestamp, long maxEntries,
+                                      AtomicLong entryCount) {
+        if (streamName != null && !streamName.isEmpty()) {
+            // Try exact match first (for backward compat with non-prefixed stores)
+            replayStream(correlationId, streamName, null, dirFilter,
+                    fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
+
+            // Also replay any publisher-prefixed versions of this stream
+            for (String storeStream : store.getStreamNames()) {
+                if (storeStream.endsWith("/" + streamName) && storeStream.startsWith("pub-")) {
+                    if (maxEntries > 0 && entryCount.get() >= maxEntries) {
+                        break;
+                    }
+                    String prefix = storeStream.substring(0, storeStream.indexOf('/') + 1);
+                    replayStream(correlationId, storeStream, prefix, dirFilter,
+                            fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
+                }
+            }
+        } else {
+            // All streams
+            for (String storeStream : store.getStreamNames()) {
+                if (maxEntries > 0 && entryCount.get() >= maxEntries) {
+                    break;
+                }
+                String prefix = null;
+                if (storeStream.startsWith("pub-") && storeStream.contains("/")) {
+                    prefix = storeStream.substring(0, storeStream.indexOf('/') + 1);
+                }
+                replayStream(correlationId, storeStream, prefix, dirFilter,
+                        fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, entryCount);
+            }
+        }
+    }
+
+    private void replayStream(long correlationId, String storeStream, String prefixToStrip,
+                               LogEntry.Direction dirFilter, int fromSeqNum, int toSeqNum,
+                               long fromTimestamp, long toTimestamp, long maxEntries,
+                               AtomicLong entryCount) {
+        if (fromTimestamp > 0 || toTimestamp > 0) {
+            store.replayByTime(storeStream, dirFilter, fromTimestamp, toTimestamp, entry -> {
+                if (maxEntries > 0 && entryCount.get() >= maxEntries) {
+                    return false;
+                }
+                LogEntry unprefixed = stripPrefix(entry, prefixToStrip);
+                publishReplayEntry(correlationId, unprefixed, entryCount.incrementAndGet());
+                return true;
+            });
+        } else {
+            store.replay(storeStream, dirFilter, fromSeqNum, toSeqNum, entry -> {
+                if (maxEntries > 0 && entryCount.get() >= maxEntries) {
+                    return false;
+                }
+                LogEntry unprefixed = stripPrefix(entry, prefixToStrip);
+                publishReplayEntry(correlationId, unprefixed, entryCount.incrementAndGet());
+                return true;
+            });
+        }
+    }
+
+    /**
+     * Strip the publisher prefix from an entry's stream name for replay.
+     */
+    private static LogEntry stripPrefix(LogEntry entry, String prefix) {
+        if (prefix == null || entry.getStreamName() == null
+                || !entry.getStreamName().startsWith(prefix)) {
+            return entry;
+        }
+        String originalStreamName = entry.getStreamName().substring(prefix.length());
+        return LogEntry.builder()
+                .timestamp(entry.getTimestamp())
+                .direction(entry.getDirection())
+                .sequenceNumber(entry.getSequenceNumber())
+                .streamName(originalStreamName)
+                .metadata(entry.getMetadata())
+                .rawMessage(entry.getRawMessage())
+                .build();
+    }
+
+    public void handleStreamInfoRequest(DirectBuffer buffer, int offset, long requestPublisherId) {
         long correlationId = StreamInfoRequestCodec.decodeCorrelationId(buffer, offset);
         String streamName = StreamInfoRequestCodec.decodeStreamName(buffer, offset);
 
-        String stream = streamName.isEmpty() ? null : streamName;
+        String stream;
+        if (requestPublisherId > 0 && streamName != null && !streamName.isEmpty()) {
+            stream = "pub-" + requestPublisherId + "/" + streamName;
+        } else if (streamName != null && !streamName.isEmpty()) {
+            stream = streamName;
+        } else {
+            stream = null;
+        }
+
         long entryCount = store.getEntryCount(stream);
 
         LogEntry lastInbound = stream != null
@@ -100,10 +230,15 @@ public class ReplayHandler {
                 lastOutbound != null ? lastOutbound.getTimestamp() : 0
         );
 
+        // Return the original (unprefixed) stream name in the response
+        String responseStream = (streamName != null && !streamName.isEmpty()) ? streamName : "";
         int length = StreamInfoResponseCodec.encode(encodeBuffer, 0, correlationId,
-                entryCount, lastInSeq, lastOutSeq, lastTimestamp,
-                stream != null ? stream : "");
+                entryCount, lastInSeq, lastOutSeq, lastTimestamp, responseStream);
         offerWithRetry(encodeBuffer, 0, length);
+    }
+
+    public void handleStreamInfoRequest(DirectBuffer buffer, int offset) {
+        handleStreamInfoRequest(buffer, offset, 0);
     }
 
     private void publishReplayEntry(long correlationId, LogEntry entry, long entryIndex) {

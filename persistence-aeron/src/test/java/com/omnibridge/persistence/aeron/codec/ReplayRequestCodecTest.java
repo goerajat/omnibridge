@@ -59,4 +59,39 @@ class ReplayRequestCodecTest {
         assertEquals("", ReplayRequestCodec.decodeStreamName(buffer, 0));
         assertEquals(MessageTypes.DIRECTION_OUTBOUND, ReplayRequestCodec.decodeDirection(buffer, 0));
     }
+
+    @Test
+    void shouldRoundTripWithPublisherId() {
+        long publisherId = 42L;
+        int length = ReplayRequestCodec.encode(buffer, 0, 10L,
+                MessageTypes.DIRECTION_BOTH, 0, 0, 0, 0, 0, "session-1", publisherId);
+        assertTrue(length > 0);
+
+        assertEquals(10L, ReplayRequestCodec.decodeCorrelationId(buffer, 0));
+        assertEquals(publisherId, ReplayRequestCodec.decodePublisherId(buffer, 0));
+        assertEquals("session-1", ReplayRequestCodec.decodeStreamName(buffer, 0));
+    }
+
+    @Test
+    void shouldDefaultPublisherIdToZero() {
+        ReplayRequestCodec.encode(buffer, 0, 1L,
+                MessageTypes.DIRECTION_BOTH, 0, 0, 0, 0, 0, "");
+
+        assertEquals(0L, ReplayRequestCodec.decodePublisherId(buffer, 0));
+    }
+
+    @Test
+    void shouldDecodeOldFormatAsPublisherIdZero() {
+        // Simulate old 41-byte block format
+        AeronMessageHeader.write(buffer, 0, 41, MessageTypes.REPLAY_REQUEST,
+                MessageTypes.SCHEMA_ID, MessageTypes.SCHEMA_VERSION);
+        int pos = AeronMessageHeader.HEADER_SIZE;
+        buffer.putLong(pos, 5L, java.nio.ByteOrder.LITTLE_ENDIAN); // correlationId
+        pos += 41;
+        buffer.putInt(pos, 0, java.nio.ByteOrder.LITTLE_ENDIAN); // empty streamName
+
+        assertEquals(0L, ReplayRequestCodec.decodePublisherId(buffer, 0));
+        assertEquals(5L, ReplayRequestCodec.decodeCorrelationId(buffer, 0));
+        assertEquals("", ReplayRequestCodec.decodeStreamName(buffer, 0));
+    }
 }

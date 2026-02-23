@@ -145,24 +145,27 @@ public class AeronLogStore implements LogStore, Component {
 
     /**
      * Recover entries from a remote subscriber for the given stream.
+     * Scoped to this engine's publisher ID so only this publisher's entries are recovered.
      *
      * @param streamName the stream to recover (null for all)
      * @return the number of entries recovered
      */
     public long recoverFromRemote(String streamName) {
-        log.info("Starting recovery from remote for stream: {}", streamName != null ? streamName : "ALL");
+        log.info("Starting recovery from remote for stream: {}, publisherId: {}",
+                streamName != null ? streamName : "ALL", publisherId);
         return replayClient.requestReplay(localStore, streamName,
-                MessageTypes.DIRECTION_BOTH, 0, 0);
+                MessageTypes.DIRECTION_BOTH, 0, 0, 0, 0, 0, publisherId);
     }
 
     /**
      * Recover entries from a remote subscriber with filtering.
+     * Scoped to this engine's publisher ID.
      */
     public long recoverFromRemote(String streamName, byte direction,
                                   int fromSeqNum, int toSeqNum,
                                   long fromTimestamp, long toTimestamp) {
         return replayClient.requestReplay(localStore, streamName, direction,
-                fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, 0);
+                fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, 0, publisherId);
     }
 
     // ==================== Catch-Up Sync ====================

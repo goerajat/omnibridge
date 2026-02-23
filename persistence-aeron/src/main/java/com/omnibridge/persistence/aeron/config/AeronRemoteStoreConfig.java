@@ -123,18 +123,22 @@ public final class AeronRemoteStoreConfig {
         private final String name;
         private final String host;
         private final int replayPort;
+        private final long publisherId;
 
-        private EngineConfig(String name, String host, int replayPort) {
+        private EngineConfig(String name, String host, int replayPort, long publisherId) {
             this.name = name;
             this.host = host;
             this.replayPort = replayPort;
+            this.publisherId = publisherId;
         }
 
         public static EngineConfig fromConfig(Config config) {
+            long pubId = config.hasPath("publisher-id") ? config.getLong("publisher-id") : 0;
             return new EngineConfig(
                     config.getString("name"),
                     config.getString("host"),
-                    config.getInt("replay-port")
+                    config.getInt("replay-port"),
+                    pubId
             );
         }
 
@@ -150,6 +154,10 @@ public final class AeronRemoteStoreConfig {
             return replayPort;
         }
 
+        public long getPublisherId() {
+            return publisherId;
+        }
+
         public String getReplayChannel() {
             return "aeron:udp?endpoint=" + host + ":" + replayPort;
         }
@@ -157,7 +165,7 @@ public final class AeronRemoteStoreConfig {
         @Override
         public String toString() {
             return "EngineConfig{name='" + name + "', host='" + host +
-                    "', replayPort=" + replayPort + '}';
+                    "', replayPort=" + replayPort + ", publisherId=" + publisherId + '}';
         }
     }
 

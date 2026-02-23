@@ -122,6 +122,50 @@ class LogEntryCodecTest {
     }
 
     @Test
+    void shouldRoundTripDecodeWithPublisherId() {
+        LogEntry original = LogEntry.builder()
+                .timestamp(1700000000000L)
+                .inbound()
+                .sequenceNumber(42)
+                .streamName("FIX.4.4:SENDER->TARGET")
+                .metadata("type=D".getBytes())
+                .rawMessage("8=FIX.4.4|35=D|49=SENDER|".getBytes())
+                .build();
+        long publisherId = 98765L;
+
+        LogEntryCodec.encode(buffer, 0, original, publisherId);
+
+        LogEntryCodec.DecodedEntry decoded = LogEntryCodec.decodeWithPublisherId(buffer, 0);
+
+        assertEquals(original.getTimestamp(), decoded.entry().getTimestamp());
+        assertEquals(LogEntry.Direction.INBOUND, decoded.entry().getDirection());
+        assertEquals(42, decoded.entry().getSequenceNumber());
+        assertEquals("FIX.4.4:SENDER->TARGET", decoded.entry().getStreamName());
+        assertArrayEquals(original.getMetadata(), decoded.entry().getMetadata());
+        assertArrayEquals(original.getRawMessage(), decoded.entry().getRawMessage());
+        assertEquals(publisherId, decoded.publisherId());
+    }
+
+    @Test
+    void shouldDecodeWithPublisherIdZero() {
+        LogEntry original = LogEntry.builder()
+                .timestamp(1000L)
+                .outbound()
+                .sequenceNumber(1)
+                .streamName("test")
+                .rawMessage("data".getBytes())
+                .build();
+
+        LogEntryCodec.encode(buffer, 0, original, 0);
+
+        LogEntryCodec.DecodedEntry decoded = LogEntryCodec.decodeWithPublisherId(buffer, 0);
+
+        assertEquals(0, decoded.publisherId());
+        assertEquals("test", decoded.entry().getStreamName());
+        assertArrayEquals("data".getBytes(), decoded.entry().getRawMessage());
+    }
+
+    @Test
     void shouldEncodeAtNonZeroOffset() {
         int offset = 100;
         LogEntry original = LogEntry.builder()

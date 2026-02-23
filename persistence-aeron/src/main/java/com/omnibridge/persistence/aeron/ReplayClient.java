@@ -46,7 +46,7 @@ public class ReplayClient {
      */
     public long requestReplay(LogStore localStore, String streamName,
                               byte direction, int fromSeqNum, int toSeqNum) {
-        return requestReplay(localStore, streamName, direction, fromSeqNum, toSeqNum, 0, 0, 0);
+        return requestReplay(localStore, streamName, direction, fromSeqNum, toSeqNum, 0, 0, 0, 0);
     }
 
     /**
@@ -55,15 +55,29 @@ public class ReplayClient {
     public long requestReplay(LogStore localStore, String streamName,
                               byte direction, int fromSeqNum, int toSeqNum,
                               long fromTimestamp, long toTimestamp, long maxEntries) {
+        return requestReplay(localStore, streamName, direction, fromSeqNum, toSeqNum,
+                fromTimestamp, toTimestamp, maxEntries, 0);
+    }
+
+    /**
+     * Request replay with full filtering options and publisher-scoped replay.
+     *
+     * @param publisherId the publisher ID to scope replay to (0 = all publishers)
+     */
+    public long requestReplay(LogStore localStore, String streamName,
+                              byte direction, int fromSeqNum, int toSeqNum,
+                              long fromTimestamp, long toTimestamp, long maxEntries,
+                              long publisherId) {
         long correlationId = nextCorrelationId++;
 
         int length = ReplayRequestCodec.encode(requestBuffer, 0, correlationId, direction,
-                fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, streamName);
+                fromSeqNum, toSeqNum, fromTimestamp, toTimestamp, maxEntries, streamName,
+                publisherId);
 
         // Send to primary subscriber (index 0)
         transport.publishControlTo(0, requestBuffer, 0, length);
-        log.info("Sent replay request: correlationId={}, stream={}, fromSeq={}, toSeq={}",
-                correlationId, streamName, fromSeqNum, toSeqNum);
+        log.info("Sent replay request: correlationId={}, stream={}, fromSeq={}, toSeq={}, publisherId={}",
+                correlationId, streamName, fromSeqNum, toSeqNum, publisherId);
 
         // Poll for responses
         return pollReplayResponses(localStore, correlationId);

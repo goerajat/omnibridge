@@ -26,6 +26,11 @@ public final class LogEntryCodec {
     public static final int TEMPLATE_ID = MessageTypes.LOG_ENTRY;
     public static final int BLOCK_LENGTH = 21;
 
+    /**
+     * Decoded log entry with the publisher ID from the wire format.
+     */
+    public record DecodedEntry(LogEntry entry, long publisherId) {}
+
     private static final int TIMESTAMP_OFFSET = 0;
     private static final int DIRECTION_OFFSET = 8;
     private static final int SEQUENCE_NUMBER_OFFSET = 9;
@@ -121,6 +126,55 @@ public final class LogEntryCodec {
                 .metadata(metadata)
                 .rawMessage(rawMessage)
                 .build();
+    }
+
+    /**
+     * Decodes a log entry together with the publisher ID from the wire format.
+     */
+    public static DecodedEntry decodeWithPublisherId(DirectBuffer buffer, int offset) {
+        int pos = offset + AeronMessageHeader.HEADER_SIZE;
+
+        long timestamp = buffer.getLong(pos + TIMESTAMP_OFFSET, ByteOrder.LITTLE_ENDIAN);
+        byte directionByte = buffer.getByte(pos + DIRECTION_OFFSET);
+        int seqNum = buffer.getInt(pos + SEQUENCE_NUMBER_OFFSET, ByteOrder.LITTLE_ENDIAN);
+        long publisherId = buffer.getLong(pos + PUBLISHER_ID_OFFSET, ByteOrder.LITTLE_ENDIAN);
+        pos += BLOCK_LENGTH;
+
+        // streamName
+        int streamLen = buffer.getInt(pos, ByteOrder.LITTLE_ENDIAN);
+        pos += 4;
+        String streamName = streamLen > 0 ? buffer.getStringWithoutLengthAscii(pos, streamLen) : "";
+        pos += streamLen;
+
+        // metadata
+        int metaLen = buffer.getInt(pos, ByteOrder.LITTLE_ENDIAN);
+        pos += 4;
+        byte[] metadata = null;
+        if (metaLen > 0) {
+            metadata = new byte[metaLen];
+            buffer.getBytes(pos, metadata);
+            pos += metaLen;
+        }
+
+        // rawMessage
+        int rawLen = buffer.getInt(pos, ByteOrder.LITTLE_ENDIAN);
+        pos += 4;
+        byte[] rawMessage = null;
+        if (rawLen > 0) {
+            rawMessage = new byte[rawLen];
+            buffer.getBytes(pos, rawMessage);
+        }
+
+        LogEntry entry = LogEntry.builder()
+                .timestamp(timestamp)
+                .direction(directionByte == 0 ? LogEntry.Direction.INBOUND : LogEntry.Direction.OUTBOUND)
+                .sequenceNumber(seqNum)
+                .streamName(streamName)
+                .metadata(metadata)
+                .rawMessage(rawMessage)
+                .build();
+
+        return new DecodedEntry(entry, publisherId);
     }
 
     public static long decodePublisherId(DirectBuffer buffer, int offset) {

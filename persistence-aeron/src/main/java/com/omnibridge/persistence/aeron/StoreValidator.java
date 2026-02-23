@@ -41,6 +41,9 @@ public class StoreValidator implements Callable<Integer> {
     @CommandLine.Option(names = "--remote", description = "Path to remote Chronicle store", required = true)
     private String remotePath;
 
+    @CommandLine.Option(names = "--publisher-id", description = "Publisher ID to validate (prefixes local stream names with pub-{id}/)")
+    private Long publisherId;
+
     @CommandLine.Option(names = "--fix-validate", description = "Enable FIX-specific message type validation")
     private boolean fixValidate;
 
@@ -57,6 +60,7 @@ public class StoreValidator implements Callable<Integer> {
         System.out.println("==========================================================================");
         System.out.println("Local store:  " + localPath);
         System.out.println("Remote store: " + remotePath);
+        System.out.println("Publisher ID: " + (publisherId != null ? publisherId : "ALL"));
         System.out.println("FIX validate: " + fixValidate);
         System.out.println("==========================================================================");
         System.out.println();
@@ -111,10 +115,26 @@ public class StoreValidator implements Callable<Integer> {
         Collection<String> localStreams = local.getStreamNames();
         Collection<String> remoteStreams = remote.getStreamNames();
 
-        check("Stream count", localStreams.size(), remoteStreams.size());
-
-        Set<String> localSet = new TreeSet<>(localStreams);
+        // When publisherId is set, map local stream names to prefixed versions for comparison
+        Set<String> localSet;
+        if (publisherId != null) {
+            localSet = new TreeSet<>();
+            String prefix = "pub-" + publisherId + "/";
+            for (String stream : localStreams) {
+                localSet.add(prefix + stream);
+            }
+        } else {
+            localSet = new TreeSet<>(localStreams);
+        }
         Set<String> remoteSet = new TreeSet<>(remoteStreams);
+
+        // When publisherId is set, only compare remote streams for this publisher
+        if (publisherId != null) {
+            String prefix = "pub-" + publisherId + "/";
+            remoteSet.removeIf(s -> !s.startsWith(prefix));
+        }
+
+        check("Stream count", localSet.size(), remoteSet.size());
 
         Set<String> onlyLocal = new TreeSet<>(localSet);
         onlyLocal.removeAll(remoteSet);
@@ -138,15 +158,15 @@ public class StoreValidator implements Callable<Integer> {
         long totalLocal = 0;
         long totalRemote = 0;
 
-        Set<String> allStreams = new TreeSet<>(local.getStreamNames());
-        allStreams.addAll(remote.getStreamNames());
+        String prefix = publisherId != null ? "pub-" + publisherId + "/" : null;
 
-        for (String stream : allStreams) {
-            long lc = local.getEntryCount(stream);
-            long rc = remote.getEntryCount(stream);
+        for (String localStream : local.getStreamNames()) {
+            String remoteStream = prefix != null ? prefix + localStream : localStream;
+            long lc = local.getEntryCount(localStream);
+            long rc = remote.getEntryCount(remoteStream);
             totalLocal += lc;
             totalRemote += rc;
-            check("Entry count [" + stream + "]", lc, rc);
+            check("Entry count [" + localStream + "]", lc, rc);
         }
 
         check("Total entry count", totalLocal, totalRemote);
@@ -156,15 +176,18 @@ public class StoreValidator implements Callable<Integer> {
     private void validateEntryByEntry(ChronicleLogStore local, ChronicleLogStore remote) {
         System.out.println("--- Entry-by-Entry Comparison ---");
 
-        Set<String> allStreams = new TreeSet<>(local.getStreamNames());
-        allStreams.retainAll(remote.getStreamNames());
+        String prefix = publisherId != null ? "pub-" + publisherId + "/" : null;
 
         int totalCompared = 0;
         int totalMismatches = 0;
 
-        for (String stream : allStreams) {
+        for (String stream : local.getStreamNames()) {
+            String remoteStream = prefix != null ? prefix + stream : stream;
+            if (!remote.getStreamNames().contains(remoteStream)) {
+                continue;
+            }
             List<LogEntry> localEntries = replayAll(local, stream);
-            List<LogEntry> remoteEntries = replayAll(remote, stream);
+            List<LogEntry> remoteEntries = replayAll(remote, remoteStream);
 
             int limit = Math.min(localEntries.size(), remoteEntries.size());
             int streamMismatches = 0;
