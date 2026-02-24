@@ -38,14 +38,15 @@ provider "aws" {
 module "vpc" {
   source = "../../modules/vpc"
 
-  environment            = "production"
-  vpc_cidr               = var.vpc_cidr
-  trading_subnet_a_cidr  = "10.0.1.0/24"
-  trading_subnet_b_cidr  = "10.0.2.0/24"
-  monitoring_subnet_cidr = "10.0.10.0/24"
-  client_cidrs           = var.client_cidrs
-  ssh_cidrs              = var.ssh_cidrs
-  grafana_cidrs          = var.grafana_cidrs
+  environment               = "production"
+  vpc_cidr                  = var.vpc_cidr
+  trading_subnet_a_cidr     = "10.0.1.0/24"
+  trading_subnet_b_cidr     = "10.0.2.0/24"
+  persistence_subnet_cidr   = "10.0.3.0/24"
+  monitoring_subnet_cidr    = "10.0.10.0/24"
+  client_cidrs              = var.client_cidrs
+  ssh_cidrs                 = var.ssh_cidrs
+  grafana_cidrs             = var.grafana_cidrs
 }
 
 # -----------------------------------------------------------------------------
@@ -91,6 +92,28 @@ module "ouch_acceptor" {
 }
 
 # -----------------------------------------------------------------------------
+# Aeron Remote Persistence Store
+# -----------------------------------------------------------------------------
+
+module "aeron_persistence" {
+  source = "../../modules/aeron-persistence"
+
+  environment       = "production"
+  instance_type     = var.persistence_instance_type
+  ami_id            = var.ami_id
+  key_name          = var.key_name
+  subnet_id         = module.vpc.persistence_subnet_id
+  security_group_id = module.vpc.persistence_security_group_id
+  app_version       = var.app_version
+  s3_bucket         = var.s3_artifact_bucket
+  engine_host       = module.fix_acceptor.private_ip
+  publisher_id      = 1
+  ebs_volume_size   = 200
+  ebs_iops          = 6000
+  ebs_throughput    = 400
+}
+
+# -----------------------------------------------------------------------------
 # Monitoring Stack (Prometheus + Grafana + Alertmanager)
 # -----------------------------------------------------------------------------
 
@@ -110,6 +133,7 @@ module "monitoring" {
   trading_app_ips = [
     module.fix_acceptor.private_ip,
     module.ouch_acceptor.private_ip,
+    module.aeron_persistence.private_ip,
   ]
 
   # Production: 30-day metric retention

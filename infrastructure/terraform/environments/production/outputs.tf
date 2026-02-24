@@ -36,6 +36,18 @@ output "ouch_acceptor_private_ip" {
   value       = module.ouch_acceptor.private_ip
 }
 
+# --- Aeron Persistence ---
+
+output "aeron_persistence_instance_id" {
+  description = "EC2 instance ID of the Aeron persistence store"
+  value       = module.aeron_persistence.instance_id
+}
+
+output "aeron_persistence_private_ip" {
+  description = "Private IP of the Aeron persistence store"
+  value       = module.aeron_persistence.private_ip
+}
+
 # --- Monitoring ---
 
 output "monitoring_instance_id" {
@@ -67,6 +79,7 @@ output "connection_info" {
     ouch_endpoint = "${module.ouch_acceptor.private_ip}:9200"
     fix_admin     = "${module.fix_acceptor.private_ip}:8081"
     ouch_admin    = "${module.ouch_acceptor.private_ip}:8082"
+    aeron_store   = "${module.aeron_persistence.private_ip}:40456"
     grafana       = module.monitoring.grafana_url
   }
 }

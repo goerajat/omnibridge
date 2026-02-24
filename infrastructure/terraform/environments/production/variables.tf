@@ -60,6 +60,12 @@ variable "monitoring_instance_type" {
   default     = "t3.large"
 }
 
+variable "persistence_instance_type" {
+  description = "EC2 instance type for the Aeron persistence store"
+  type        = string
+  default     = "t3.large"
+}
+
 # --- Application ---
 
 variable "app_version" {

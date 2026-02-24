@@ -63,6 +63,12 @@ variable "ssh_cidrs" {
   }
 }
 
+variable "persistence_subnet_cidr" {
+  description = "CIDR block for the Persistence Subnet (AZ-b)"
+  type        = string
+  default     = "10.0.3.0/24"
+}
+
 variable "grafana_cidrs" {
   description = "List of CIDR blocks allowed to access Grafana and OmniView dashboards"
   type        = list(string)

@@ -37,6 +37,16 @@ output "monitoring_security_group_id" {
   value       = aws_security_group.monitoring.id
 }
 
+output "persistence_subnet_id" {
+  description = "ID of the Persistence Subnet"
+  value       = aws_subnet.persistence.id
+}
+
+output "persistence_security_group_id" {
+  description = "ID of the persistence store security group"
+  value       = aws_security_group.persistence.id
+}
+
 output "internet_gateway_id" {
   description = "ID of the Internet Gateway"
   value       = aws_internet_gateway.omnibridge.id

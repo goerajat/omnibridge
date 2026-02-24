@@ -107,6 +107,25 @@ resource "aws_subnet" "monitoring" {
 }
 
 # -----------------------------------------------------------------------------
+# Persistence Subnet (Private)
+# -----------------------------------------------------------------------------
+# Persistence subnet hosts Aeron remote store instances for disaster-recovery
+# replication of trading data.
+
+resource "aws_subnet" "persistence" {
+  vpc_id            = aws_vpc.omnibridge.id
+  cidr_block        = var.persistence_subnet_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = {
+    Name        = "omnibridge-${var.environment}-persistence"
+    Environment = var.environment
+    Project     = "omnibridge"
+    Tier        = "persistence"
+  }
+}
+
+# -----------------------------------------------------------------------------
 # NAT Gateway (for trading subnet outbound access)
 # -----------------------------------------------------------------------------
 # Trading instances need outbound internet for package updates and S3 access.
@@ -182,6 +201,11 @@ resource "aws_route_table_association" "trading_a" {
 
 resource "aws_route_table_association" "trading_b" {
   subnet_id      = aws_subnet.trading_b.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_route_table_association" "persistence" {
+  subnet_id      = aws_subnet.persistence.id
   route_table_id = aws_route_table.private.id
 }
 
@@ -283,6 +307,16 @@ resource "aws_vpc_security_group_ingress_rule" "trading_ssh" {
   cidr_ipv4         = each.value
 }
 
+# Aeron replay responses (UDP 40458) - from persistence SG
+resource "aws_vpc_security_group_ingress_rule" "trading_aeron_replay_from_persistence" {
+  security_group_id            = aws_security_group.trading.id
+  description                  = "Aeron replay responses from persistence subnet"
+  from_port                    = 40458
+  to_port                      = 40458
+  ip_protocol                  = "udp"
+  referenced_security_group_id = aws_security_group.persistence.id
+}
+
 # Allow all outbound traffic from trading instances
 resource "aws_vpc_security_group_egress_rule" "trading_all_outbound" {
   security_group_id = aws_security_group.trading.id
@@ -361,6 +395,68 @@ resource "aws_vpc_security_group_ingress_rule" "monitoring_ssh" {
 # Outbound to trading subnets (protocol, admin, metrics ports)
 resource "aws_vpc_security_group_egress_rule" "monitoring_all_outbound" {
   security_group_id = aws_security_group.monitoring.id
+  description       = "All outbound traffic"
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+# -----------------------------------------------------------------------------
+# Security Group: Persistence
+# -----------------------------------------------------------------------------
+# Controls access to Aeron remote persistence store instances.
+# Receives UDP data from trading engines and serves replay requests.
+
+resource "aws_security_group" "persistence" {
+  name_prefix = "omnibridge-${var.environment}-persistence-"
+  description = "Security group for OmniBridge Aeron persistence store instances"
+  vpc_id      = aws_vpc.omnibridge.id
+
+  tags = {
+    Name        = "omnibridge-${var.environment}-persistence-sg"
+    Environment = var.environment
+    Project     = "omnibridge"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Aeron data + control ports (UDP 40456-40457) - from trading SG
+resource "aws_vpc_security_group_ingress_rule" "persistence_aeron_from_trading" {
+  security_group_id            = aws_security_group.persistence.id
+  description                  = "Aeron data and control channels from trading engines"
+  from_port                    = 40456
+  to_port                      = 40457
+  ip_protocol                  = "udp"
+  referenced_security_group_id = aws_security_group.trading.id
+}
+
+# SSH access from bastion/management CIDRs
+resource "aws_vpc_security_group_ingress_rule" "persistence_ssh" {
+  for_each = toset(var.ssh_cidrs)
+
+  security_group_id = aws_security_group.persistence.id
+  description       = "SSH from ${each.value}"
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+  cidr_ipv4         = each.value
+}
+
+# Prometheus metrics scraping (port 8080) - from monitoring SG
+resource "aws_vpc_security_group_ingress_rule" "persistence_metrics_from_monitoring" {
+  security_group_id            = aws_security_group.persistence.id
+  description                  = "Prometheus metrics scraping from monitoring"
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.monitoring.id
+}
+
+# Allow all outbound traffic from persistence instances
+resource "aws_vpc_security_group_egress_rule" "persistence_all_outbound" {
+  security_group_id = aws_security_group.persistence.id
   description       = "All outbound traffic"
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"

@@ -1,0 +1,190 @@
+#!/bin/bash
+# =============================================================================
+# OmniBridge Aeron Remote Persistence Store Bootstrap Script
+# =============================================================================
+# Installs Java 17, mounts EBS, and deploys the Aeron remote store from S3.
+# =============================================================================
+
+set -euo pipefail
+exec > /var/log/omnibridge-bootstrap.log 2>&1
+
+echo "=== OmniBridge Aeron Persistence Store Bootstrap Starting ==="
+echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# -----------------------------------------------------------------------------
+# System Setup
+# -----------------------------------------------------------------------------
+
+# Update system packages
+yum update -y
+
+# Install Amazon Corretto 17 (Java 17)
+yum install -y java-17-amazon-corretto-headless
+
+# Verify Java installation
+java -version
+
+# Install additional tools
+yum install -y aws-cli jq htop sysstat
+
+# -----------------------------------------------------------------------------
+# EBS Volume Setup
+# -----------------------------------------------------------------------------
+
+EBS_DEVICE="${ebs_device}"
+MOUNT_POINT="/opt/omnibridge"
+
+# Wait for EBS volume to be attached
+echo "Waiting for EBS volume at $EBS_DEVICE..."
+while [ ! -e "$EBS_DEVICE" ]; do
+  sleep 1
+done
+
+# Check if the volume has a filesystem; create one if not
+if ! blkid "$EBS_DEVICE"; then
+  echo "Creating ext4 filesystem on $EBS_DEVICE"
+  mkfs -t ext4 "$EBS_DEVICE"
+fi
+
+# Mount the volume
+mkdir -p "$MOUNT_POINT"
+mount "$EBS_DEVICE" "$MOUNT_POINT"
+
+# Add to fstab for persistence across reboots
+echo "$EBS_DEVICE $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
+
+# Create application directories
+mkdir -p "$MOUNT_POINT"/{lib,data,logs,conf}
+chmod 755 "$MOUNT_POINT"/{lib,data,logs,conf}
+
+# -----------------------------------------------------------------------------
+# Kernel Tuning for Aeron UDP Performance
+# -----------------------------------------------------------------------------
+
+# Increase network buffer sizes for Aeron UDP
+sysctl -w net.core.rmem_max=16777216
+sysctl -w net.core.wmem_max=16777216
+sysctl -w net.core.rmem_default=1048576
+sysctl -w net.core.wmem_default=1048576
+
+# Increase UDP receive buffer backlog
+sysctl -w net.core.netdev_max_backlog=30000
+
+# Persist kernel parameters
+cat >> /etc/sysctl.d/99-omnibridge.conf << 'SYSCTL'
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+net.core.rmem_default=1048576
+net.core.wmem_default=1048576
+net.core.netdev_max_backlog=30000
+SYSCTL
+
+# -----------------------------------------------------------------------------
+# Deploy Application from S3
+# -----------------------------------------------------------------------------
+
+APP_VERSION="${app_version}"
+S3_BUCKET="${s3_bucket}"
+ENVIRONMENT="${environment}"
+
+echo "Deploying Aeron persistence store version $APP_VERSION from s3://$S3_BUCKET"
+
+# Download persistence JARs from S3
+aws s3 cp "s3://$S3_BUCKET/omnibridge/$ENVIRONMENT/persistence-aeron-$APP_VERSION.jar" "$MOUNT_POINT/lib/persistence-aeron-$APP_VERSION.jar"
+aws s3 cp "s3://$S3_BUCKET/omnibridge/$ENVIRONMENT/persistence-$APP_VERSION.jar" "$MOUNT_POINT/lib/persistence-$APP_VERSION.jar"
+
+# -----------------------------------------------------------------------------
+# Generate HOCON Configuration
+# -----------------------------------------------------------------------------
+
+ENGINE_HOST="${engine_host}"
+PUBLISHER_ID="${publisher_id}"
+
+cat > "$MOUNT_POINT/conf/aeron-remote-store.conf" << CONF
+aeron-remote-store {
+    base-path = "$MOUNT_POINT/data/remote-store"
+
+    aeron {
+        media-driver {
+            embedded = true
+            aeron-dir = "/dev/shm/aeron-remote-store"
+        }
+
+        listen {
+            host = "0.0.0.0"
+            data-port = 40456
+            control-port = 40457
+        }
+
+        engines = [
+            {
+                name = "trading-engine"
+                host = "$ENGINE_HOST"
+                replay-port = 40458
+                publisher-id = $PUBLISHER_ID
+            }
+        ]
+
+        idle-strategy = "sleeping"
+        fragment-limit = 256
+    }
+}
+
+persistence {
+    enabled = true
+    store-type = "chronicle"
+    base-path = "$MOUNT_POINT/data/remote-store"
+    max-file-size = 256MB
+    sync-on-write = false
+}
+CONF
+
+# -----------------------------------------------------------------------------
+# Create systemd Service
+# -----------------------------------------------------------------------------
+
+cat > /etc/systemd/system/omnibridge-aeron-store.service << SERVICE
+[Unit]
+Description=OmniBridge Aeron Remote Persistence Store
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$MOUNT_POINT
+ExecStart=/usr/bin/java \\
+  -server \\
+  -Xms1g -Xmx2g \\
+  -XX:+UseZGC \\
+  -XX:+AlwaysPreTouch \\
+  --add-opens java.base/java.lang=ALL-UNNAMED \\
+  --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
+  --add-opens java.base/java.io=ALL-UNNAMED \\
+  --add-opens java.base/java.nio=ALL-UNNAMED \\
+  --add-opens java.base/sun.nio.ch=ALL-UNNAMED \\
+  --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \\
+  --add-exports java.base/jdk.internal.misc=ALL-UNNAMED \\
+  --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
+  --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
+  -Djava.net.preferIPv4Stack=true \\
+  -cp "$MOUNT_POINT/conf:$MOUNT_POINT/lib/*" \\
+  com.omnibridge.persistence.aeron.AeronRemoteStoreMain \\
+  -c $MOUNT_POINT/conf/aeron-remote-store.conf
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65535
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+# Enable and start the service
+systemctl daemon-reload
+systemctl enable omnibridge-aeron-store
+systemctl start omnibridge-aeron-store
+
+echo "=== OmniBridge Aeron Persistence Store Bootstrap Complete ==="
+echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
