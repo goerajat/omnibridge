@@ -29,14 +29,14 @@ mvn compile                # Compile only
 
 ## Latency Testing
 
-Run latency tests using the script in the project root:
+Run latency tests using the script in `scripts/test/`:
 
 ```bash
 # Windows
-run-latency-test.bat [warmup-orders] [test-orders] [rate]
+scripts\test\run-latency-test.bat [warmup-orders] [test-orders] [rate]
 
 # Linux/Mac
-./run-latency-test.sh [warmup-orders] [test-orders] [rate]
+./scripts/test/run-latency-test.sh [warmup-orders] [test-orders] [rate]
 ```
 
 Default parameters:
@@ -46,7 +46,7 @@ Default parameters:
 
 Example:
 ```bash
-run-latency-test.bat 5000 1000 100
+scripts\test\run-latency-test.bat 5000 1000 100
 ```
 
 The script:
@@ -63,18 +63,18 @@ Run reference tests using QuickFIX/J against the sample acceptor:
 
 ```bash
 # Windows
-run-reference-test.bat [test-names]
+scripts\test\run-reference-test.bat [test-names]
 
 # Linux/Mac
-./run-reference-test.sh [test-names]
+./scripts/test/run-reference-test.sh [test-names]
 ```
 
 Available tests: HeartbeatTest, SequenceNumberTest, NewOrderTest, MarketOrderTest, SellOrderTest, OrderCancelTest, OrderModifyTest, OrderRejectTest, OrderStatusRequestTest, CancelRejectTest, TimeInForceTest, PartialFillTest, FillDelayTest, MultipleOrdersTest, Fix42LogonTest, Fix50LogonTest, MaxMessageSizeTest, LogonLogoutTest
 
 Example:
 ```bash
-run-reference-test.bat all
-run-reference-test.bat HeartbeatTest,NewOrderTest
+scripts\test\run-reference-test.bat all
+scripts\test\run-reference-test.bat HeartbeatTest,NewOrderTest
 ```
 
 ## Session Testing
@@ -83,10 +83,10 @@ Run session tests using our FIX engine against the sample acceptor:
 
 ```bash
 # Windows
-run-session-test.bat [test-names] [report-format]
+scripts\test\run-session-test.bat [test-names] [report-format]
 
 # Linux/Mac
-./run-session-test.sh [test-names] [report-format]
+./scripts/test/run-session-test.sh [test-names] [report-format]
 ```
 
 Available tests: LogonLogoutTest, SequenceNumberTest, TestRequestTest, HeartbeatTest, HeartbeatTimeoutTest, ResendRequestTest, ConcurrentOrderTest, DuplicateLogonTest, ResetSeqNumOnLogonTest, ResetOnLogoutTest, ResetOnDisconnectTest, MultipleReconnectTest, SendInWrongStateTest, GapDetectionTest, DuplicateMessageTest, PossDupFlagTest, ResendReplayTest, SequenceResetNonGapFillTest, SequenceGapBothDirectionsTest, BackpressureTest, LargeMessageTest, ConcurrentReconnectTest, CompIdValidationTest, LogonWhileConnectedTest, MessageLoggingTest, MaxReconnectAttemptsTest, SessionStateListenerTest, LogoutAcknowledgmentTest, RejectNotificationTest, ChecksumValidationTest, BodyLengthValidationTest, LogonValidationTest, MessageAbortTest, RapidLogonLogoutTest, OutgoingMessageCountTest, MetricsValidationTest, GracefulShutdownTest, MultiSessionSamePortTest, ZeroHeartbeatIntervalTest, Fix50LogonTest
@@ -95,8 +95,8 @@ Report formats: text (default), json, html
 
 Example:
 ```bash
-run-session-test.bat all text
-run-session-test.bat HeartbeatTest json
+scripts\test\run-session-test.bat all text
+scripts\test\run-session-test.bat HeartbeatTest json
 ```
 
 ## OUCH Latency Testing
@@ -105,10 +105,10 @@ Run OUCH latency tests:
 
 ```bash
 # OUCH 4.2
-run-ouch-latency-test.bat [warmup-orders] [test-orders] [rate]
+scripts\test\run-ouch-latency-test.bat [warmup-orders] [test-orders] [rate]
 
 # OUCH 5.0
-run-ouch-latency-test-v50.bat [warmup-orders] [test-orders] [rate]
+scripts\test\run-ouch-latency-test-v50.bat [warmup-orders] [test-orders] [rate]
 ```
 
 ## OmniView - Protocol Engine Monitor
@@ -170,10 +170,10 @@ Deploy OmniView to a remote Linux server:
 
 ```bash
 # Windows
-deploy-omniview.bat -i <pem-file> -u <username> -h <hostname> [-p <port>] [-d <deploy-dir>]
+scripts\deploy\deploy-omniview.bat -i <pem-file> -u <username> -h <hostname> [-p <port>] [-d <deploy-dir>]
 
 # Linux/Mac
-./deploy-omniview.sh -i <pem-file> -u <username> -h <hostname> [-p <port>] [-d <deploy-dir>]
+./scripts/deploy/deploy-omniview.sh -i <pem-file> -u <username> -h <hostname> [-p <port>] [-d <deploy-dir>]
 ```
 
 Options:
@@ -186,7 +186,7 @@ Options:
 
 Example:
 ```bash
-./deploy-omniview.sh -i ~/.ssh/mykey.pem -u ubuntu -h 192.168.1.100 -p 8080
+./scripts/deploy/deploy-omniview.sh -i ~/.ssh/mykey.pem -u ubuntu -h 192.168.1.100 -p 8080
 ```
 
 ### Development Mode
@@ -223,10 +223,10 @@ Distribution packages:
 
 ```bash
 # Windows
-deploy-samples.bat -i <pem-file> -u <username> -h <hostname> [options]
+scripts\deploy\deploy-samples.bat -i <pem-file> -u <username> -h <hostname> [options]
 
 # Linux/Mac
-./deploy-samples.sh -i <pem-file> -u <username> -h <hostname> [options]
+./scripts/deploy/deploy-samples.sh -i <pem-file> -u <username> -h <hostname> [options]
 ```
 
 Options:
@@ -239,7 +239,7 @@ Options:
 
 Example:
 ```bash
-./deploy-samples.sh -i ~/.ssh/mykey.pem -u ubuntu -h 192.168.1.100
+./scripts/deploy/deploy-samples.sh -i ~/.ssh/mykey.pem -u ubuntu -h 192.168.1.100
 ```
 
 ### Port Assignments

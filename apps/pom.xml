@@ -27,5 +27,7 @@
         <module>pillar-samples</module>
         <module>exchange-simulator-core</module>
         <module>exchange-simulator</module>
+        <module>aeron-remote-store</module>
+        <module>log-viewer</module>
     </modules>
 </project>

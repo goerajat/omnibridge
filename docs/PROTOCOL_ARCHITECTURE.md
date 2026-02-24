@@ -2323,16 +2323,17 @@ Create scripts for each test type:
 
 ```
 connectivity/
-├── run-latency-test.bat          # FIX latency
-├── run-latency-test.sh
-├── run-ouch-latency-test.bat     # OUCH 4.2 latency
-├── run-ouch-latency-test.sh
-├── run-ouch-latency-test-v50.bat # OUCH 5.0 latency
-├── run-ouch-latency-test-v50.sh
-├── run-reference-test.bat        # QuickFIX/J interop
-├── run-reference-test.sh
-├── run-session-test.bat          # Protocol compliance
-└── run-session-test.sh
+└── scripts/test/
+    ├── run-latency-test.bat          # FIX latency
+    ├── run-latency-test.sh
+    ├── run-ouch-latency-test.bat     # OUCH 4.2 latency
+    ├── run-ouch-latency-test.sh
+    ├── run-ouch-latency-test-v50.bat # OUCH 5.0 latency
+    ├── run-ouch-latency-test-v50.sh
+    ├── run-reference-test.bat        # QuickFIX/J interop
+    ├── run-reference-test.sh
+    ├── run-session-test.bat          # Protocol compliance
+    └── run-session-test.sh
 ```
 
 ### 8.2 Latency Test Script Template

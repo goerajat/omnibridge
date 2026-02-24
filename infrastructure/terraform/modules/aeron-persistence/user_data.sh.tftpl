@@ -54,8 +54,8 @@ mount "$EBS_DEVICE" "$MOUNT_POINT"
 echo "$EBS_DEVICE $MOUNT_POINT ext4 defaults,nofail 0 2" >> /etc/fstab
 
 # Create application directories
-mkdir -p "$MOUNT_POINT"/{lib,data,logs,conf}
-chmod 755 "$MOUNT_POINT"/{lib,data,logs,conf}
+mkdir -p "$MOUNT_POINT"/{bin,lib,data,logs,conf}
+chmod 755 "$MOUNT_POINT"/{bin,lib,data,logs,conf}
 
 # -----------------------------------------------------------------------------
 # Kernel Tuning for Aeron UDP Performance
@@ -89,9 +89,17 @@ ENVIRONMENT="${environment}"
 
 echo "Deploying Aeron persistence store version $APP_VERSION from s3://$S3_BUCKET"
 
-# Download persistence JARs from S3
-aws s3 cp "s3://$S3_BUCKET/omnibridge/$ENVIRONMENT/persistence-aeron-$APP_VERSION.jar" "$MOUNT_POINT/lib/persistence-aeron-$APP_VERSION.jar"
-aws s3 cp "s3://$S3_BUCKET/omnibridge/$ENVIRONMENT/persistence-$APP_VERSION.jar" "$MOUNT_POINT/lib/persistence-$APP_VERSION.jar"
+# Download distribution package from S3
+aws s3 cp \
+  "s3://$S3_BUCKET/omnibridge/$ENVIRONMENT/aeron-remote-store-$APP_VERSION-dist.tar.gz" \
+  "/tmp/aeron-remote-store-$APP_VERSION-dist.tar.gz"
+
+# Extract to application directory
+tar -xzf "/tmp/aeron-remote-store-$APP_VERSION-dist.tar.gz" \
+  -C "$MOUNT_POINT" --strip-components=1
+
+# Clean up
+rm -f "/tmp/aeron-remote-store-$APP_VERSION-dist.tar.gz"
 
 # -----------------------------------------------------------------------------
 # Generate HOCON Configuration
@@ -167,7 +175,7 @@ ExecStart=/usr/bin/java \\
   --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
   --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
   -Djava.net.preferIPv4Stack=true \\
-  -cp "$MOUNT_POINT/conf:$MOUNT_POINT/lib/*" \\
+  -cp "$MOUNT_POINT/conf:$MOUNT_POINT/lib/aeron-remote-store.jar" \\
   com.omnibridge.persistence.aeron.AeronRemoteStoreMain \\
   -c $MOUNT_POINT/conf/aeron-remote-store.conf
 Restart=on-failure

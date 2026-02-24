@@ -165,34 +165,124 @@ This produces the following distribution packages:
 |-----------|--------------|----------|
 | Exchange Simulator | `apps/exchange-simulator/target/exchange-simulator-*-dist.tar.gz` | bin/, lib/, conf/, data/ |
 | FIX Samples (Initiator + Acceptor) | `apps/fix-samples/target/fix-samples-*-dist.tar.gz` | bin/, lib/, conf/ |
+| Aeron Remote Store | `apps/aeron-remote-store/target/aeron-remote-store-*-dist.tar.gz` | bin/, lib/, conf/, data/ |
+| Log Viewer | `apps/log-viewer/target/log-viewer-*-dist.tar.gz` | bin/, lib/, conf/ |
 | OmniView | `omniview/target/omniview-*-dist.tar.gz` | bin/, lib/, conf/ |
-| Persistence Aeron | `persistence-aeron/target/persistence-aeron-*.jar` | Aeron LogStore + SBE codecs |
 
-### Step 2: Build the Aeron Remote Store Standalone JAR
-
-The Aeron remote store runs as a standalone service. It uses the `persistence-aeron` module along with the `persistence` module (Chronicle Queue). No separate distribution is needed beyond what `mvn install` produces -- we assemble the runtime on the target host.
-
-### Step 3: Upload Artifacts to S3
+### Step 2: Upload Artifacts to S3
 
 ```bash
-# Create S3 bucket for artifacts
+# Create S3 bucket for artifacts (first time only)
 aws s3 mb s3://omnibridge-artifacts --region us-east-1
 
-# Upload exchange simulator distribution
-aws s3 cp apps/exchange-simulator/target/exchange-simulator-*-dist.tar.gz s3://omnibridge-artifacts/omnibridge/production/
+# Upload all artifacts (version auto-detected from pom.xml)
+./scripts/deploy/upload-artifacts.sh
 
-# Upload FIX samples distribution (contains both initiator and acceptor)
-aws s3 cp apps/fix-samples/target/fix-samples-*-dist.tar.gz s3://omnibridge-artifacts/omnibridge/production/
+# Or upload with an explicit version
+./scripts/deploy/upload-artifacts.sh -v 1.0.2-SNAPSHOT
 
-# Upload OmniView distribution
-aws s3 cp omniview/target/omniview-*-dist.tar.gz s3://omnibridge-artifacts/omnibridge/production/
+# Or upload specific components only
+./scripts/deploy/upload-artifacts.sh aeron-remote-store log-viewer
 
-# Upload persistence-aeron JAR (for remote store)
-aws s3 cp persistence-aeron/target/persistence-aeron-*.jar s3://omnibridge-artifacts/omnibridge/production/
-
-# Upload persistence JAR (dependency for remote store)
-aws s3 cp persistence/target/persistence-*.jar s3://omnibridge-artifacts/omnibridge/production/
+# Dry run to preview what would be uploaded
+./scripts/deploy/upload-artifacts.sh -n
 ```
+
+---
+
+## Automated Deployment (Recommended)
+
+Three scripts automate the full lifecycle: infrastructure provisioning, application setup, and service management.
+
+### Step 1: Provision Infrastructure
+
+```bash
+# First-time deploy: init + plan + apply, save outputs to tf-outputs.json
+./scripts/deploy/terraform-deploy.sh
+
+# Full redeploy: destroy existing + re-provision
+./scripts/deploy/terraform-deploy.sh -d
+
+# Override the app version from terraform.tfvars
+./scripts/deploy/terraform-deploy.sh -v 1.0.3-SNAPSHOT
+
+# Preview changes without applying
+./scripts/deploy/terraform-deploy.sh --plan-only
+
+# Non-interactive (CI/CD)
+./scripts/deploy/terraform-deploy.sh -d --auto-approve
+```
+
+This runs `terraform init`, `plan -out=tfplan`, and `apply tfplan`, then saves all outputs (instance IPs, URLs) to `tf-outputs.json`.
+
+### Step 2: Deploy Applications
+
+```bash
+# Deploy all components (reads IPs from tf-outputs.json)
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem
+
+# Deploy with explicit version
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem -v 1.0.3-SNAPSHOT
+
+# Deploy only a specific component
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem --component exchange-simulator
+
+# Skip monitoring setup
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem --skip monitoring
+```
+
+Components are deployed in dependency order:
+1. **Aeron Remote Store** -> `aeron-persistence-private-ip` (no dependencies)
+2. **Exchange Simulator** -> `fix-acceptor-private-ip` (conf references Aeron Store IP)
+3. **FIX Initiator** -> `ouch-acceptor-private-ip` (conf references Exchange Simulator IP)
+4. **OmniView** -> `monitoring-public-ip` (conf references Simulator + Initiator IPs)
+5. **Monitoring Stack** -> `monitoring-public-ip` (Prometheus targets use all IPs)
+
+For each component the script: downloads the dist archive from S3 on the target host, extracts it, writes production config files with the correct IP addresses, and creates a systemd service.
+
+### Step 3: Start Services
+
+```bash
+# Start all services
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem start
+
+# Check status of all services
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem status
+
+# Restart a single component
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem restart exchange-simulator
+
+# Stop everything (reverse dependency order)
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem stop
+```
+
+### Complete Workflow Example
+
+```bash
+# 1. Build
+mvn install -DskipTests
+
+# 2. Upload to S3
+./scripts/deploy/upload-artifacts.sh
+
+# 3. Provision infrastructure
+./scripts/deploy/terraform-deploy.sh
+
+# 4. Deploy applications
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem
+
+# 5. Start services
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem start
+
+# 6. Verify
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem status
+```
+
+---
+
+## Manual Deployment
+
+The sections below describe manual deployment for each component. Use these as a reference if you need to customize beyond what the automated scripts provide.
 
 ---
 
@@ -203,7 +293,7 @@ The exchange simulator is the primary multi-protocol trading engine.
 ### Option A: SSH-Based Deployment (Recommended for First Setup)
 
 ```bash
-./deploy-exchange-simulator.sh \
+./scripts/deploy/deploy-exchange-simulator.sh \
   -i omnibridge-key.pem \
   -u ubuntu \
   -h <simulator-private-ip> \
@@ -511,50 +601,42 @@ SSH into the persistence instance:
 ssh -i omnibridge-key.pem -J ubuntu@<monitoring-public-ip> ubuntu@<aeron-store-private-ip>
 ```
 
-Install Java and set up:
+Install Java, download and extract the distribution:
 
 ```bash
 sudo apt update && sudo apt install -y openjdk-17-jre-headless
 
-sudo mkdir -p /opt/aeron-store/{lib,conf,data,logs}
-sudo chown -R ubuntu:ubuntu /opt/aeron-store
+sudo mkdir -p /opt/aeron-store
+sudo chown ubuntu:ubuntu /opt/aeron-store
+
+# Download distribution from S3
+aws s3 cp s3://omnibridge-artifacts/omnibridge/production/aeron-remote-store-1.0.2-SNAPSHOT-dist.tar.gz /tmp/
+
+# Extract to deployment directory
+tar -xzf /tmp/aeron-remote-store-*-dist.tar.gz -C /opt/aeron-store --strip-components=1
+chmod +x /opt/aeron-store/bin/*.sh
+rm -f /tmp/aeron-remote-store-*-dist.tar.gz
 ```
 
-Download the required JARs from S3:
+The extracted layout:
 
-```bash
-# Download all required JARs
-aws s3 cp s3://omnibridge-artifacts/omnibridge/production/ /tmp/aeron-jars/ --recursive \
-    --exclude "*" \
-    --include "persistence-aeron-*.jar" \
-    --include "persistence-*.jar"
-
-# Copy JARs to lib directory
-cp /tmp/aeron-jars/*.jar /opt/aeron-store/lib/
+```
+/opt/aeron-store/
+├── bin/
+│   ├── aeron-remote-store.sh    # Management script (start/stop/status/restart)
+│   └── aeron-remote-store.bat
+├── conf/
+│   ├── aeron-remote-store.conf  # HOCON configuration
+│   └── logback.xml              # Logging configuration
+├── lib/
+│   └── aeron-remote-store.jar   # Fat JAR with all dependencies
+├── data/                        # Chronicle Queue storage
+└── logs/                        # Application logs
 ```
 
-Alternatively, build a fat JAR locally and upload it:
+### Configure Remote Store
 
-```bash
-# On build machine - create a fat JAR with all dependencies
-cd persistence-aeron
-mvn package -DskipTests
-
-# Upload to S3
-aws s3 cp target/persistence-aeron-*-SNAPSHOT.jar \
-    s3://omnibridge-artifacts/omnibridge/production/aeron-remote-store.jar
-```
-
-On the target instance, download the fat JAR:
-
-```bash
-aws s3 cp s3://omnibridge-artifacts/omnibridge/production/aeron-remote-store.jar \
-    /opt/aeron-store/lib/aeron-remote-store.jar
-```
-
-### Create Remote Store Configuration
-
-Create `/opt/aeron-store/conf/aeron-remote-store.conf`:
+Edit `/opt/aeron-store/conf/aeron-remote-store.conf`:
 
 ```hocon
 aeron-remote-store {
@@ -601,115 +683,6 @@ Key points:
 - The data port (40456) and control port (40457) must match the simulator's subscriber config
 - The replay port (40458) must match the simulator's `local-endpoint.replay-port`
 
-### Create Logback Configuration
-
-Create `/opt/aeron-store/conf/logback.xml`:
-
-```xml
-<configuration>
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/opt/aeron-store/logs/aeron-remote-store.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/opt/aeron-store/logs/aeron-remote-store.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>14</maxHistory>
-        </rollingPolicy>
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <logger name="com.omnibridge" level="INFO"/>
-    <logger name="io.aeron" level="WARN"/>
-
-    <root level="WARN">
-        <appender-ref ref="FILE"/>
-        <appender-ref ref="CONSOLE"/>
-    </root>
-</configuration>
-```
-
-### Create Standalone Launcher Script
-
-Create `/opt/aeron-store/bin/aeron-remote-store.sh`:
-
-```bash
-#!/bin/bash
-# Aeron Remote Store Management Script
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PID_FILE="$BASE_DIR/aeron-remote-store.pid"
-LOG_DIR="$BASE_DIR/logs"
-
-JAVA_OPTS="-Xms1g -Xmx2g"
-JAVA_OPTS="$JAVA_OPTS -XX:+UseZGC"
-JAVA_OPTS="$JAVA_OPTS -XX:+AlwaysPreTouch"
-JAVA_OPTS="$JAVA_OPTS --add-opens java.base/java.lang=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-opens java.base/java.lang.reflect=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-opens java.base/java.io=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-opens java.base/java.nio=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-opens java.base/sun.nio.ch=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-opens java.base/jdk.internal.misc=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-exports java.base/jdk.internal.misc=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-exports java.base/jdk.internal.ref=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS --add-exports java.base/sun.nio.ch=ALL-UNNAMED"
-JAVA_OPTS="$JAVA_OPTS -Dconfig.file=$BASE_DIR/conf/aeron-remote-store.conf"
-JAVA_OPTS="$JAVA_OPTS -Dlogback.configurationFile=$BASE_DIR/conf/logback.xml"
-
-get_pid() { [ -f "$PID_FILE" ] && cat "$PID_FILE"; }
-is_running() { local pid=$(get_pid); [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; }
-
-start() {
-    if is_running; then
-        echo "Aeron Remote Store is already running (PID: $(get_pid))"
-        return 1
-    fi
-    mkdir -p "$LOG_DIR" "$BASE_DIR/data"
-    echo "Starting Aeron Remote Store..."
-    CLASSPATH="$BASE_DIR/conf:$BASE_DIR/lib/*"
-    nohup java $JAVA_OPTS -cp "$CLASSPATH" \
-        com.omnibridge.persistence.aeron.AeronRemoteStore \
-        > "$LOG_DIR/console.log" 2>&1 &
-    echo $! > "$PID_FILE"
-    sleep 2
-    if is_running; then
-        echo "Aeron Remote Store started (PID: $(get_pid))"
-    else
-        echo "Failed to start"; rm -f "$PID_FILE"; return 1
-    fi
-}
-
-stop() {
-    if ! is_running; then echo "Not running"; rm -f "$PID_FILE"; return 0; fi
-    local pid=$(get_pid)
-    echo "Stopping (PID: $pid)..."
-    kill "$pid" 2>/dev/null
-    local count=0
-    while is_running && [ $count -lt 30 ]; do sleep 1; count=$((count+1)); done
-    is_running && kill -9 "$pid" 2>/dev/null
-    rm -f "$PID_FILE"
-    echo "Stopped"
-}
-
-case "${1:-}" in
-    start)   start ;;
-    stop)    stop ;;
-    status)  is_running && echo "Running (PID: $(get_pid))" || echo "Not running" ;;
-    restart) stop; sleep 2; start ;;
-    *)       echo "Usage: $0 {start|stop|status|restart}"; exit 1 ;;
-esac
-```
-
-```bash
-chmod +x /opt/aeron-store/bin/aeron-remote-store.sh
-```
-
 ### Create systemd Service
 
 ```bash
@@ -735,10 +708,10 @@ ExecStart=/usr/bin/java \
     --add-exports java.base/jdk.internal.misc=ALL-UNNAMED \
     --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \
     --add-exports java.base/sun.nio.ch=ALL-UNNAMED \
-    -Dconfig.file=/opt/aeron-store/conf/aeron-remote-store.conf \
-    -Dlogback.configurationFile=/opt/aeron-store/conf/logback.xml \
-    -cp "/opt/aeron-store/conf:/opt/aeron-store/lib/*" \
-    com.omnibridge.persistence.aeron.AeronRemoteStore
+    -Djava.net.preferIPv4Stack=true \
+    -cp "/opt/aeron-store/conf:/opt/aeron-store/lib/aeron-remote-store.jar" \
+    com.omnibridge.persistence.aeron.AeronRemoteStoreMain \
+    -c /opt/aeron-store/conf/aeron-remote-store.conf
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
@@ -1170,16 +1143,17 @@ sudo systemctl {status|restart} omnibridge-monitoring
 mvn install -DskipTests
 
 # 2. Upload to S3
-aws s3 cp apps/exchange-simulator/target/exchange-simulator-*-dist.tar.gz \
-    s3://omnibridge-artifacts/omnibridge/production/
+./scripts/deploy/upload-artifacts.sh
 
-# 3. Deploy to instance (example: exchange simulator)
-./deploy-exchange-simulator.sh -i omnibridge-key.pem -u ubuntu -h <simulator-ip>
+# 3. Re-deploy all applications (stop, deploy, start)
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem stop
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem start
 
-# Or manually on the instance:
-sudo systemctl stop exchange-simulator
-# ... extract new distribution ...
-sudo systemctl start exchange-simulator
+# Or update a single component
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem stop exchange-simulator
+./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem --component exchange-simulator
+./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem start exchange-simulator
 ```
 
 ### Log Locations

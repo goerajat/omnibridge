@@ -64,6 +64,9 @@ dist/
 *.key
 *.crt
 
+# Terraform
+infrastructure/terraform/environments/production/terraform.tfvars
+
 # Test output
 test-output/
 surefire-reports/

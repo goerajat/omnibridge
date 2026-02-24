@@ -264,7 +264,7 @@ Allow 2-3 minutes for the EC2 user data scripts to complete bootstrapping.
 
 ```bash
 # SSH to monitoring instance (it has access to trading subnet)
-ssh -i omnibridge-key.pem ec2-user@<monitoring_public_ip>
+ssh -i omnibridge-key.pem ubuntu@<monitoring_public_ip>
 
 # From monitoring instance, check trading apps
 curl http://<fix_acceptor_private_ip>:8081/api/health
@@ -302,11 +302,11 @@ Open `http://<monitoring_public_ip>:3001` in a browser.
 
 ```bash
 # Trading app bootstrap log
-ssh -i omnibridge-key.pem ec2-user@<fix_acceptor_ip>
+ssh -i omnibridge-key.pem ubuntu@<fix_acceptor_ip>
 sudo cat /var/log/omnibridge-bootstrap.log
 
 # Monitoring stack bootstrap log
-ssh -i omnibridge-key.pem ec2-user@<monitoring_public_ip>
+ssh -i omnibridge-key.pem ubuntu@<monitoring_public_ip>
 sudo cat /var/log/omnibridge-monitoring-bootstrap.log
 ```
 
@@ -396,10 +396,10 @@ Alerts route to two Slack channels:
 
 ```bash
 # Monitoring instance (public IP)
-ssh -i omnibridge-key.pem ec2-user@<monitoring_public_ip>
+ssh -i omnibridge-key.pem ubuntu@<monitoring_public_ip>
 
 # Trading instances (via monitoring as jump host)
-ssh -i omnibridge-key.pem -J ec2-user@<monitoring_public_ip> ec2-user@<fix_private_ip>
+ssh -i omnibridge-key.pem -J ubuntu@<monitoring_public_ip> ubuntu@<fix_private_ip>
 ```
 
 ### Service Management

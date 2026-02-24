@@ -151,7 +151,7 @@ public class IntegrationTestRunner {
 
     private static int runScript(Path projectRoot, String scriptName, String... args) throws Exception {
         String extension = IS_WINDOWS ? ".bat" : ".sh";
-        Path scriptPath = projectRoot.resolve(scriptName + extension);
+        Path scriptPath = projectRoot.resolve("scripts").resolve("test").resolve(scriptName + extension);
 
         if (!Files.exists(scriptPath)) {
             System.err.println("ERROR: Script not found: " + scriptPath);

@@ -200,13 +200,13 @@ The acceptor listens on port **9876** with default CompIDs `EXCHANGE` / `CLIENT`
 
 ```bash
 # FIX
-./run-latency-test.sh 10000 1000 100
+./scripts/test/run-latency-test.sh 10000 1000 100
 
 # OUCH 4.2
-./run-ouch-latency-test.sh 10000 1000 100
+./scripts/test/run-ouch-latency-test.sh 10000 1000 100
 
 # OUCH 5.0
-./run-ouch-latency-test-v50.sh 10000 1000 100
+./scripts/test/run-ouch-latency-test-v50.sh 10000 1000 100
 ```
 
 Parameters: `[warmup-orders] [test-orders] [rate]`. Results include min, max, avg, p50, p90, p95, p99, and p99.9 latencies.
@@ -267,8 +267,8 @@ admin {
 ### Reference Tests (QuickFIX/J Interoperability)
 
 ```bash
-./run-reference-test.sh all
-./run-reference-test.sh HeartbeatTest,NewOrderTest
+./scripts/test/run-reference-test.sh all
+./scripts/test/run-reference-test.sh HeartbeatTest,NewOrderTest
 ```
 
 Available: `HeartbeatTest`, `SequenceNumberTest`, `NewOrderTest`, `MarketOrderTest`, `OrderCancelTest`, `OrderModifyTest`, `MultipleOrdersTest`, `LogonLogoutTest`
@@ -276,8 +276,8 @@ Available: `HeartbeatTest`, `SequenceNumberTest`, `NewOrderTest`, `MarketOrderTe
 ### Session Tests
 
 ```bash
-./run-session-test.sh all text
-./run-session-test.sh HeartbeatTest json
+./scripts/test/run-session-test.sh all text
+./scripts/test/run-session-test.sh HeartbeatTest json
 ```
 
 Available: `LogonLogoutTest`, `SequenceNumberTest`, `TestRequestTest`, `HeartbeatTest`, `ResendRequestTest`
@@ -352,13 +352,13 @@ Outputs:
 
 ```bash
 # Sample acceptors
-./deploy-samples.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100
+./scripts/deploy/deploy-samples.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100
 
 # Exchange simulator
-./deploy-exchange-simulator.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100
+./scripts/deploy/deploy-exchange-simulator.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100
 
 # OmniView
-./deploy-omniview.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100 -p 3000
+./scripts/deploy/deploy-omniview.sh -i ~/.ssh/key.pem -u ubuntu -h 192.168.1.100 -p 3000
 ```
 
 ### OmniView Management
