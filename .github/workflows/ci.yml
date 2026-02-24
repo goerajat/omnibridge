@@ -145,33 +145,33 @@ jobs:
         run: mvn package -DskipTests -Pskip-frontend
 
       - name: Make scripts executable
-        run: chmod +x run-*.sh
+        run: chmod +x scripts/test/run-*.sh
 
       - name: Run reference tests
         id: ref-tests
         run: |
-          ./run-reference-test.sh all 2>&1 | tee reference-test-output.txt
+          ./scripts/test/run-reference-test.sh all 2>&1 | tee reference-test-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Run session tests
         id: session-tests
         if: success() || failure()
         run: |
-          ./run-session-test.sh all text 2>&1 | tee session-test-output.txt
+          ./scripts/test/run-session-test.sh all text 2>&1 | tee session-test-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Run Aeron replication tests (reference)
         id: aeron-ref-tests
         if: success() || failure()
         run: |
-          ./run-aeron-replication-test.sh reference all 2>&1 | tee aeron-ref-replication-output.txt
+          ./scripts/test/run-aeron-replication-test.sh reference all 2>&1 | tee aeron-ref-replication-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Run Aeron replication tests (session)
         id: aeron-session-tests
         if: success() || failure()
         run: |
-          ./run-aeron-replication-test.sh session all 2>&1 | tee aeron-session-replication-output.txt
+          ./scripts/test/run-aeron-replication-test.sh session all 2>&1 | tee aeron-session-replication-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Test results summary
