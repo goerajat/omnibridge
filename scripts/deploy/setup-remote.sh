@@ -1,0 +1,882 @@
+#!/bin/bash
+# =============================================================================
+# Remote Setup Script
+# =============================================================================
+# Deploys OmniBridge applications to EC2 instances provisioned by Terraform.
+# Reads instance IPs from the Terraform output JSON, downloads dist archives
+# from S3 on each host, and writes production configuration files with the
+# correct IP addresses.
+#
+# Usage: ./setup-remote.sh -f <tf-outputs.json> -i <pem-file> [options]
+#
+# Options:
+#   -f, --tf-outputs   Terraform output JSON file (required)
+#   -i, --identity     PEM file for SSH authentication (required)
+#   -u, --user         SSH username (default: ubuntu)
+#   -v, --version      App version (default: read from pom.xml)
+#   -b, --bucket       S3 artifact bucket (default: omnibridge-artifacts)
+#   -e, --environment  S3 environment prefix (default: production)
+#   --component <name> Deploy only a specific component
+#   --skip <name>      Skip a specific component (repeatable)
+#   --ssh-port         SSH port (default: 22)
+#
+# Components: exchange-simulator, fix-initiator, aeron-store, omniview, monitoring
+#
+# Examples:
+#   ./setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem
+#   ./setup-remote.sh -f tf-outputs.json -i key.pem -v 1.0.3-SNAPSHOT
+#   ./setup-remote.sh -f tf-outputs.json -i key.pem --component exchange-simulator
+#   ./setup-remote.sh -f tf-outputs.json -i key.pem --skip monitoring
+# =============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Defaults
+SSH_USER="ubuntu"
+SSH_PORT=22
+VERSION=""
+S3_BUCKET="omnibridge-artifacts"
+ENVIRONMENT="production"
+TF_OUTPUTS=""
+PEM_FILE=""
+ONLY_COMPONENT=""
+SKIP_COMPONENTS=()
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--tf-outputs)  TF_OUTPUTS="$2";    shift 2 ;;
+        -i|--identity)    PEM_FILE="$2";       shift 2 ;;
+        -u|--user)        SSH_USER="$2";       shift 2 ;;
+        -v|--version)     VERSION="$2";        shift 2 ;;
+        -b|--bucket)      S3_BUCKET="$2";      shift 2 ;;
+        -e|--environment) ENVIRONMENT="$2";    shift 2 ;;
+        --component)      ONLY_COMPONENT="$2"; shift 2 ;;
+        --skip)           SKIP_COMPONENTS+=("$2"); shift 2 ;;
+        --ssh-port)       SSH_PORT="$2";       shift 2 ;;
+        --help)
+            echo "Remote Setup Script"
+            echo ""
+            echo "Usage: $0 -f <tf-outputs.json> -i <pem-file> [options]"
+            echo ""
+            echo "Options:"
+            echo "  -f, --tf-outputs   Terraform output JSON file (required)"
+            echo "  -i, --identity     PEM file for SSH authentication (required)"
+            echo "  -u, --user         SSH username (default: ubuntu)"
+            echo "  -v, --version      App version (default: read from pom.xml)"
+            echo "  -b, --bucket       S3 artifact bucket (default: omnibridge-artifacts)"
+            echo "  -e, --environment  S3 environment prefix (default: production)"
+            echo "  --component <name> Deploy only a specific component"
+            echo "  --skip <name>      Skip a specific component (repeatable)"
+            echo "  --ssh-port         SSH port (default: 22)"
+            echo ""
+            echo "Components: exchange-simulator, fix-initiator, aeron-store, omniview, monitoring"
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate required args
+if [ -z "$TF_OUTPUTS" ]; then
+    echo "Error: --tf-outputs is required"
+    echo "Run '$0 --help' for usage."
+    exit 1
+fi
+if [ -z "$PEM_FILE" ]; then
+    echo "Error: --identity is required"
+    echo "Run '$0 --help' for usage."
+    exit 1
+fi
+if [ ! -f "$TF_OUTPUTS" ]; then
+    echo "Error: Terraform output file not found: $TF_OUTPUTS"
+    exit 1
+fi
+if [ ! -f "$PEM_FILE" ]; then
+    echo "Error: PEM file not found: $PEM_FILE"
+    exit 1
+fi
+
+# Auto-detect version from pom.xml
+if [ -z "$VERSION" ]; then
+    VERSION=$(grep -m1 '<version>' "$SCRIPT_DIR/pom.xml" | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+    if [ -z "$VERSION" ]; then
+        echo "Error: Could not detect version. Use -v to specify."
+        exit 1
+    fi
+fi
+
+# -------------------------------------------------------------------------
+# Extract IPs from Terraform outputs
+# -------------------------------------------------------------------------
+
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq is required. Install with: sudo apt install jq / brew install jq"
+    exit 1
+fi
+
+FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS")
+OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS")
+AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS")
+MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS")
+
+if [ "$FIX_IP" = "null" ] || [ "$OUCH_IP" = "null" ] || [ "$AERON_IP" = "null" ] || [ "$MONITORING_PUBLIC_IP" = "null" ]; then
+    echo "Error: Could not extract all IPs from $TF_OUTPUTS"
+    echo "  FIX:        $FIX_IP"
+    echo "  OUCH:       $OUCH_IP"
+    echo "  Aeron:      $AERON_IP"
+    echo "  Monitoring:  $MONITORING_PUBLIC_IP"
+    exit 1
+fi
+
+S3_PREFIX="s3://$S3_BUCKET/omnibridge/$ENVIRONMENT"
+SSH_OPTS="-i $PEM_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $SSH_PORT"
+# All private-subnet hosts are reached via the monitoring instance as jump host
+SSH_JUMP="-o ProxyJump=$SSH_USER@$MONITORING_PUBLIC_IP:$SSH_PORT"
+
+echo "========================================================"
+echo "OmniBridge Remote Setup"
+echo "========================================================"
+echo "Version:       $VERSION"
+echo "S3 Bucket:     $S3_BUCKET ($ENVIRONMENT)"
+echo "PEM File:      $PEM_FILE"
+echo "SSH User:      $SSH_USER"
+echo ""
+echo "Instance IPs:"
+echo "  FIX Acceptor (exchange-simulator): $FIX_IP"
+echo "  OUCH Acceptor (fix-initiator):     $OUCH_IP"
+echo "  Aeron Persistence Store:           $AERON_IP"
+echo "  Monitoring + OmniView (public):    $MONITORING_PUBLIC_IP"
+echo "========================================================"
+echo ""
+
+# Track results
+RESULTS=()
+FAILED=0
+
+# Helper: check if component should be deployed
+should_deploy() {
+    local comp="$1"
+    # Check --component filter
+    if [ -n "$ONLY_COMPONENT" ] && [ "$ONLY_COMPONENT" != "$comp" ]; then
+        return 1
+    fi
+    # Check --skip filter
+    for skip in "${SKIP_COMPONENTS[@]}"; do
+        if [ "$skip" = "$comp" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+# Helper: run remote command, log clearly
+remote_exec() {
+    local host="$1"
+    local label="$2"
+    local jump="$3"
+    shift 3
+
+    if [ "$jump" = "direct" ]; then
+        ssh $SSH_OPTS "$SSH_USER@$host" "$@"
+    else
+        ssh $SSH_OPTS $SSH_JUMP "$SSH_USER@$host" "$@"
+    fi
+}
+
+# Helper: wait for SSH to become available
+wait_for_ssh() {
+    local host="$1"
+    local label="$2"
+    local jump="$3"
+    local max_attempts=30
+
+    echo "  Waiting for SSH on $label ($host)..."
+    for i in $(seq 1 $max_attempts); do
+        if [ "$jump" = "direct" ]; then
+            ssh $SSH_OPTS -o BatchMode=yes "$SSH_USER@$host" "true" 2>/dev/null && return 0
+        else
+            ssh $SSH_OPTS $SSH_JUMP -o BatchMode=yes "$SSH_USER@$host" "true" 2>/dev/null && return 0
+        fi
+        sleep 10
+    done
+    echo "  ERROR: SSH not available after ${max_attempts} attempts"
+    return 1
+}
+
+# =========================================================================
+# Deploy: Exchange Simulator  (FIX acceptor instance)
+# =========================================================================
+deploy_exchange_simulator() {
+    local HOST="$FIX_IP"
+    local COMP="exchange-simulator"
+    local DEPLOY_DIR="/opt/exchange-simulator"
+    local DIST="exchange-simulator-${VERSION}-dist.tar.gz"
+
+    echo "============================================================"
+    echo "[$COMP] Deploying to $HOST"
+    echo "============================================================"
+
+    wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+
+    remote_exec "$HOST" "$COMP" "jump" << REMOTE
+set -e
+echo "[$COMP] Downloading $DIST from S3..."
+aws s3 cp "$S3_PREFIX/$DIST" "/tmp/$DIST"
+
+echo "[$COMP] Extracting to $DEPLOY_DIR..."
+sudo mkdir -p "$DEPLOY_DIR"
+sudo chown $SSH_USER:$SSH_USER "$DEPLOY_DIR"
+tar -xzf "/tmp/$DIST" -C "$DEPLOY_DIR" --strip-components=1
+chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
+rm -f "/tmp/$DIST"
+
+echo "[$COMP] Writing Aeron persistence config overlay..."
+cat > "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf" << 'AERON_CONF'
+include "exchange-simulator.conf"
+
+persistence {
+    enabled = true
+    store-type = "aeron"
+    base-path = "$DEPLOY_DIR/data/local-cache"
+    max-file-size = 256MB
+    sync-on-write = false
+
+    aeron {
+        media-driver {
+            embedded = true
+            aeron-dir = "/dev/shm/aeron-simulator"
+        }
+
+        publisher-id = 1
+
+        subscribers = [
+            {
+                name = "primary-remote-store"
+                host = "$AERON_IP"
+                data-port = 40456
+                control-port = 40457
+            }
+        ]
+
+        local-endpoint {
+            host = "0.0.0.0"
+            replay-port = 40458
+        }
+
+        replay {
+            timeout-ms = 30000
+            max-batch-size = 10000
+        }
+
+        heartbeat-interval-ms = 1000
+        idle-strategy = "sleeping"
+    }
+}
+AERON_CONF
+
+# Substitute variables in the generated config (they are literal above)
+sed -i "s|\\\$DEPLOY_DIR|$DEPLOY_DIR|g" "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf"
+sed -i "s|\\\$AERON_IP|$AERON_IP|g" "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf"
+
+echo "[$COMP] Creating systemd service..."
+sudo tee /etc/systemd/system/exchange-simulator.service > /dev/null << SERVICE
+[Unit]
+Description=OmniBridge Exchange Simulator
+After=network.target
+
+[Service]
+Type=simple
+User=$SSH_USER
+WorkingDirectory=$DEPLOY_DIR
+ExecStart=/usr/bin/java \\
+    -Xms2g -Xmx2g \\
+    -XX:+UseZGC \\
+    -XX:+AlwaysPreTouch \\
+    -Dconfig.file=$DEPLOY_DIR/conf/exchange-simulator-aeron.conf \\
+    -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
+    -Dadmin.port=8080 \\
+    -cp $DEPLOY_DIR/conf:$DEPLOY_DIR/lib/exchange-simulator.jar \\
+    com.omnibridge.simulator.ExchangeSimulator
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable exchange-simulator
+
+echo "[$COMP] Deployment complete on $HOST"
+REMOTE
+
+    if [ $? -eq 0 ]; then
+        RESULTS+=("OK   $COMP -> $HOST")
+        echo ""
+    else
+        RESULTS+=("FAIL $COMP -> $HOST")
+        FAILED=$((FAILED+1))
+        echo "[$COMP] ERROR: Deployment failed"
+        echo ""
+    fi
+}
+
+# =========================================================================
+# Deploy: FIX Initiator  (OUCH acceptor instance, also runs FIX initiator)
+# =========================================================================
+deploy_fix_initiator() {
+    local HOST="$OUCH_IP"
+    local COMP="fix-initiator"
+    local DEPLOY_DIR="/opt/fix-initiator"
+    local DIST="fix-samples-${VERSION}-dist.tar.gz"
+
+    echo "============================================================"
+    echo "[$COMP] Deploying to $HOST"
+    echo "============================================================"
+
+    wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+
+    remote_exec "$HOST" "$COMP" "jump" << REMOTE
+set -e
+echo "[$COMP] Downloading $DIST from S3..."
+aws s3 cp "$S3_PREFIX/$DIST" "/tmp/$DIST"
+
+echo "[$COMP] Extracting to $DEPLOY_DIR..."
+sudo mkdir -p "$DEPLOY_DIR"
+sudo chown $SSH_USER:$SSH_USER "$DEPLOY_DIR"
+tar -xzf "/tmp/$DIST" -C "$DEPLOY_DIR" --strip-components=1
+chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
+rm -f "/tmp/$DIST"
+
+echo "[$COMP] Writing initiator configuration..."
+cat > "$DEPLOY_DIR/conf/initiator-aws.conf" << 'INIT_CONF'
+include "reference.conf"
+include "components.conf"
+
+components {
+    ouch-engine.enabled = false
+}
+
+network {
+    name = "initiator-event-loop"
+}
+
+admin {
+    port = 8082
+}
+
+persistence {
+    base-path = "$DEPLOY_DIR/data/fix-logs"
+}
+
+fix-engine {
+    sessions = [
+        {
+            session-id = "INITIATOR_SESSION"
+            port = 9876
+            host = "$FIX_IP"
+            sender-comp-id = "CLIENT1"
+            target-comp-id = "EXCH1"
+            initiator = true
+            begin-string = "FIX.4.4"
+            heartbeat-interval = 30
+            max-reconnect-attempts = 10
+        }
+    ]
+}
+INIT_CONF
+
+# Substitute variables in the generated config
+sed -i "s|\\\$DEPLOY_DIR|$DEPLOY_DIR|g" "$DEPLOY_DIR/conf/initiator-aws.conf"
+sed -i "s|\\\$FIX_IP|$FIX_IP|g" "$DEPLOY_DIR/conf/initiator-aws.conf"
+
+echo "[$COMP] Creating systemd service..."
+sudo tee /etc/systemd/system/fix-initiator.service > /dev/null << SERVICE
+[Unit]
+Description=OmniBridge FIX Initiator
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$SSH_USER
+WorkingDirectory=$DEPLOY_DIR
+ExecStart=/usr/bin/java \\
+    -Xms512m -Xmx1g \\
+    -XX:+UseZGC \\
+    -Dconfig.file=$DEPLOY_DIR/conf/initiator-aws.conf \\
+    -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
+    -cp $DEPLOY_DIR/conf:$DEPLOY_DIR/lib/fix-samples.jar \\
+    com.omnibridge.apps.fix.initiator.SampleInitiator --auto --count 0
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable fix-initiator
+
+echo "[$COMP] Deployment complete on $HOST"
+REMOTE
+
+    if [ $? -eq 0 ]; then
+        RESULTS+=("OK   $COMP -> $HOST")
+        echo ""
+    else
+        RESULTS+=("FAIL $COMP -> $HOST")
+        FAILED=$((FAILED+1))
+        echo "[$COMP] ERROR: Deployment failed"
+        echo ""
+    fi
+}
+
+# =========================================================================
+# Deploy: Aeron Remote Persistence Store
+# =========================================================================
+deploy_aeron_store() {
+    local HOST="$AERON_IP"
+    local COMP="aeron-store"
+    local DEPLOY_DIR="/opt/aeron-store"
+    local DIST="aeron-remote-store-${VERSION}-dist.tar.gz"
+
+    echo "============================================================"
+    echo "[$COMP] Deploying to $HOST"
+    echo "============================================================"
+
+    wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+
+    remote_exec "$HOST" "$COMP" "jump" << REMOTE
+set -e
+echo "[$COMP] Downloading $DIST from S3..."
+aws s3 cp "$S3_PREFIX/$DIST" "/tmp/$DIST"
+
+echo "[$COMP] Extracting to $DEPLOY_DIR..."
+sudo mkdir -p "$DEPLOY_DIR"
+sudo chown $SSH_USER:$SSH_USER "$DEPLOY_DIR"
+tar -xzf "/tmp/$DIST" -C "$DEPLOY_DIR" --strip-components=1
+chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
+rm -f "/tmp/$DIST"
+
+echo "[$COMP] Writing remote store configuration..."
+cat > "$DEPLOY_DIR/conf/aeron-remote-store.conf" << 'STORE_CONF'
+aeron-remote-store {
+    base-path = "$DEPLOY_DIR/data/remote-store"
+
+    aeron {
+        media-driver {
+            embedded = true
+            aeron-dir = "/dev/shm/aeron-remote-store"
+        }
+
+        listen {
+            host = "0.0.0.0"
+            data-port = 40456
+            control-port = 40457
+        }
+
+        engines = [
+            {
+                name = "exchange-simulator"
+                host = "$FIX_IP"
+                replay-port = 40458
+                publisher-id = 1
+            }
+        ]
+
+        idle-strategy = "sleeping"
+        fragment-limit = 256
+    }
+}
+
+persistence {
+    enabled = true
+    store-type = "chronicle"
+    base-path = "$DEPLOY_DIR/data/remote-store"
+    max-file-size = 256MB
+    sync-on-write = false
+}
+STORE_CONF
+
+# Substitute variables in the generated config
+sed -i "s|\\\$DEPLOY_DIR|$DEPLOY_DIR|g" "$DEPLOY_DIR/conf/aeron-remote-store.conf"
+sed -i "s|\\\$FIX_IP|$FIX_IP|g" "$DEPLOY_DIR/conf/aeron-remote-store.conf"
+
+echo "[$COMP] Creating systemd service..."
+sudo tee /etc/systemd/system/aeron-remote-store.service > /dev/null << SERVICE
+[Unit]
+Description=OmniBridge Aeron Remote Persistence Store
+After=network.target
+
+[Service]
+Type=simple
+User=$SSH_USER
+WorkingDirectory=$DEPLOY_DIR
+ExecStart=/usr/bin/java \\
+    -Xms1g -Xmx2g \\
+    -XX:+UseZGC \\
+    -XX:+AlwaysPreTouch \\
+    --add-opens java.base/java.lang=ALL-UNNAMED \\
+    --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
+    --add-opens java.base/java.io=ALL-UNNAMED \\
+    --add-opens java.base/java.nio=ALL-UNNAMED \\
+    --add-opens java.base/sun.nio.ch=ALL-UNNAMED \\
+    --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
+    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
+    -Djava.net.preferIPv4Stack=true \\
+    -cp "$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/aeron-remote-store.jar" \\
+    com.omnibridge.persistence.aeron.AeronRemoteStoreMain \\
+    -c $DEPLOY_DIR/conf/aeron-remote-store.conf
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable aeron-remote-store
+
+echo "[$COMP] Deployment complete on $HOST"
+REMOTE
+
+    if [ $? -eq 0 ]; then
+        RESULTS+=("OK   $COMP -> $HOST")
+        echo ""
+    else
+        RESULTS+=("FAIL $COMP -> $HOST")
+        FAILED=$((FAILED+1))
+        echo "[$COMP] ERROR: Deployment failed"
+        echo ""
+    fi
+}
+
+# =========================================================================
+# Deploy: OmniView  (monitoring instance)
+# =========================================================================
+deploy_omniview() {
+    local HOST="$MONITORING_PUBLIC_IP"
+    local COMP="omniview"
+    local DEPLOY_DIR="/opt/omniview"
+    local DIST="omniview-${VERSION}-dist.tar.gz"
+
+    echo "============================================================"
+    echo "[$COMP] Deploying to $HOST"
+    echo "============================================================"
+
+    wait_for_ssh "$HOST" "$COMP" "direct" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+
+    remote_exec "$HOST" "$COMP" "direct" << REMOTE
+set -e
+echo "[$COMP] Downloading $DIST from S3..."
+aws s3 cp "$S3_PREFIX/$DIST" "/tmp/$DIST"
+
+echo "[$COMP] Extracting to $DEPLOY_DIR..."
+sudo mkdir -p "$DEPLOY_DIR"
+sudo chown $SSH_USER:$SSH_USER "$DEPLOY_DIR"
+tar -xzf "/tmp/$DIST" -C "$DEPLOY_DIR" --strip-components=1
+chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
+rm -f "/tmp/$DIST"
+
+echo "[$COMP] Writing OmniView configuration..."
+cat > "$DEPLOY_DIR/conf/omniview.conf" << 'OMNI_CONF'
+omniview {
+    port = 3000
+    apps = [
+        {
+            name = "Exchange Simulator"
+            host = "$FIX_IP"
+            port = 8080
+            protocol = "http"
+        },
+        {
+            name = "FIX Initiator"
+            host = "$OUCH_IP"
+            port = 8082
+            protocol = "http"
+        }
+    ]
+}
+OMNI_CONF
+
+# Substitute variables in the generated config
+sed -i "s|\\\$FIX_IP|$FIX_IP|g" "$DEPLOY_DIR/conf/omniview.conf"
+sed -i "s|\\\$OUCH_IP|$OUCH_IP|g" "$DEPLOY_DIR/conf/omniview.conf"
+
+echo "[$COMP] Creating systemd service..."
+sudo tee /etc/systemd/system/omniview.service > /dev/null << SERVICE
+[Unit]
+Description=OmniBridge OmniView Protocol Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=$SSH_USER
+WorkingDirectory=$DEPLOY_DIR
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -Dport=3000 -Domniview.data.dir=$DEPLOY_DIR/data -jar $DEPLOY_DIR/lib/omniview.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable omniview
+
+echo "[$COMP] Deployment complete on $HOST"
+REMOTE
+
+    if [ $? -eq 0 ]; then
+        RESULTS+=("OK   $COMP -> $HOST")
+        echo ""
+    else
+        RESULTS+=("FAIL $COMP -> $HOST")
+        FAILED=$((FAILED+1))
+        echo "[$COMP] ERROR: Deployment failed"
+        echo ""
+    fi
+}
+
+# =========================================================================
+# Deploy: Monitoring Stack  (monitoring instance — Docker Compose)
+# =========================================================================
+deploy_monitoring() {
+    local HOST="$MONITORING_PUBLIC_IP"
+    local COMP="monitoring"
+    local DEPLOY_DIR="/opt/monitoring"
+
+    echo "============================================================"
+    echo "[$COMP] Deploying to $HOST"
+    echo "============================================================"
+
+    wait_for_ssh "$HOST" "$COMP" "direct" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+
+    remote_exec "$HOST" "$COMP" "direct" << REMOTE
+set -e
+echo "[$COMP] Configuring Prometheus scrape targets..."
+
+sudo mkdir -p "$DEPLOY_DIR/prometheus/rules" "$DEPLOY_DIR/grafana" "$DEPLOY_DIR/alertmanager"
+sudo chown -R $SSH_USER:$SSH_USER "$DEPLOY_DIR"
+
+cat > "$DEPLOY_DIR/prometheus/prometheus.yml" << 'PROM_CONF'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: 'exchange-simulator'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['$FIX_IP:8080']
+        labels:
+          app: 'exchange-simulator'
+          environment: 'production'
+
+  - job_name: 'fix-initiator'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['$OUCH_IP:8082']
+        labels:
+          app: 'fix-initiator'
+          environment: 'production'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+PROM_CONF
+
+sed -i "s|\\\$FIX_IP|$FIX_IP|g" "$DEPLOY_DIR/prometheus/prometheus.yml"
+sed -i "s|\\\$OUCH_IP|$OUCH_IP|g" "$DEPLOY_DIR/prometheus/prometheus.yml"
+
+echo "[$COMP] Writing alert rules..."
+cat > "$DEPLOY_DIR/prometheus/rules/omnibridge-alerts.yml" << 'ALERTS'
+groups:
+  - name: omnibridge
+    rules:
+      - alert: TradingInstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ \$labels.instance }} is down"
+
+      - alert: SessionDisconnected
+        expr: omnibridge_session_connected == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Session {{ \$labels.session }} is disconnected"
+
+      - alert: HighFixLatency
+        expr: omnibridge_message_latency_seconds{quantile="0.99"} > 0.001
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FIX p99 latency above 1ms on {{ \$labels.instance }}"
+
+      - alert: HighHeapUsage
+        expr: jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Heap usage above 85% on {{ \$labels.instance }}"
+ALERTS
+
+echo "[$COMP] Writing Alertmanager config..."
+cat > "$DEPLOY_DIR/alertmanager/alertmanager.yml" << 'AM_CONF'
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'default'
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: 'default'
+AM_CONF
+
+echo "[$COMP] Writing Docker Compose file..."
+cat > "$DEPLOY_DIR/docker-compose.yml" << 'COMPOSE'
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
+COMPOSE
+
+echo "[$COMP] Starting Docker Compose stack..."
+cd "$DEPLOY_DIR"
+if command -v docker &> /dev/null; then
+    docker compose up -d
+    echo "[$COMP] Monitoring stack started"
+else
+    echo "[$COMP] WARNING: Docker not available. Install Docker and run: cd $DEPLOY_DIR && docker compose up -d"
+fi
+
+echo "[$COMP] Deployment complete on $HOST"
+REMOTE
+
+    if [ $? -eq 0 ]; then
+        RESULTS+=("OK   $COMP -> $HOST")
+        echo ""
+    else
+        RESULTS+=("FAIL $COMP -> $HOST")
+        FAILED=$((FAILED+1))
+        echo "[$COMP] ERROR: Deployment failed"
+        echo ""
+    fi
+}
+
+# =========================================================================
+# Execute deployments in dependency order
+# =========================================================================
+
+# 1. Aeron Remote Store (no dependencies)
+should_deploy "aeron-store" && deploy_aeron_store
+
+# 2. Exchange Simulator (depends on Aeron Store IP)
+should_deploy "exchange-simulator" && deploy_exchange_simulator
+
+# 3. FIX Initiator (depends on Exchange Simulator IP)
+should_deploy "fix-initiator" && deploy_fix_initiator
+
+# 4. OmniView (depends on all admin IPs)
+should_deploy "omniview" && deploy_omniview
+
+# 5. Monitoring (depends on all admin IPs)
+should_deploy "monitoring" && deploy_monitoring
+
+# =========================================================================
+# Summary
+# =========================================================================
+echo ""
+echo "========================================================"
+echo "Deployment Summary"
+echo "========================================================"
+for result in "${RESULTS[@]}"; do
+    echo "  $result"
+done
+echo "========================================================"
+echo ""
+
+if [ $FAILED -gt 0 ]; then
+    echo "$FAILED component(s) failed. Check logs above."
+    echo ""
+    exit 1
+fi
+
+echo "All components deployed successfully."
+echo ""
+echo "Next steps:"
+echo "  1. Start all services:  ./scripts/deploy/manage-services.sh -f $TF_OUTPUTS -i $PEM_FILE start"
+echo "  2. Check status:        ./scripts/deploy/manage-services.sh -f $TF_OUTPUTS -i $PEM_FILE status"
+echo ""
+echo "Endpoints:"
+echo "  Grafana:   http://$MONITORING_PUBLIC_IP:3001"
+echo "  OmniView:  http://$MONITORING_PUBLIC_IP:3000"
+echo "  FIX:       $FIX_IP:9876  (via SSH jump through $MONITORING_PUBLIC_IP)"

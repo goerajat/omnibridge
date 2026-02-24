@@ -8,7 +8,7 @@
 # ==========================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/../.."
 
 ACCEPTOR_JAR=$(ls apps/fix-samples/target/fix-samples-*-all.jar 2>/dev/null | head -1)
 TESTER_JAR=$(ls protocols/fix/reference-tester/target/reference-tester-*-all.jar 2>/dev/null | head -1)

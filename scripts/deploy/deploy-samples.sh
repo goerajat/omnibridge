@@ -122,7 +122,7 @@ if [ ! -f "$PEM_FILE" ]; then
 fi
 
 # Find distribution files
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 if [ "$DEPLOY_FIX" = true ]; then
     FIX_DIST=$(ls -t "$SCRIPT_DIR/apps/fix-samples/target/"fix-samples-*-dist.tar.gz 2>/dev/null | head -1)

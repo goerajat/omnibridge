@@ -7,7 +7,7 @@
 # ==========================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/../.."
 
 UBER_JAR=$(ls apps/fix-samples/target/fix-samples-*-all.jar 2>/dev/null | head -1)
 CONFIG_DIR="apps/fix-samples/src/main/resources"

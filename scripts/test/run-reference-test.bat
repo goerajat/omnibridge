@@ -9,7 +9,7 @@ REM   test-names: comma-separated test names or 'all' (default: all)
 REM ==========================================================================
 
 set SCRIPT_DIR=%~dp0
-cd /d "%SCRIPT_DIR%"
+cd /d "%SCRIPT_DIR%..\..\"
 
 set ACCEPTOR_JAR=
 for /f "delims=" %%i in ('dir /b apps\fix-samples\target\fix-samples-*-all.jar 2^>nul') do set ACCEPTOR_JAR=apps\fix-samples\target\%%i

@@ -11,7 +11,7 @@ REM   test-type: reference (default), session, or both
 REM   test-names: comma-separated test names or 'all' (default: all)
 REM ==========================================================================
 
-cd /d "%~dp0"
+cd /d "%~dp0..\..\"
 
 REM Find JARs
 set ACCEPTOR_JAR=

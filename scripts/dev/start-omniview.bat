@@ -3,7 +3,9 @@ setlocal enabledelayedexpansion
 
 set APP_NAME=omniview
 set DEFAULT_PORT=3000
-set JAR_FILE=omniview\target\omniview-1.0.0-SNAPSHOT.jar
+set SCRIPT_DIR=%~dp0
+set PROJECT_ROOT=%SCRIPT_DIR%..\..\
+set JAR_FILE=%PROJECT_ROOT%omniview\target\omniview-1.0.0-SNAPSHOT.jar
 
 :: Parse command line arguments
 set PORT=%DEFAULT_PORT%

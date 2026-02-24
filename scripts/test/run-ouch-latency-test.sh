@@ -7,7 +7,7 @@
 # ==========================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/../.."
 
 UBER_JAR=$(ls apps/ouch-samples/target/ouch-samples-*-all.jar 2>/dev/null | head -1)
 OUCH_PORT=9200

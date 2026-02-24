@@ -123,9 +123,10 @@ if not exist "%PEM_FILE%" (
 
 rem Find distribution file
 set SCRIPT_DIR=%~dp0
+set PROJECT_ROOT=%SCRIPT_DIR%..\..\
 if "%DIST_FILE%"=="" (
-    for /f "delims=" %%f in ('dir /b /o-d "%SCRIPT_DIR%omniview\target\omniview-*-dist.tar.gz" 2^>nul') do (
-        set DIST_FILE=%SCRIPT_DIR%omniview\target\%%f
+    for /f "delims=" %%f in ('dir /b /o-d "%PROJECT_ROOT%omniview\target\omniview-*-dist.tar.gz" 2^>nul') do (
+        set DIST_FILE=%PROJECT_ROOT%omniview\target\%%f
         goto :found_dist
     )
     echo [ERROR] Distribution file not found. Run 'mvn package' in omniview/ first.

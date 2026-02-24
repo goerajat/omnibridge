@@ -1,8 +1,11 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR/../.."
+
 APP_NAME="omniview"
 DEFAULT_PORT=3000
-JAR_FILE="omniview/target/omniview-1.0.0-SNAPSHOT.jar"
+JAR_FILE="$PROJECT_ROOT/omniview/target/omniview-1.0.0-SNAPSHOT.jar"
 PID_FILE="/tmp/${APP_NAME}.pid"
 LOG_FILE="/tmp/${APP_NAME}.log"
 

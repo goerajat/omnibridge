@@ -117,10 +117,11 @@ if not exist "%PEM_FILE%" (
 
 rem Find distribution files
 set SCRIPT_DIR=%~dp0
+set PROJECT_ROOT=%SCRIPT_DIR%..\..\
 
 if "%DEPLOY_FIX%"=="true" (
-    for /f "delims=" %%f in ('dir /b /o-d "%SCRIPT_DIR%apps\fix-samples\target\fix-samples-*-dist.tar.gz" 2^>nul') do (
-        set FIX_DIST=%SCRIPT_DIR%apps\fix-samples\target\%%f
+    for /f "delims=" %%f in ('dir /b /o-d "%PROJECT_ROOT%apps\fix-samples\target\fix-samples-*-dist.tar.gz" 2^>nul') do (
+        set FIX_DIST=%PROJECT_ROOT%apps\fix-samples\target\%%f
         goto :found_fix
     )
     echo [ERROR] FIX distribution not found. Run 'mvn package' first.
@@ -129,8 +130,8 @@ if "%DEPLOY_FIX%"=="true" (
 :found_fix
 
 if "%DEPLOY_OUCH%"=="true" (
-    for /f "delims=" %%f in ('dir /b /o-d "%SCRIPT_DIR%apps\ouch-samples\target\ouch-samples-*-dist.tar.gz" 2^>nul') do (
-        set OUCH_DIST=%SCRIPT_DIR%apps\ouch-samples\target\%%f
+    for /f "delims=" %%f in ('dir /b /o-d "%PROJECT_ROOT%apps\ouch-samples\target\ouch-samples-*-dist.tar.gz" 2^>nul') do (
+        set OUCH_DIST=%PROJECT_ROOT%apps\ouch-samples\target\%%f
         goto :found_ouch
     )
     echo [ERROR] OUCH distribution not found. Run 'mvn package' first.

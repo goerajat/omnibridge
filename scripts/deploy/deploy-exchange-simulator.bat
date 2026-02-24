@@ -10,6 +10,7 @@ REM Prerequisites: pscp.exe and plink.exe must be in PATH
 REM =============================================================================
 
 set SCRIPT_DIR=%~dp0
+set PROJECT_ROOT=%SCRIPT_DIR%..\..\
 
 REM Default values
 set ADMIN_PORT=8080
@@ -107,7 +108,7 @@ if not exist "%PEM_FILE%" (
 )
 
 REM Find distribution package
-set DIST_DIR=%SCRIPT_DIR%apps\exchange-simulator\target
+set DIST_DIR=%PROJECT_ROOT%apps\exchange-simulator\target
 for %%f in ("%DIST_DIR%\exchange-simulator-*-dist.tar.gz") do set DIST_PACKAGE=%%f
 
 if "%DIST_PACKAGE%"=="" (

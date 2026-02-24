@@ -8,7 +8,7 @@ REM Usage: run-latency-test.bat [warmup-orders] [test-orders] [rate]
 REM ==========================================================================
 
 set SCRIPT_DIR=%~dp0
-cd /d "%SCRIPT_DIR%"
+cd /d "%SCRIPT_DIR%..\..\"
 
 set UBER_JAR=
 for /f "delims=" %%i in ('dir /b apps\fix-samples\target\fix-samples-*-all.jar 2^>nul') do set UBER_JAR=apps\fix-samples\target\%%i

@@ -113,7 +113,7 @@ if [ ! -f "$PEM_FILE" ]; then
 fi
 
 # Find distribution file
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ -z "$DIST_FILE" ]; then
     DIST_FILE=$(ls -t "$SCRIPT_DIR/omniview/target/"omniview-*-dist.tar.gz 2>/dev/null | head -1)
     if [ -z "$DIST_FILE" ]; then
