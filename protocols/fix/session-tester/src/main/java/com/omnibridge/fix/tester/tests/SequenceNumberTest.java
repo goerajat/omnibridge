@@ -100,10 +100,17 @@ public class SequenceNumberTest implements SessionTest {
                         System.currentTimeMillis() - startTime);
             }
 
-            // Restore original sequence numbers so subsequent tests can continue
-            // without needing to re-establish the session
-            context.setOutgoingSeqNum(initialOutSeq);
-            context.setExpectedIncomingSeqNum(initialInSeq);
+            // Reconnect to synchronize sequence numbers between client and acceptor.
+            // Manual restoration is not reliable across persistence backends (e.g. Aeron)
+            // because the acceptor's state may not match the client's local reset.
+            context.disconnect();
+            context.waitForDisconnect();
+            context.connect();
+            if (!context.waitForLogon()) {
+                return TestResult.failed(getName(),
+                        "Could not re-establish session after sequence number tests",
+                        System.currentTimeMillis() - startTime);
+            }
 
             return TestResult.passed(getName(),
                     "All sequence number operations successful",
