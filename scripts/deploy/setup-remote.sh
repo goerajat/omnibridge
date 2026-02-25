@@ -794,7 +794,7 @@ deploy_monitoring() {
 set -e
 echo "[$COMP] Configuring Prometheus scrape targets..."
 
-sudo mkdir -p "$DEPLOY_DIR/prometheus/rules" "$DEPLOY_DIR/grafana" "$DEPLOY_DIR/alertmanager"
+sudo mkdir -p "$DEPLOY_DIR/prometheus/rules" "$DEPLOY_DIR/grafana/provisioning/datasources" "$DEPLOY_DIR/grafana/provisioning/dashboards" "$DEPLOY_DIR/grafana/dashboards" "$DEPLOY_DIR/alertmanager"
 sudo chown -R $SSH_USER:$SSH_USER "$DEPLOY_DIR"
 
 cat > "$DEPLOY_DIR/prometheus/prometheus.yml" << 'PROM_CONF'
@@ -888,6 +888,423 @@ receivers:
   - name: 'default'
 AM_CONF
 
+echo "[$COMP] Provisioning Grafana datasource and dashboard..."
+mkdir -p "$DEPLOY_DIR/grafana/provisioning/datasources"
+mkdir -p "$DEPLOY_DIR/grafana/provisioning/dashboards"
+mkdir -p "$DEPLOY_DIR/grafana/dashboards"
+
+cat > "$DEPLOY_DIR/grafana/provisioning/datasources/prometheus.yml" << 'DS_CONF'
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+DS_CONF
+
+cat > "$DEPLOY_DIR/grafana/provisioning/dashboards/dashboards.yml" << 'DB_PROV'
+apiVersion: 1
+
+providers:
+  - name: OmniBridge
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
+DB_PROV
+
+cat > "$DEPLOY_DIR/grafana/dashboards/omnibridge.json" << 'DASHBOARD_JSON'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Service Up/Down",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "up{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "process_uptime_seconds{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "Process CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "process_cpu_usage{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "System CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "system_cpu_usage{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "Heap Memory Used",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{area=\"heap\",job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}} used", "refId": "A" },
+        { "expr": "jvm_memory_max_bytes{area=\"heap\",job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}} max", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Heap Usage %",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit", "min": 0, "max": 1,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.85 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "jvm_memory_used_bytes{area=\"heap\",job=~\"exchange-simulator|fix-initiator\"} / jvm_memory_max_bytes{area=\"heap\",job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "Live Threads",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "jvm_threads_live_threads{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "Thread States",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [{ "expr": "jvm_threads_states_threads{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}} {{state}}", "refId": "A" }]
+    },
+    {
+      "title": "GC Memory Allocated Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "rate(jvm_gc_memory_allocated_bytes_total{job=~\"exchange-simulator|fix-initiator\"}[1m])", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "GC Pause Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(jvm_gc_pause_seconds_sum{job=~\"exchange-simulator|fix-initiator\"}[1m])", "legendFormat": "{{job}} pause", "refId": "A" },
+        { "expr": "rate(jvm_gc_concurrent_phase_time_seconds_sum{job=~\"exchange-simulator|fix-initiator\"}[1m])", "legendFormat": "{{job}} concurrent", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Direct Buffers",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "jvm_buffer_count_buffers{id=\"direct\",job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "Direct Buffer Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "jvm_buffer_memory_used_bytes{id=\"direct\",job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "title": "System Load Average (1m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [{ "expr": "system_load_average_1m{job=~\"exchange-simulator|fix-initiator\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["omnibridge", "fix", "trading"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "OmniBridge",
+  "uid": "omnibridge-overview",
+  "version": 1
+}
+DASHBOARD_JSON
+
+cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "All", "value": "\$__all" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(omnibridge_session_state, job)",
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "name": "job",
+        "query": "label_values(omnibridge_session_state, job)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "\$__all" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(omnibridge_session_state{job=~\"\$job\"}, session_id)",
+        "allValue": ".*",
+        "includeAll": true,
+        "multi": true,
+        "name": "session_id",
+        "query": "label_values(omnibridge_session_state{job=~\"\$job\"}, session_id)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Session Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "OFF" }, "1": { "color": "green", "text": "ON" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "omnibridge_session_logged_on{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{session_id}}", "refId": "A" }]
+    },
+    {
+      "title": "Aggregate Sessions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "omnibridge_session_total{job=~\"\$job\"}", "legendFormat": "{{job}} total", "refId": "A" },
+        { "expr": "omnibridge_session_connected_count{job=~\"\$job\"}", "legendFormat": "{{job}} connected", "refId": "B" },
+        { "expr": "omnibridge_session_logged_on_count{job=~\"\$job\"}", "legendFormat": "{{job}} logged on", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Processing Latency p99 (ns)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100000 }, { "color": "red", "value": 1000000 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "omnibridge_message_processing_time{job=~\"\$job\",session_id=~\"\$session_id\",quantile=\"0.99\"}", "legendFormat": "{{session_id}}", "refId": "A" }]
+    },
+    {
+      "title": "Messages Sent Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [{ "expr": "rate(omnibridge_messages_sent_total{job=~\"\$job\",session_id=~\"\$session_id\"}[1m])", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
+    },
+    {
+      "title": "Messages Received Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [{ "expr": "rate(omnibridge_messages_received_total{job=~\"\$job\",session_id=~\"\$session_id\"}[1m])", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
+    },
+    {
+      "title": "Message Processing Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ns", "min": 0, "custom": { "fillOpacity": 5, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "omnibridge_message_processing_time{job=~\"\$job\",session_id=~\"\$session_id\",quantile=\"0.5\"}", "legendFormat": "{{session_id}} p50", "refId": "A" },
+        { "expr": "omnibridge_message_processing_time{job=~\"\$job\",session_id=~\"\$session_id\",quantile=\"0.9\"}", "legendFormat": "{{session_id}} p90", "refId": "B" },
+        { "expr": "omnibridge_message_processing_time{job=~\"\$job\",session_id=~\"\$session_id\",quantile=\"0.95\"}", "legendFormat": "{{session_id}} p95", "refId": "C" },
+        { "expr": "omnibridge_message_processing_time{job=~\"\$job\",session_id=~\"\$session_id\",quantile=\"0.99\"}", "legendFormat": "{{session_id}} p99", "refId": "D" },
+        { "expr": "omnibridge_message_processing_time{job=~\"\$job\",session_id=~\"\$session_id\",quantile=\"0.999\"}", "legendFormat": "{{session_id}} p99.9", "refId": "E" }
+      ]
+    },
+    {
+      "title": "Heartbeat Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "rate(omnibridge_heartbeat_sent_total{job=~\"\$job\",session_id=~\"\$session_id\"}[1m])", "legendFormat": "{{session_id}} sent", "refId": "A" },
+        { "expr": "rate(omnibridge_heartbeat_received_total{job=~\"\$job\",session_id=~\"\$session_id\"}[1m])", "legendFormat": "{{session_id}} received", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Heartbeat Timeouts & Test Requests",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "increase(omnibridge_heartbeat_timeout_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} timeouts", "refId": "A" },
+        { "expr": "increase(omnibridge_heartbeat_test_request_sent_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} test req sent", "refId": "B" },
+        { "expr": "increase(omnibridge_heartbeat_test_request_received_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} test req recv", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Outgoing Sequence Number",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [{ "expr": "omnibridge_sequence_outgoing{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
+    },
+    {
+      "title": "Expected Incoming Sequence Number",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [{ "expr": "omnibridge_sequence_incoming_expected{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
+    },
+    {
+      "title": "Session Lifecycle Events (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "increase(omnibridge_session_logon_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} logon", "refId": "A" },
+        { "expr": "increase(omnibridge_session_logout_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} logout", "refId": "B" },
+        { "expr": "increase(omnibridge_session_disconnect_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} disconnect", "refId": "C" },
+        { "expr": "increase(omnibridge_session_connect_failed_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} connect fail", "refId": "D" }
+      ]
+    },
+    {
+      "title": "Message Rejects (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "increase(omnibridge_messages_rejected_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} session reject", "refId": "A" },
+        { "expr": "increase(omnibridge_messages_business_rejected_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} business reject", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Resend Requests (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "increase(omnibridge_resend_request_total{job=~\"\$job\",session_id=~\"\$session_id\",direction=\"sent\"}[5m])", "legendFormat": "{{session_id}} sent", "refId": "A" },
+        { "expr": "increase(omnibridge_resend_request_total{job=~\"\$job\",session_id=~\"\$session_id\",direction=\"received\"}[5m])", "legendFormat": "{{session_id}} received", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Sequence Gaps & Resets (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "increase(omnibridge_sequence_gap_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} gap", "refId": "A" },
+        { "expr": "increase(omnibridge_sequence_reset_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} reset", "refId": "B" },
+        { "expr": "increase(omnibridge_ringbuffer_claim_failed_total{job=~\"\$job\",session_id=~\"\$session_id\"}[5m])", "legendFormat": "{{session_id}} ringbuf fail", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Seconds Since Last Message Received",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "omnibridge_heartbeat_last_received_seconds{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{session_id}}", "refId": "A" },
+        { "expr": "omnibridge_heartbeat_interval_seconds{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{session_id}} interval", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Messages Sent / Received (Total)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        { "expr": "omnibridge_messages_sent_total{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{session_id}} sent", "refId": "A" },
+        { "expr": "omnibridge_messages_received_total{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{session_id}} received", "refId": "B" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["omnibridge", "fix", "sessions", "trading"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "FIX Engine",
+  "uid": "fix-engine-sessions",
+  "version": 1
+}
+FIX_DASHBOARD
+
 echo "[$COMP] Writing Docker Compose file..."
 cat > "$DEPLOY_DIR/docker-compose.yml" << 'COMPOSE'
 version: '3.8'
@@ -918,6 +1335,8 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     restart: unless-stopped
 
   alertmanager:

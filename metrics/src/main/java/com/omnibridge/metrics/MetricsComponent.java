@@ -3,6 +3,9 @@ package com.omnibridge.metrics;
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
 import com.omnibridge.config.Singleton;
+import com.omnibridge.config.provider.ComponentProvider;
+import com.omnibridge.config.session.SessionManagementService;
+import com.omnibridge.metrics.binder.SessionMetricsBinder;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.*;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
@@ -25,12 +28,14 @@ public class MetricsComponent implements Component {
 
     private final String name;
     private final MetricsConfig config;
+    private final ComponentProvider provider;
     private final AtomicReference<ComponentState> state = new AtomicReference<>(ComponentState.UNINITIALIZED);
     private PrometheusMeterRegistry registry;
 
-    public MetricsComponent(String name, MetricsConfig config) {
+    public MetricsComponent(String name, MetricsConfig config, ComponentProvider provider) {
         this.name = name;
         this.config = config;
+        this.provider = provider;
     }
 
     /**
@@ -90,6 +95,17 @@ public class MetricsComponent implements Component {
             new UptimeMetrics().bindTo(registry);
 
             log.info("[{}] JVM metrics binders registered", name);
+        }
+
+        // Register aggregate session metrics if SessionManagementService is available
+        try {
+            SessionManagementService sessionService = provider.getComponent(SessionManagementService.class);
+            if (sessionService != null) {
+                new SessionMetricsBinder(sessionService).bindTo(registry);
+                log.info("[{}] Session metrics binder registered", name);
+            }
+        } catch (IllegalArgumentException e) {
+            log.debug("[{}] SessionManagementService not available, aggregate session metrics disabled", name);
         }
 
         log.info("[{}] Metrics component initialized", name);

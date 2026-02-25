@@ -1447,6 +1447,30 @@ public class FixEngine implements Component {
         if (componentState != ComponentState.UNINITIALIZED) {
             throw new IllegalStateException("Cannot initialize from state: " + componentState);
         }
+
+        // Resolve MeterRegistry from MetricsComponent if available (must happen during
+        // initialize phase, not factory phase, because the registry is created during
+        // MetricsComponent.initialize() which runs before this due to dependency ordering)
+        if (meterRegistry == null && componentProvider != null) {
+            try {
+                Class<?> metricsClass = Class.forName("com.omnibridge.metrics.MetricsComponent");
+                Object metricsComponent = componentProvider.getComponent(
+                        metricsClass.asSubclass(com.omnibridge.config.Component.class));
+                if (metricsComponent != null) {
+                    java.lang.reflect.Method getRegistry = metricsClass.getMethod("getMeterRegistry");
+                    MeterRegistry registry = (MeterRegistry) getRegistry.invoke(metricsComponent);
+                    if (registry != null) {
+                        this.meterRegistry = registry;
+                        log.info("Resolved MeterRegistry from MetricsComponent");
+                    }
+                }
+            } catch (ClassNotFoundException | IllegalArgumentException e) {
+                log.debug("MetricsComponent not available, per-session metrics disabled");
+            } catch (Exception e) {
+                log.debug("Could not resolve MeterRegistry: {}", e.getMessage());
+            }
+        }
+
         // Create sessions from config if available
         if (engineConfig != null) {
             createSessionsFromConfig();

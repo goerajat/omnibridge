@@ -24,7 +24,7 @@ public class MetricsFactory implements ComponentFactory<MetricsComponent> {
         String componentName = name != null ? name : "metrics";
         MetricsConfig metricsConfig = MetricsConfig.fromConfig(config);
 
-        MetricsComponent component = new MetricsComponent(componentName, metricsConfig);
+        MetricsComponent component = new MetricsComponent(componentName, metricsConfig, provider);
 
         // Register metrics endpoint with admin server if available
         try {

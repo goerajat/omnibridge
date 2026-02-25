@@ -424,6 +424,28 @@ public class OuchEngine implements Component, ScheduleListener {
             throw new IllegalStateException("Cannot initialize from state: " + componentState);
         }
 
+        // Resolve MeterRegistry from MetricsComponent during initialize phase
+        if (meterRegistry == null && componentProvider != null) {
+            try {
+                Class<?> metricsClass = Class.forName("com.omnibridge.metrics.MetricsComponent");
+                Object metricsComponent = componentProvider.getComponent(
+                        metricsClass.asSubclass(com.omnibridge.config.Component.class));
+                if (metricsComponent != null) {
+                    java.lang.reflect.Method getRegistry = metricsClass.getMethod("getMeterRegistry");
+                    io.micrometer.core.instrument.MeterRegistry registry =
+                            (io.micrometer.core.instrument.MeterRegistry) getRegistry.invoke(metricsComponent);
+                    if (registry != null) {
+                        this.meterRegistry = registry;
+                        log.info("Resolved MeterRegistry from MetricsComponent");
+                    }
+                }
+            } catch (ClassNotFoundException | IllegalArgumentException e) {
+                log.debug("MetricsComponent not available, per-session metrics disabled");
+            } catch (Exception e) {
+                log.debug("Could not resolve MeterRegistry: {}", e.getMessage());
+            }
+        }
+
         if (networkEventLoop == null) {
             try {
                 networkEventLoop = new NetworkEventLoop("ouch-io");
