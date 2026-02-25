@@ -1,7 +1,7 @@
 import type { AppConfig, Session, SessionStats } from '../types'
 
 function buildUrl(app: AppConfig, path: string): string {
-  return `http://${app.host}:${app.port}${path}`
+  return `/api/proxy/${app.id}${path}`
 }
 
 export async function fetchSessions(app: AppConfig): Promise<Session[]> {

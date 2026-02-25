@@ -65,7 +65,8 @@ export function useAppConnections() {
     function connectToApp(app: AppConfig) {
       if (!mountedRef.current) return
 
-      const url = `ws://${app.host}:${app.port}/ws/sessions`
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const url = `${wsProtocol}//${window.location.host}/ws/proxy/${app.id}`
       setConnectionStatus(app.id, 'connecting')
 
       try {

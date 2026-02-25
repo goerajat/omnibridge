@@ -7,16 +7,24 @@ import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.resource.ResourceFactory;
+import org.eclipse.jetty.websocket.client.WebSocketClient;
+import org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Optional;
 
 /**
  * Embedded Jetty server for OmniView web application.
@@ -32,12 +40,19 @@ public class OmniViewServer {
     private final int port;
     private final AppConfigService appConfigService;
     private final ObjectMapper objectMapper;
+    private final WebSocketClient wsClient;
+    private final HttpClient httpClient;
 
     public OmniViewServer(int port) {
         this.port = port;
         this.server = new Server(port);
         this.appConfigService = new AppConfigService();
         this.objectMapper = new ObjectMapper();
+        this.wsClient = new WebSocketClient();
+        this.wsClient.setIdleTimeout(Duration.ofMinutes(5));
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
     }
 
     public void start() throws Exception {
@@ -70,16 +85,67 @@ public class OmniViewServer {
         // Create SPA handler that wraps ResourceHandler properly
         SpaHandler spaHandler = new SpaHandler(resourceHandler, baseResource);
 
-        // Create API handler that wraps SPA handler (handles /api/apps before static files)
-        ApiHandler apiHandler = new ApiHandler(spaHandler, appConfigService, objectMapper);
+        // Create API handler that wraps SPA handler (handles /api/apps and /api/proxy before static files)
+        ApiHandler apiHandler = new ApiHandler(spaHandler, appConfigService, objectMapper, httpClient);
 
+        // Create context handler
         ContextHandler contextHandler = new ContextHandler("/");
-        contextHandler.setHandler(apiHandler);
+
+        // Create WebSocket upgrade handler and explicitly build the handler chain.
+        // WebSocketUpgradeHandler.from() may not reliably insert itself into the chain
+        // in all Jetty 12.0.x versions, so we wire it up manually.
+        WebSocketUpgradeHandler wsHandler = WebSocketUpgradeHandler.from(server, contextHandler, container -> {
+            container.setIdleTimeout(Duration.ofMinutes(5));
+            container.addMapping("/ws/proxy/*", (upgradeRequest, upgradeResponse, callback) -> {
+                String requestPath = upgradeRequest.getHttpURI().getPath();
+                String appId = requestPath.substring("/ws/proxy/".length());
+
+                if (appId.isEmpty()) {
+                    LOG.warn("WebSocket proxy: missing appId");
+                    callback.failed(new IllegalArgumentException("Missing appId"));
+                    return null;
+                }
+
+                Optional<AppConfigService.AppConfig> appOpt = appConfigService.getApp(appId);
+                if (appOpt.isEmpty()) {
+                    LOG.warn("WebSocket proxy: app not found: {}", appId);
+                    callback.failed(new IllegalArgumentException("App not found: " + appId));
+                    return null;
+                }
+
+                AppConfigService.AppConfig app = appOpt.get();
+                WebSocketProxySession proxySession = new WebSocketProxySession(appId);
+                WebSocketProxySession.BackendListener backendListener = proxySession.new BackendListener();
+
+                String backendUrl = "ws://" + app.host() + ":" + app.port() + "/ws/sessions";
+                LOG.info("WebSocket proxy: connecting to backend {} for app {}", backendUrl, appId);
+
+                try {
+                    wsClient.connect(backendListener, URI.create(backendUrl));
+                } catch (Exception e) {
+                    LOG.error("WebSocket proxy: failed to connect to backend for app {}", appId, e);
+                    callback.failed(e);
+                    return null;
+                }
+
+                // Do NOT call callback.succeeded() here — Jetty 12 auto-completes
+                // the callback when a non-null listener is returned. Calling it twice
+                // causes the browser session to close immediately with code 1006.
+                return proxySession.new BrowserListener();
+            });
+        });
+
+        // Chain: ContextHandler → WebSocketUpgradeHandler → ApiHandler → SpaHandler → ResourceHandler
+        wsHandler.setHandler(apiHandler);
+        contextHandler.setHandler(wsHandler);
 
         server.setHandler(contextHandler);
 
         // Write PID file for process management
         writePidFile();
+
+        // Start WebSocket client before server
+        wsClient.start();
 
         server.start();
         LOG.info("OmniView started on http://localhost:{}", port);
@@ -92,6 +158,7 @@ public class OmniViewServer {
     }
 
     public void stop() throws Exception {
+        wsClient.stop();
         server.stop();
         cleanup();
     }
@@ -188,17 +255,21 @@ public class OmniViewServer {
 
     /**
      * API handler for REST endpoints.
-     * Handles /api/apps/* requests for app configuration management.
+     * Handles /api/apps/* requests for app configuration management
+     * and /api/proxy/{appId}/* for proxying requests to backend admin servers.
      */
     private static class ApiHandler extends Handler.Wrapper {
 
         private final AppConfigService appConfigService;
         private final ObjectMapper objectMapper;
+        private final HttpClient httpClient;
 
-        public ApiHandler(Handler handler, AppConfigService appConfigService, ObjectMapper objectMapper) {
+        public ApiHandler(Handler handler, AppConfigService appConfigService, ObjectMapper objectMapper,
+                         HttpClient httpClient) {
             super(handler);
             this.appConfigService = appConfigService;
             this.objectMapper = objectMapper;
+            this.httpClient = httpClient;
         }
 
         @Override
@@ -209,13 +280,93 @@ public class OmniViewServer {
             String path = request.getHttpURI().getPath();
             String method = request.getMethod();
 
+            // Handle /api/proxy/{appId}/* endpoints
+            if (path.startsWith("/api/proxy/")) {
+                return handleProxyApi(request, response, callback, path, method);
+            }
+
             // Handle /api/apps endpoints
             if (path.equals("/api/apps") || path.startsWith("/api/apps/")) {
                 return handleAppsApi(request, response, callback, path, method);
             }
 
-            // Delegate to SPA handler for other requests
+            // Delegate to WebSocket/SPA handler for other requests
             return super.handle(request, response, callback);
+        }
+
+        private boolean handleProxyApi(org.eclipse.jetty.server.Request request,
+                                       org.eclipse.jetty.server.Response response,
+                                       org.eclipse.jetty.util.Callback callback,
+                                       String path,
+                                       String method) throws Exception {
+            // Path format: /api/proxy/{appId}/remaining/path
+            String afterProxy = path.substring("/api/proxy/".length());
+            int slashIndex = afterProxy.indexOf('/');
+
+            String appId;
+            String remainingPath;
+            if (slashIndex >= 0) {
+                appId = afterProxy.substring(0, slashIndex);
+                remainingPath = afterProxy.substring(slashIndex); // includes leading /
+            } else {
+                appId = afterProxy;
+                remainingPath = "/";
+            }
+
+            Optional<AppConfigService.AppConfig> appOpt = appConfigService.getApp(appId);
+            if (appOpt.isEmpty()) {
+                sendJson(response, callback, 404, new ErrorResponse("App not found: " + appId));
+                return true;
+            }
+
+            AppConfigService.AppConfig app = appOpt.get();
+            String targetUrl = "http://" + app.host() + ":" + app.port() + remainingPath;
+
+            // Build query string if present
+            String query = request.getHttpURI().getQuery();
+            if (query != null && !query.isEmpty()) {
+                targetUrl += "?" + query;
+            }
+
+            try {
+                HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(targetUrl))
+                    .timeout(Duration.ofSeconds(10));
+
+                // Forward the request method and body
+                if ("POST".equals(method) || "PUT".equals(method)) {
+                    byte[] body;
+                    try (InputStream is = org.eclipse.jetty.server.Request.asInputStream(request)) {
+                        body = is.readAllBytes();
+                    }
+                    String contentType = request.getHeaders().get("Content-Type");
+                    if (contentType == null) contentType = "application/json";
+                    reqBuilder.method(method, HttpRequest.BodyPublishers.ofByteArray(body))
+                              .header("Content-Type", contentType);
+                } else if ("DELETE".equals(method)) {
+                    reqBuilder.DELETE();
+                } else {
+                    reqBuilder.GET();
+                }
+
+                HttpResponse<byte[]> backendResponse = httpClient.send(
+                    reqBuilder.build(), HttpResponse.BodyHandlers.ofByteArray());
+
+                response.setStatus(backendResponse.statusCode());
+
+                // Forward content-type from backend
+                backendResponse.headers().firstValue("Content-Type")
+                    .ifPresent(ct -> response.getHeaders().put("Content-Type", ct));
+
+                response.write(true, ByteBuffer.wrap(backendResponse.body()), callback);
+                return true;
+
+            } catch (Exception e) {
+                LOG.error("Proxy error for app {} -> {}: {}", appId, targetUrl, e.getMessage());
+                sendJson(response, callback, 502,
+                    new ErrorResponse("Failed to reach backend: " + e.getMessage()));
+                return true;
+            }
         }
 
         private boolean handleAppsApi(org.eclipse.jetty.server.Request request,

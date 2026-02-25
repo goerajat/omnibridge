@@ -72,7 +72,8 @@ export function useWebSocket({ app, onMessage, enabled = true }: UseWebSocketOpt
   const connect = useCallback(() => {
     if (!mountedRef.current || !enabled) return
 
-    const url = `ws://${app.host}:${app.port}/ws/sessions`
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const url = `${wsProtocol}//${window.location.host}/ws/proxy/${app.id}`
 
     setConnectionStatus(app.id, 'connecting')
 
@@ -119,7 +120,7 @@ export function useWebSocket({ app, onMessage, enabled = true }: UseWebSocketOpt
     } catch (error) {
       setConnectionStatus(app.id, 'error', String(error))
     }
-  }, [app.id, app.host, app.port, enabled, handleMessage, setConnectionStatus])
+  }, [app.id, enabled, handleMessage, setConnectionStatus])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -152,7 +153,7 @@ export function useWebSocket({ app, onMessage, enabled = true }: UseWebSocketOpt
       reconnectAttemptRef.current = 0
       connect()
     }
-  }, [app.host, app.port, connect, disconnect, enabled])
+  }, [app.id, connect, disconnect, enabled])
 
   return {
     disconnect,
