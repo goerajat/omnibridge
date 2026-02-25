@@ -141,6 +141,42 @@ public class FixSession implements NetworkHandler {
                 .build();
         this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
         log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), 64);
+
+        // Recover sequence numbers from persistence store
+        recoverSequenceNumbers();
+    }
+
+    /**
+     * Recover sequence numbers from the persistence store.
+     * Sets outgoingSeqNum and expectedIncomingSeqNum based on the last persisted entries.
+     */
+    private void recoverSequenceNumbers() {
+        if (logStore == null || !config.isLogMessages()) {
+            return;
+        }
+
+        String sessionId = config.getSessionId();
+
+        try {
+            LogEntry lastOutbound = logStore.getLatest(sessionId, LogEntry.Direction.OUTBOUND);
+            if (lastOutbound != null && lastOutbound.getSequenceNumber() > 0) {
+                int recovered = lastOutbound.getSequenceNumber() + 1;
+                outgoingSeqNum.set(recovered);
+                log.info("[{}] Recovered outgoing sequence number: {} (next={})",
+                        sessionId, lastOutbound.getSequenceNumber(), recovered);
+            }
+
+            LogEntry lastInbound = logStore.getLatest(sessionId, LogEntry.Direction.INBOUND);
+            if (lastInbound != null && lastInbound.getSequenceNumber() > 0) {
+                int recovered = lastInbound.getSequenceNumber() + 1;
+                expectedIncomingSeqNum.set(recovered);
+                log.info("[{}] Recovered expected incoming sequence number: {} (next={})",
+                        sessionId, lastInbound.getSequenceNumber(), recovered);
+            }
+        } catch (Exception e) {
+            log.warn("[{}] Failed to recover sequence numbers from persistence, starting from 1: {}",
+                    sessionId, e.getMessage());
+        }
     }
 
     // ==================== Metrics Binding ====================

@@ -412,7 +412,9 @@ public class ChronicleLogStore implements LogStore, Component {
                 // Check if it looks like a Chronicle Queue directory (contains .cq4 files)
                 File[] cq4Files = dir.listFiles((d, name) -> name.endsWith(".cq4"));
                 if (cq4Files != null && cq4Files.length > 0) {
-                    String streamName = dir.getName();
+                    // Reverse the sanitization to recover the original stream name
+                    // (e.g., "CLIENT1_to_EXCH1" -> "CLIENT1->EXCH1")
+                    String streamName = unsanitizeStreamName(dir.getName());
                     try {
                         StreamState state = new StreamState(streamName, dir);
                         streams.put(streamName, state);
@@ -438,6 +440,10 @@ public class ChronicleLogStore implements LogStore, Component {
         String sanitized = name.replace("->", "_to_");
         sanitized = sanitized.replaceAll("[<>:\"/\\\\|?*]", "_");
         return sanitized;
+    }
+
+    private String unsanitizeStreamName(String dirName) {
+        return dirName.replace("_to_", "->");
     }
 
     // ==================== StreamState ====================

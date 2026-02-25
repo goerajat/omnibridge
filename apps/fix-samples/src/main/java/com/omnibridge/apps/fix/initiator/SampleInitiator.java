@@ -158,7 +158,7 @@ public class SampleInitiator extends ApplicationBase {
                     warmupOrders, testOrders, ordersPerSecond, maxPendingOrders, backpressureTimeoutSeconds);
             runner.run();
         } else if (autoMode) {
-            AutoModeRunner runner = new AutoModeRunner(session, orderCount);
+            AutoModeRunner runner = new AutoModeRunner(session, orderCount, ordersPerSecond);
             runner.run();
         } else {
             InteractiveModeRunner runner = new InteractiveModeRunner(session);

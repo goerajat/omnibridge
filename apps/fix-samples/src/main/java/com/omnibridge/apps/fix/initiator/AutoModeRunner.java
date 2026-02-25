@@ -20,19 +20,27 @@ public class AutoModeRunner {
 
     private final FixSession session;
     private final int orderCount;
+    private final int ordersPerSecond;
     private final AtomicLong clOrdIdCounter = new AtomicLong(1);
     private volatile boolean running = true;
 
     public AutoModeRunner(FixSession session, int orderCount) {
+        this(session, orderCount, 2);
+    }
+
+    public AutoModeRunner(FixSession session, int orderCount, int ordersPerSecond) {
         this.session = session;
         this.orderCount = orderCount;
+        this.ordersPerSecond = ordersPerSecond > 0 ? ordersPerSecond : 2;
     }
 
     /**
      * Run auto mode, sending sample orders.
      */
     public void run() throws InterruptedException {
-        log.info("Auto mode: sending {} sample orders", orderCount);
+        long intervalMs = 1000L / ordersPerSecond;
+        log.info("Auto mode: sending {} sample orders at {} orders/sec ({}ms interval)",
+                orderCount, ordersPerSecond, intervalMs);
 
         for (int i = 0; i < orderCount && running; i++) {
             String symbol = SYMBOLS[i % SYMBOLS.length];
@@ -42,7 +50,7 @@ public class AutoModeRunner {
 
             sendNewOrder(symbol, side, qty, price);
 
-            Thread.sleep(500); // Wait between orders
+            Thread.sleep(intervalMs);
         }
 
         log.info("Finished sending {} orders", orderCount);
