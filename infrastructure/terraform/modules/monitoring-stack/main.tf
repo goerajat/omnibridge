@@ -64,6 +64,29 @@ resource "aws_iam_role_policy" "ec2_discovery" {
   })
 }
 
+# S3 read access for downloading OmniView artifacts
+resource "aws_iam_role_policy" "s3_access" {
+  name = "omnibridge-${var.environment}-monitoring-s3-access"
+  role = aws_iam_role.monitoring.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.s3_bucket}",
+          "arn:aws:s3:::${var.s3_bucket}/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "monitoring" {
   name = "omnibridge-${var.environment}-monitoring-profile"
   role = aws_iam_role.monitoring.name

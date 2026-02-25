@@ -102,6 +102,9 @@ if [ ! -f "$PEM_FILE" ]; then
     exit 1
 fi
 
+# Resolve PEM file to absolute path (needed for ProxyCommand subprocess)
+PEM_FILE="$(cd "$(dirname "$PEM_FILE")" && pwd)/$(basename "$PEM_FILE")"
+
 # Auto-detect version from pom.xml
 if [ -z "$VERSION" ]; then
     VERSION=$(grep -m1 '<version>' "$SCRIPT_DIR/pom.xml" | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
@@ -120,10 +123,10 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS")
-OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS")
-AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS")
-MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS")
+FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS" | tr -d '\r')
 
 if [ "$FIX_IP" = "null" ] || [ "$OUCH_IP" = "null" ] || [ "$AERON_IP" = "null" ] || [ "$MONITORING_PUBLIC_IP" = "null" ]; then
     echo "Error: Could not extract all IPs from $TF_OUTPUTS"
@@ -136,8 +139,9 @@ fi
 
 S3_PREFIX="s3://$S3_BUCKET/omnibridge/$ENVIRONMENT"
 SSH_OPTS="-i $PEM_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $SSH_PORT"
-# All private-subnet hosts are reached via the monitoring instance as jump host
-SSH_JUMP="-o ProxyJump=$SSH_USER@$MONITORING_PUBLIC_IP:$SSH_PORT"
+# All private-subnet hosts are reached via the monitoring instance as jump host.
+# Use ProxyCommand (not ProxyJump) so the identity file is explicitly passed to the jump connection.
+PROXY_CMD="ssh -i $PEM_FILE -o StrictHostKeyChecking=no -p $SSH_PORT -W %h:%p $SSH_USER@$MONITORING_PUBLIC_IP"
 
 echo "========================================================"
 echo "OmniBridge Remote Setup"
@@ -153,6 +157,20 @@ echo "  OUCH Acceptor (fix-initiator):     $OUCH_IP"
 echo "  Aeron Persistence Store:           $AERON_IP"
 echo "  Monitoring + OmniView (public):    $MONITORING_PUBLIC_IP"
 echo "========================================================"
+echo ""
+
+# Pre-flight: verify SSH to the bastion (monitoring) host works
+echo "Verifying SSH to bastion ($MONITORING_PUBLIC_IP)..."
+if ! ssh $SSH_OPTS -o BatchMode=yes "$SSH_USER@$MONITORING_PUBLIC_IP" "true" 2>&1; then
+    echo ""
+    echo "ERROR: Cannot SSH to bastion host $MONITORING_PUBLIC_IP"
+    echo "Check that:"
+    echo "  1. Your public IP is in ssh_cidrs (run terraform-deploy.sh to auto-update)"
+    echo "  2. The PEM file matches the EC2 key pair"
+    echo "  3. The monitoring instance is running"
+    exit 1
+fi
+echo "  Bastion OK"
 echo ""
 
 # Track results
@@ -185,8 +203,89 @@ remote_exec() {
     if [ "$jump" = "direct" ]; then
         ssh $SSH_OPTS "$SSH_USER@$host" "$@"
     else
-        ssh $SSH_OPTS $SSH_JUMP "$SSH_USER@$host" "$@"
+        ssh $SSH_OPTS -o "ProxyCommand=$PROXY_CMD" "$SSH_USER@$host" "$@"
     fi
+}
+
+# Helper: ensure prerequisites are installed on a remote host (Ubuntu)
+ensure_prerequisites() {
+    local host="$1"
+    local label="$2"
+    local jump="$3"
+
+    echo "  Installing prerequisites on $label..."
+    remote_exec "$host" "$label" "$jump" << 'INSTALL_PREREQS'
+set -e
+NEED_UPDATE=false
+
+# Check Java 17
+if java -version 2>&1 | grep -q 'version "17'; then
+    echo "    Java 17 already installed"
+else
+    NEED_UPDATE=true
+fi
+
+# Check AWS CLI
+if command -v aws &>/dev/null; then
+    echo "    AWS CLI already installed"
+else
+    NEED_UPDATE=true
+fi
+
+if [ "$NEED_UPDATE" = true ]; then
+    echo "    Updating package index..."
+    sudo apt-get update -qq
+fi
+
+# Install Java 17 (Amazon Corretto)
+if ! java -version 2>&1 | grep -q 'version "17'; then
+    echo "    Installing Java 17 (Amazon Corretto)..."
+    # Import Corretto GPG key and repo
+    if [ ! -f /usr/share/keyrings/corretto-keyring.gpg ]; then
+        curl -sL https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
+        sudo apt-get update -qq
+    fi
+    sudo apt-get install -y -qq java-17-amazon-corretto-jdk 2>/dev/null
+    echo "    Java installed: $(java -version 2>&1 | head -1)"
+fi
+
+# Install AWS CLI
+if ! command -v aws &>/dev/null; then
+    echo "    Installing AWS CLI..."
+    sudo apt-get install -y -qq awscli 2>/dev/null
+    echo "    AWS CLI installed: $(aws --version 2>&1)"
+fi
+INSTALL_PREREQS
+}
+
+# Helper: ensure Docker and Docker Compose are installed (Ubuntu)
+ensure_docker() {
+    local host="$1"
+    local label="$2"
+    local jump="$3"
+
+    echo "  Installing Docker on $label..."
+    remote_exec "$host" "$label" "$jump" << 'INSTALL_DOCKER'
+set -e
+if command -v docker &>/dev/null; then
+    echo "    Docker already installed: $(docker --version)"
+else
+    echo "    Installing Docker..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq ca-certificates curl gnupg
+    sudo install -m 0755 -d /etc/apt/keyrings
+    if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update -qq
+    fi
+    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin 2>/dev/null
+    sudo usermod -aG docker $USER
+    echo "    Docker installed: $(docker --version)"
+fi
+INSTALL_DOCKER
 }
 
 # Helper: wait for SSH to become available
@@ -194,18 +293,24 @@ wait_for_ssh() {
     local host="$1"
     local label="$2"
     local jump="$3"
-    local max_attempts=30
+    local max_attempts=20
+    local last_err=""
 
     echo "  Waiting for SSH on $label ($host)..."
     for i in $(seq 1 $max_attempts); do
         if [ "$jump" = "direct" ]; then
-            ssh $SSH_OPTS -o BatchMode=yes "$SSH_USER@$host" "true" 2>/dev/null && return 0
+            last_err=$(ssh $SSH_OPTS -o BatchMode=yes "$SSH_USER@$host" "true" 2>&1) && return 0
         else
-            ssh $SSH_OPTS $SSH_JUMP -o BatchMode=yes "$SSH_USER@$host" "true" 2>/dev/null && return 0
+            last_err=$(ssh $SSH_OPTS -o "ProxyCommand=$PROXY_CMD" -o BatchMode=yes "$SSH_USER@$host" "true" 2>&1) && return 0
         fi
+        if [ "$i" -eq 1 ]; then
+            echo "    First attempt error: $last_err"
+        fi
+        echo "    Attempt $i/$max_attempts failed, retrying in 10s..."
         sleep 10
     done
     echo "  ERROR: SSH not available after ${max_attempts} attempts"
+    echo "  Last error: $last_err"
     return 1
 }
 
@@ -223,6 +328,7 @@ deploy_exchange_simulator() {
     echo "============================================================"
 
     wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+    ensure_prerequisites "$HOST" "$COMP" "jump"
 
     remote_exec "$HOST" "$COMP" "jump" << REMOTE
 set -e
@@ -298,10 +404,20 @@ ExecStart=/usr/bin/java \\
     -Xms2g -Xmx2g \\
     -XX:+UseZGC \\
     -XX:+AlwaysPreTouch \\
+    --add-opens java.base/java.lang=ALL-UNNAMED \\
+    --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
+    --add-opens java.base/java.io=ALL-UNNAMED \\
+    --add-opens java.base/java.nio=ALL-UNNAMED \\
+    --add-opens java.base/sun.nio.ch=ALL-UNNAMED \\
+    --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.util=ALL-UNNAMED \\
+    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
     -Dconfig.file=$DEPLOY_DIR/conf/exchange-simulator-aeron.conf \\
     -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
     -Dadmin.port=8080 \\
-    -cp $DEPLOY_DIR/conf:$DEPLOY_DIR/lib/exchange-simulator.jar \\
+    -cp '$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/*' \\
     com.omnibridge.simulator.ExchangeSimulator
 Restart=on-failure
 RestartSec=5
@@ -342,6 +458,7 @@ deploy_fix_initiator() {
     echo "============================================================"
 
     wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+    ensure_prerequisites "$HOST" "$COMP" "jump"
 
     remote_exec "$HOST" "$COMP" "jump" << REMOTE
 set -e
@@ -411,11 +528,20 @@ WorkingDirectory=$DEPLOY_DIR
 ExecStart=/usr/bin/java \\
     -Xms512m -Xmx1g \\
     -XX:+UseZGC \\
-    -Dconfig.file=$DEPLOY_DIR/conf/initiator-aws.conf \\
+    --add-opens java.base/java.lang=ALL-UNNAMED \\
+    --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
+    --add-opens java.base/java.io=ALL-UNNAMED \\
+    --add-opens java.base/java.nio=ALL-UNNAMED \\
+    --add-opens java.base/sun.nio.ch=ALL-UNNAMED \\
+    --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.util=ALL-UNNAMED \\
+    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
     -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
-    -cp $DEPLOY_DIR/conf:$DEPLOY_DIR/lib/fix-samples.jar \\
-    com.omnibridge.apps.fix.initiator.SampleInitiator --auto --count 0
-Restart=on-failure
+    -cp '$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/*' \\
+    com.omnibridge.apps.fix.initiator.SampleInitiator -c $DEPLOY_DIR/conf/initiator-aws.conf --auto --count 10000 --rate 1
+Restart=always
 RestartSec=10
 LimitNOFILE=65535
 
@@ -454,6 +580,7 @@ deploy_aeron_store() {
     echo "============================================================"
 
     wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+    ensure_prerequisites "$HOST" "$COMP" "jump"
 
     remote_exec "$HOST" "$COMP" "jump" << REMOTE
 set -e
@@ -535,7 +662,7 @@ ExecStart=/usr/bin/java \\
     --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
     --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
     -Djava.net.preferIPv4Stack=true \\
-    -cp "$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/aeron-remote-store.jar" \\
+    -cp '$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/*' \\
     com.omnibridge.persistence.aeron.AeronRemoteStoreMain \\
     -c $DEPLOY_DIR/conf/aeron-remote-store.conf
 Restart=on-failure
@@ -578,6 +705,7 @@ deploy_omniview() {
     echo "============================================================"
 
     wait_for_ssh "$HOST" "$COMP" "direct" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+    ensure_prerequisites "$HOST" "$COMP" "direct"
 
     remote_exec "$HOST" "$COMP" "direct" << REMOTE
 set -e
@@ -591,30 +719,26 @@ tar -xzf "/tmp/$DIST" -C "$DEPLOY_DIR" --strip-components=1
 chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
 rm -f "/tmp/$DIST"
 
-echo "[$COMP] Writing OmniView configuration..."
-cat > "$DEPLOY_DIR/conf/omniview.conf" << 'OMNI_CONF'
-omniview {
-    port = 3000
-    apps = [
-        {
-            name = "Exchange Simulator"
-            host = "$FIX_IP"
-            port = 8080
-            protocol = "http"
-        },
-        {
-            name = "FIX Initiator"
-            host = "$OUCH_IP"
-            port = 8082
-            protocol = "http"
-        }
-    ]
-}
-OMNI_CONF
-
-# Substitute variables in the generated config
-sed -i "s|\\\$FIX_IP|$FIX_IP|g" "$DEPLOY_DIR/conf/omniview.conf"
-sed -i "s|\\\$OUCH_IP|$OUCH_IP|g" "$DEPLOY_DIR/conf/omniview.conf"
+echo "[$COMP] Pre-configuring monitored applications..."
+mkdir -p "$DEPLOY_DIR/data"
+cat > "$DEPLOY_DIR/data/apps.json" << APPS_JSON
+[
+  {
+    "id": "exch-sim",
+    "name": "Exchange Simulator",
+    "host": "$FIX_IP",
+    "port": 8080,
+    "enabled": true
+  },
+  {
+    "id": "fix-init",
+    "name": "FIX Initiator",
+    "host": "$OUCH_IP",
+    "port": 8082,
+    "enabled": true
+  }
+]
+APPS_JSON
 
 echo "[$COMP] Creating systemd service..."
 sudo tee /etc/systemd/system/omniview.service > /dev/null << SERVICE
@@ -664,6 +788,7 @@ deploy_monitoring() {
     echo "============================================================"
 
     wait_for_ssh "$HOST" "$COMP" "direct" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+    ensure_docker "$HOST" "$COMP" "direct"
 
     remote_exec "$HOST" "$COMP" "direct" << REMOTE
 set -e
@@ -812,10 +937,10 @@ COMPOSE
 echo "[$COMP] Starting Docker Compose stack..."
 cd "$DEPLOY_DIR"
 if command -v docker &> /dev/null; then
-    docker compose up -d
+    sudo docker compose up -d
     echo "[$COMP] Monitoring stack started"
 else
-    echo "[$COMP] WARNING: Docker not available. Install Docker and run: cd $DEPLOY_DIR && docker compose up -d"
+    echo "[$COMP] WARNING: Docker not available. Install Docker and run: cd $DEPLOY_DIR && sudo docker compose up -d"
 fi
 
 echo "[$COMP] Deployment complete on $HOST"

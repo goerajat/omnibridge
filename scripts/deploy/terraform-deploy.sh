@@ -9,6 +9,7 @@
 #
 # Options:
 #   -d, --destroy     Destroy existing infrastructure before applying
+#   --destroy-only    Destroy infrastructure and exit (no plan/apply)
 #   -o, --output      Output file for Terraform outputs (default: tf-outputs.json)
 #   -e, --env         Terraform environment directory (default: production)
 #   -v, --version     Override app_version in terraform.tfvars
@@ -20,6 +21,7 @@
 #   ./terraform-deploy.sh                          # Init + plan + apply
 #   ./terraform-deploy.sh -d                       # Destroy + init + plan + apply
 #   ./terraform-deploy.sh -d --auto-approve        # Non-interactive full redeploy
+#   ./terraform-deploy.sh --destroy-only           # Tear down everything
 #   ./terraform-deploy.sh --plan-only              # Preview changes only
 #   ./terraform-deploy.sh -v 1.0.3-SNAPSHOT        # Deploy with version override
 # =============================================================================
@@ -37,6 +39,7 @@ PLAN_ONLY=false
 AUTO_APPROVE=false
 VERSION_OVERRIDE=""
 SKIP_IP_UPDATE=false
+DESTROY_ONLY=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -69,6 +72,11 @@ while [[ $# -gt 0 ]]; do
             SKIP_IP_UPDATE=true
             shift
             ;;
+        --destroy-only)
+            DESTROY_ONLY=true
+            DESTROY=true
+            shift
+            ;;
         --help)
             echo "Terraform Deploy Script"
             echo ""
@@ -81,6 +89,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -v, --version     Override app_version in terraform.tfvars"
             echo "  --plan-only       Run init + plan only, do not apply"
             echo "  --auto-approve    Skip confirmation prompts"
+            echo "  --destroy-only    Destroy infrastructure and exit (no plan/apply)"
             echo "  --skip-ip-update  Skip auto-detection of public IP for ssh_cidrs/grafana_cidrs"
             exit 0
             ;;
@@ -191,6 +200,13 @@ if [ "$DESTROY" = true ]; then
     echo ""
     echo "Destroy complete."
     echo ""
+
+    if [ "$DESTROY_ONLY" = true ]; then
+        echo "========================================================"
+        echo "Infrastructure destroyed. Exiting (--destroy-only)."
+        echo "========================================================"
+        exit 0
+    fi
 else
     echo "[1/4] Skipping destroy (use -d to destroy first)"
     echo ""
@@ -258,11 +274,11 @@ echo "--------------------------------------------------------------"
 
 # Extract and display key IPs using portable parsing
 if command -v jq &> /dev/null; then
-    FIX_IP=$(jq -r '.fix_acceptor_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null)
-    OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null)
-    AERON_IP=$(jq -r '.aeron_persistence_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null)
-    MON_IP=$(jq -r '.monitoring_public_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null)
-    GRAFANA=$(jq -r '.grafana_url.value // empty' "$OUTPUT_FILE" 2>/dev/null)
+    FIX_IP=$(jq -r '.fix_acceptor_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    AERON_IP=$(jq -r '.aeron_persistence_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    MON_IP=$(jq -r '.monitoring_public_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    GRAFANA=$(jq -r '.grafana_url.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
 
     printf "  %-25s %s\n" "FIX Acceptor:" "${FIX_IP:-N/A}"
     printf "  %-25s %s\n" "OUCH Acceptor:" "${OUCH_IP:-N/A}"

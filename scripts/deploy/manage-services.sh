@@ -98,6 +98,10 @@ if [ ! -f "$PEM_FILE" ]; then
     echo "Error: PEM file not found: $PEM_FILE"
     exit 1
 fi
+
+# Resolve PEM file to absolute path (needed for ProxyCommand subprocess)
+PEM_FILE="$(cd "$(dirname "$PEM_FILE")" && pwd)/$(basename "$PEM_FILE")"
+
 if ! command -v jq &> /dev/null; then
     echo "Error: jq is required. Install with: sudo apt install jq / brew install jq"
     exit 1
@@ -109,13 +113,13 @@ if [ ${#COMPONENTS[@]} -eq 0 ]; then
 fi
 
 # Extract IPs
-FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS")
-OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS")
-AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS")
-MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS")
+FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS" | tr -d '\r')
 
 SSH_OPTS="-i $PEM_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p $SSH_PORT"
-SSH_JUMP="-o ProxyJump=$SSH_USER@$MONITORING_PUBLIC_IP:$SSH_PORT"
+PROXY_CMD="ssh -i $PEM_FILE -o StrictHostKeyChecking=no -p $SSH_PORT -W %h:%p $SSH_USER@$MONITORING_PUBLIC_IP"
 
 # -------------------------------------------------------------------------
 # Service definitions: component -> (host, jump_mode, service_name, label)
@@ -168,7 +172,7 @@ remote_exec() {
     if [ "$jump" = "direct" ]; then
         ssh $SSH_OPTS "$SSH_USER@$host" "$@"
     else
-        ssh $SSH_OPTS $SSH_JUMP "$SSH_USER@$host" "$@"
+        ssh $SSH_OPTS -o "ProxyCommand=$PROXY_CMD" "$SSH_USER@$host" "$@"
     fi
 }
 
@@ -229,9 +233,9 @@ manage_component() {
         local action=$(docker_cmd "$cmd")
         if [ "$cmd" = "status" ]; then
             echo ""
-            remote_exec "$host" "$jump" "cd /opt/monitoring && docker compose $action 2>/dev/null" 2>/dev/null || echo "    (docker compose not available)"
+            remote_exec "$host" "$jump" "cd /opt/monitoring && sudo docker compose $action 2>/dev/null" 2>/dev/null || echo "    (docker compose not available)"
         else
-            remote_exec "$host" "$jump" "cd /opt/monitoring && docker compose $action" 2>/dev/null
+            remote_exec "$host" "$jump" "cd /opt/monitoring && sudo docker compose $action" 2>/dev/null
             rc=$?
             if [ $rc -eq 0 ]; then
                 echo "OK"

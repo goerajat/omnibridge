@@ -126,6 +126,7 @@ module "monitoring" {
   key_name               = var.key_name
   subnet_id              = module.vpc.monitoring_subnet_id
   security_group_id      = module.vpc.monitoring_security_group_id
+  s3_bucket              = var.s3_artifact_bucket
   grafana_admin_password = var.grafana_admin_password
   slack_webhook_url      = var.slack_webhook_url
 

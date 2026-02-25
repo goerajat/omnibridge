@@ -38,6 +38,11 @@ variable "trading_app_ips" {
   type        = list(string)
 }
 
+variable "s3_bucket" {
+  description = "S3 bucket name for downloading OmniView artifacts"
+  type        = string
+}
+
 variable "grafana_admin_password" {
   description = "Admin password for the Grafana dashboard"
   type        = string

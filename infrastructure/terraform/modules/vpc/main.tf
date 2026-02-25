@@ -307,6 +307,16 @@ resource "aws_vpc_security_group_ingress_rule" "trading_ssh" {
   cidr_ipv4         = each.value
 }
 
+# SSH via monitoring bastion (ProxyCommand jump host)
+resource "aws_vpc_security_group_ingress_rule" "trading_ssh_from_monitoring" {
+  security_group_id            = aws_security_group.trading.id
+  description                  = "SSH from monitoring bastion"
+  from_port                    = 22
+  to_port                      = 22
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.monitoring.id
+}
+
 # Aeron replay responses (UDP 40458) - from persistence SG
 resource "aws_vpc_security_group_ingress_rule" "trading_aeron_replay_from_persistence" {
   security_group_id            = aws_security_group.trading.id
@@ -442,6 +452,16 @@ resource "aws_vpc_security_group_ingress_rule" "persistence_ssh" {
   to_port           = 22
   ip_protocol       = "tcp"
   cidr_ipv4         = each.value
+}
+
+# SSH via monitoring bastion (ProxyCommand jump host)
+resource "aws_vpc_security_group_ingress_rule" "persistence_ssh_from_monitoring" {
+  security_group_id            = aws_security_group.persistence.id
+  description                  = "SSH from monitoring bastion"
+  from_port                    = 22
+  to_port                      = 22
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.monitoring.id
 }
 
 # Prometheus metrics scraping (port 8080) - from monitoring SG

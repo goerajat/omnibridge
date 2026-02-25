@@ -110,6 +110,21 @@ terraform --version   # >= 1.5.0
 aws --version         # v2.x
 java -version         # 17+
 mvn --version         # 3.8+
+jq --version          # 1.6+ (optional, for formatted deploy output)
+```
+
+**jq** is used by `terraform-deploy.sh` to display the infrastructure summary after a deploy. If not installed, the script still works but prints raw output instead.
+
+```bash
+# Linux (apt)
+sudo apt install -y jq
+
+# macOS
+brew install jq
+
+# Windows (Cygwin/MSYS2) — download the static binary
+curl -Lo /usr/local/bin/jq.exe https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe
+chmod +x /usr/local/bin/jq.exe
 ```
 
 ### 2. Configure AWS Credentials

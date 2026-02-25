@@ -101,6 +101,26 @@ if [ -z "$VERSION" ]; then
     fi
 fi
 
+# Locate AWS CLI
+AWS_CMD="aws"
+if ! command -v aws &>/dev/null; then
+    if [ -x "/c/Program Files/Amazon/AWSCLIV2/aws.exe" ]; then
+        AWS_CMD="/c/Program Files/Amazon/AWSCLIV2/aws.exe"
+    else
+        echo "Error: AWS CLI not found. Install it or add it to PATH."
+        exit 1
+    fi
+fi
+
+# Convert a path to native format for the AWS CLI (handles Cygwin/MSYS2 on Windows)
+to_native_path() {
+    if command -v cygpath &>/dev/null; then
+        cygpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
+
 S3_PREFIX="s3://$S3_BUCKET/omnibridge/$ENVIRONMENT"
 
 echo "========================================================"
@@ -172,7 +192,7 @@ for comp in "${UNIQUE[@]}"; do
         UPLOADED=$((UPLOADED + 1))
     else
         echo -n "UP    $comp ($SIZE) -> $S3_PREFIX/$ARTIFACT_NAME ... "
-        if aws s3 cp "$ARTIFACT_PATH" "$S3_PREFIX/$ARTIFACT_NAME" --quiet 2>/dev/null; then
+        if "$AWS_CMD" s3 cp "$(to_native_path "$ARTIFACT_PATH")" "$S3_PREFIX/$ARTIFACT_NAME" --quiet; then
             echo "OK"
             UPLOADED=$((UPLOADED + 1))
         else
