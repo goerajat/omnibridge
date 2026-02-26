@@ -1,5 +1,13 @@
 package com.omnibridge.persistence.aeron;
 
+import com.omnibridge.admin.AdminServer;
+import com.omnibridge.admin.config.AdminServerConfig;
+import com.omnibridge.config.provider.ComponentProvider;
+import com.omnibridge.metrics.MetricsComponent;
+import com.omnibridge.metrics.MetricsConfig;
+import com.omnibridge.metrics.MetricsRouteProvider;
+import com.omnibridge.persistence.aeron.admin.AeronStoreMetricsBinder;
+import com.omnibridge.persistence.aeron.admin.AeronStoreRouteProvider;
 import com.omnibridge.persistence.aeron.config.AeronRemoteStoreConfig;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -34,6 +42,9 @@ public class AeronRemoteStoreMain implements Callable<Integer> {
     private File configFile;
 
     private volatile AeronRemoteStore remoteStore;
+    private volatile AdminServer adminServer;
+    private volatile MetricsComponent metricsComponent;
+    private volatile AeronStoreMetricsBinder metricsBinder;
 
     @Override
     public Integer call() throws Exception {
@@ -50,8 +61,46 @@ public class AeronRemoteStoreMain implements Callable<Integer> {
 
         remoteStore = new AeronRemoteStore(config);
 
+        // Admin server + metrics setup
+        AdminServerConfig adminConfig = AdminServerConfig.fromConfig(rootConfig);
+        MetricsConfig metricsConfig = MetricsConfig.fromConfig(rootConfig);
+
+        // No-op ComponentProvider — the store doesn't use the component framework
+        ComponentProvider noOpProvider = new ComponentProvider() {
+            @Override
+            public <T extends com.omnibridge.config.Component> T getComponent(Class<T> type) {
+                return null;
+            }
+
+            @Override
+            public <T extends com.omnibridge.config.Component> T getComponent(String name, Class<T> type) {
+                return null;
+            }
+
+            @Override
+            public Config getConfig() {
+                return rootConfig;
+            }
+        };
+
+        metricsComponent = new MetricsComponent("aeron-store-metrics", metricsConfig, noOpProvider);
+        adminServer = new AdminServer("aeron-store-admin", adminConfig);
+
+        // Register route providers
+        adminServer.addRouteProvider(new AeronStoreRouteProvider(remoteStore));
+        adminServer.addRouteProvider(new MetricsRouteProvider(metricsComponent));
+
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Shutdown signal received");
+            if (adminServer != null) {
+                adminServer.stop();
+            }
+            if (metricsBinder != null) {
+                metricsBinder.close();
+            }
+            if (metricsComponent != null) {
+                metricsComponent.stop();
+            }
             if (remoteStore != null) {
                 log.info("Total entries received: {}", remoteStore.getEntriesReceived());
                 remoteStore.stop();
@@ -60,6 +109,19 @@ public class AeronRemoteStoreMain implements Callable<Integer> {
 
         remoteStore.initialize();
         remoteStore.startActive();
+
+        // Initialize and start admin + metrics after store is running
+        metricsComponent.initialize();
+        metricsComponent.startActive();
+
+        // Bind Aeron store metrics to registry
+        if (metricsComponent.getRegistry() != null) {
+            metricsBinder = new AeronStoreMetricsBinder(remoteStore);
+            metricsBinder.bindTo(metricsComponent.getRegistry());
+        }
+
+        adminServer.initialize();
+        adminServer.startActive();
 
         log.info("AeronRemoteStore is running. Press Ctrl+C to stop.");
 

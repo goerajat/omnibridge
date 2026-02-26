@@ -73,7 +73,7 @@ public class AppConfigService {
         if (id == null || id.isEmpty()) {
             id = generateId();
         }
-        AppConfig newApp = new AppConfig(id, app.name(), app.host(), app.port(), app.enabled());
+        AppConfig newApp = new AppConfig(id, app.name(), app.host(), app.port(), app.enabled(), app.type());
         apps.put(id, newApp);
         saveConfigs();
         LOG.info("Added app: {} ({}:{})", newApp.name(), newApp.host(), newApp.port());
@@ -98,7 +98,8 @@ public class AppConfigService {
             updates.name() != null ? updates.name() : existing.name(),
             updates.host() != null ? updates.host() : existing.host(),
             updates.port() > 0 ? updates.port() : existing.port(),
-            updates.enabled()
+            updates.enabled(),
+            updates.type() != null ? updates.type() : existing.type()
         );
 
         apps.put(id, updated);
@@ -140,7 +141,8 @@ public class AppConfigService {
             existing.name(),
             existing.host(),
             existing.port(),
-            !existing.enabled()
+            !existing.enabled(),
+            existing.type()
         );
 
         apps.put(id, updated);
@@ -186,12 +188,21 @@ public class AppConfigService {
 
     /**
      * App configuration record.
+     * @param type app type: "engine" (protocol engine with WebSocket sessions) or "store" (infrastructure service with REST polling)
      */
     public record AppConfig(
         String id,
         String name,
         String host,
         int port,
-        boolean enabled
-    ) {}
+        boolean enabled,
+        String type
+    ) {
+        /**
+         * Returns the effective type, defaulting to "engine" for backward compatibility.
+         */
+        public String effectiveType() {
+            return type != null && !type.isEmpty() ? type : "engine";
+        }
+    }
 }

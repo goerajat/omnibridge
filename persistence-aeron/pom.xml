@@ -23,6 +23,18 @@
             <artifactId>config</artifactId>
         </dependency>
 
+        <!-- Admin API -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>admin</artifactId>
+        </dependency>
+
+        <!-- Metrics -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>metrics</artifactId>
+        </dependency>
+
         <!-- Configuration -->
         <dependency>
             <groupId>com.typesafe</groupId>

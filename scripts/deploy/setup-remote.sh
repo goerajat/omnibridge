@@ -632,6 +632,17 @@ persistence {
     max-file-size = 256MB
     sync-on-write = false
 }
+
+admin {
+    port = 8083
+    host = "0.0.0.0"
+    context-path = "/api"
+}
+
+metrics {
+    enabled = true
+    include-jvm = true
+}
 STORE_CONF
 
 # Substitute variables in the generated config
@@ -827,6 +838,14 @@ scrape_configs:
           app: 'fix-initiator'
           environment: 'production'
 
+  - job_name: 'aeron-remote-store'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['$AERON_IP:8083']
+        labels:
+          app: 'aeron-remote-store'
+          environment: 'production'
+
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
@@ -834,6 +853,7 @@ PROM_CONF
 
 sed -i "s|\\\$FIX_IP|$FIX_IP|g" "$DEPLOY_DIR/prometheus/prometheus.yml"
 sed -i "s|\\\$OUCH_IP|$OUCH_IP|g" "$DEPLOY_DIR/prometheus/prometheus.yml"
+sed -i "s|\\\$AERON_IP|$AERON_IP|g" "$DEPLOY_DIR/prometheus/prometheus.yml"
 
 echo "[$COMP] Writing alert rules..."
 cat > "$DEPLOY_DIR/prometheus/rules/omnibridge-alerts.yml" << 'ALERTS'

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { testConnection } from '../api/sessions'
-import type { AppConfig } from '../types'
+import type { AppConfig, AppType } from '../types'
 
 interface AddAppModalProps {
   isOpen: boolean
@@ -15,6 +15,7 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
   const [name, setName] = useState(editApp?.name || '')
   const [host, setHost] = useState(editApp?.host || 'localhost')
   const [port, setPort] = useState(editApp?.port?.toString() || '8080')
+  const [type, setType] = useState<AppType>(editApp?.type || 'engine')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'failure' | null>(null)
   const [error, setError] = useState('')
@@ -44,6 +45,7 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
           name: name.trim(),
           host: host.trim(),
           port: portNum,
+          type,
         })
       } else {
         await addApp({
@@ -51,6 +53,7 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
           host: host.trim(),
           port: portNum,
           enabled: true,
+          type,
         })
       }
       onClose()
@@ -78,6 +81,7 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
       host: host.trim(),
       port: portNum,
       enabled: true,
+      type,
     })
 
     setTestResult(success ? 'success' : 'failure')
@@ -130,6 +134,20 @@ export function AddAppModal({ isOpen, onClose, editApp }: AddAppModalProps) {
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="8080"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Type
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as AppType)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="engine">Engine</option>
+                <option value="store">Store</option>
+              </select>
             </div>
 
             {error && (

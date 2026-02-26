@@ -26,6 +26,20 @@
             <artifactId>persistence</artifactId>
         </dependency>
 
+        <!-- Admin API -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>admin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Metrics -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>metrics</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- CLI framework -->
         <dependency>
             <groupId>info.picocli</groupId>

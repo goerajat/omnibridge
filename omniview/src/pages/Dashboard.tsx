@@ -10,8 +10,10 @@ export function Dashboard() {
   const { getStats, getConnectionStatus } = useSessionStore()
   const [showAddModal, setShowAddModal] = useState(false)
 
-  const enabledApps = apps.filter((app) => app.enabled)
-  const disabledApps = apps.filter((app) => !app.enabled)
+  // Only show engine-type apps on the dashboard (stores have their own page)
+  const engineApps = apps.filter((app) => !app.type || app.type === 'engine')
+  const enabledApps = engineApps.filter((app) => app.enabled)
+  const disabledApps = engineApps.filter((app) => !app.enabled)
 
   return (
     <div>
@@ -25,7 +27,7 @@ export function Dashboard() {
         </button>
       </div>
 
-      {apps.length === 0 ? (
+      {engineApps.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-400 mb-4">
             No applications configured yet.

@@ -31,7 +31,8 @@ export function useAppConnections() {
   useEffect(() => {
     mountedRef.current = true
 
-    const enabledApps = apps.filter((app) => app.enabled)
+    // Only connect WebSockets to engine-type apps (stores use REST polling)
+    const enabledApps = apps.filter((app) => app.enabled && (!app.type || app.type === 'engine'))
     const currentAppIds = new Set(enabledApps.map((app) => app.id))
 
     // Close connections for removed or disabled apps
