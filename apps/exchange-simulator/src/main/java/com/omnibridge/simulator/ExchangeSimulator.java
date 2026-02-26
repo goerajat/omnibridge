@@ -1,6 +1,8 @@
 package com.omnibridge.simulator;
 
+import com.omnibridge.admin.AdminServer;
 import com.omnibridge.apps.common.ApplicationBase;
+import com.omnibridge.apps.common.demo.DemoOrderTracker;
 import com.omnibridge.fix.engine.FixEngine;
 import com.omnibridge.fix.engine.session.FixSession;
 import com.omnibridge.ilink3.engine.ILink3Engine;
@@ -16,6 +18,7 @@ import com.omnibridge.simulator.core.order.DefaultOrderBook;
 import com.omnibridge.simulator.core.order.OrderBook;
 import com.omnibridge.simulator.core.order.OrderIdGenerator;
 import com.omnibridge.simulator.handler.*;
+import com.omnibridge.simulator.routes.SimulatorOrderRoutes;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigList;
 import com.typesafe.config.ConfigValue;
@@ -43,6 +46,9 @@ public class ExchangeSimulator extends ApplicationBase {
     private FillEngine fillEngine;
     private OrderIdGenerator orderIdGenerator;
 
+    // Demo
+    private DemoOrderTracker demoTracker;
+
     // Protocol handlers
     private FixProtocolHandler fixHandler;
     private OuchProtocolHandler ouchHandler;
@@ -64,12 +70,26 @@ public class ExchangeSimulator extends ApplicationBase {
         orderIdGenerator = new OrderIdGenerator(1000000);
         fillEngine = createFillEngine(provider.getConfig());
 
+        // Check for demo mode
+        Config config = provider.getConfig();
+        boolean demoEnabled = config.hasPath("demo.enabled") && config.getBoolean("demo.enabled");
+        if (demoEnabled) {
+            int maxOrders = config.hasPath("demo.max-orders") ? config.getInt("demo.max-orders") : 500;
+            demoTracker = new DemoOrderTracker(true, maxOrders);
+            log.info("Demo mode enabled (max orders: {})", maxOrders);
+        }
+
         // Create protocol handlers
         fixHandler = new FixProtocolHandler(orderBook, fillEngine, orderIdGenerator);
         ouchHandler = new OuchProtocolHandler(orderBook, fillEngine, orderIdGenerator);
         ilink3Handler = new ILink3ProtocolHandler(orderBook, fillEngine, orderIdGenerator);
         optiqHandler = new OptiqProtocolHandler(orderBook, fillEngine, orderIdGenerator);
         pillarHandler = new PillarProtocolHandler(orderBook, fillEngine, orderIdGenerator);
+
+        // Wire demo tracker into FIX handler
+        if (demoTracker != null) {
+            fixHandler.setTracker(demoTracker);
+        }
 
         log.info("Created order book and fill engine");
     }
@@ -123,6 +143,20 @@ public class ExchangeSimulator extends ApplicationBase {
             log.info("Registered Pillar handler");
         } catch (IllegalArgumentException e) {
             log.debug("Pillar engine not configured");
+        }
+
+        // Register demo order routes
+        if (demoTracker != null) {
+            try {
+                AdminServer adminServer = provider.getComponent(AdminServer.class);
+                SimulatorOrderRoutes orderRoutes = new SimulatorOrderRoutes(
+                        orderBook, demoTracker, fixHandler.getResponseSender(),
+                        () -> provider.getComponent(FixEngine.class));
+                orderRoutes.registerRoutes(adminServer.getApp(), adminServer.getConfig().getContextPath());
+                log.info("Registered demo order routes at /api/orders");
+            } catch (IllegalArgumentException e) {
+                log.debug("AdminServer not configured, skipping demo routes");
+            }
         }
 
         logStartupInfo();

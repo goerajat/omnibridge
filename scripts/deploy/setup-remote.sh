@@ -346,6 +346,10 @@ echo "[$COMP] Writing Aeron persistence config overlay..."
 cat > "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf" << 'AERON_CONF'
 include "exchange-simulator.conf"
 
+demo {
+    enabled = true
+}
+
 persistence {
     enabled = true
     store-type = "aeron"
@@ -489,6 +493,10 @@ admin {
     port = 8082
 }
 
+demo {
+    enabled = true
+}
+
 persistence {
     base-path = "$DEPLOY_DIR/data/fix-logs"
 }
@@ -540,7 +548,7 @@ ExecStart=/usr/bin/java \\
     --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
     -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
     -cp '$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/*' \\
-    com.omnibridge.apps.fix.initiator.SampleInitiator -c $DEPLOY_DIR/conf/initiator-aws.conf --auto --count 10000 --rate 1
+    com.omnibridge.apps.fix.initiator.SampleInitiator -c $DEPLOY_DIR/conf/initiator-aws.conf --demo --auto --count 10000 --rate 1
 Restart=always
 RestartSec=10
 LimitNOFILE=65535

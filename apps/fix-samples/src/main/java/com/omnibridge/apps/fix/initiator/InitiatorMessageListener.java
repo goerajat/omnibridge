@@ -1,5 +1,7 @@
 package com.omnibridge.apps.fix.initiator;
 
+import com.omnibridge.apps.common.demo.DemoOrderTracker;
+import com.omnibridge.apps.common.demo.MessageEvent;
 import com.omnibridge.fix.engine.session.FixSession;
 import com.omnibridge.fix.engine.session.MessageListener;
 import com.omnibridge.fix.message.FixTags;
@@ -7,6 +9,8 @@ import com.omnibridge.fix.message.IncomingFixMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -23,6 +27,9 @@ public class InitiatorMessageListener implements MessageListener {
 
     // Latency tracking (optional, for performance testing)
     private volatile LatencyTracker latencyTracker;
+
+    // Demo order tracker (optional, for demo UI)
+    private DemoOrderTracker demoTracker;
 
     /**
      * Create a message listener with default settings.
@@ -47,6 +54,15 @@ public class InitiatorMessageListener implements MessageListener {
      */
     public void setLatencyTracker(LatencyTracker tracker) {
         this.latencyTracker = tracker;
+    }
+
+    /**
+     * Set a demo order tracker for the demo UI.
+     *
+     * @param tracker the demo tracker (may be null to disable)
+     */
+    public void setDemoTracker(DemoOrderTracker tracker) {
+        this.demoTracker = tracker;
     }
 
     @Override
@@ -108,6 +124,38 @@ public class InitiatorMessageListener implements MessageListener {
             log.info("ExecutionReport: ClOrdID={}, OrdID={}, ExecType={}, Status={}, " +
                             "Symbol={}, CumQty={}, LeavesQty={}, AvgPx={}, Text={}",
                     clOrdId, orderId, execTypeStr, ordStatus, symbol, cumQty, leavesQty, avgPx, text);
+
+            // Track in demo tracker
+            DemoOrderTracker dt = this.demoTracker;
+            if (dt != null && dt.isEnabled() && clOrdId != null) {
+                // Map order state from exec type
+                String state = switch (execType) {
+                    case FixTags.EXEC_TYPE_NEW -> "NEW";
+                    case FixTags.EXEC_TYPE_PARTIAL_FILL -> "PARTIALLY_FILLED";
+                    case FixTags.EXEC_TYPE_FILL -> "FILLED";
+                    case FixTags.EXEC_TYPE_CANCELED -> "CANCELED";
+                    case FixTags.EXEC_TYPE_REPLACED -> "REPLACED";
+                    case FixTags.EXEC_TYPE_REJECTED -> "REJECTED";
+                    default -> "UNKNOWN";
+                };
+
+                Map<String, String> fields = new LinkedHashMap<>();
+                fields.put("ExecType", execTypeStr);
+                fields.put("OrdStatus", String.valueOf(ordStatus));
+                if (orderId != null) fields.put("OrderID", orderId);
+                if (symbol != null) fields.put("Symbol", symbol);
+                fields.put("CumQty", String.valueOf(cumQty));
+                fields.put("LeavesQty", String.valueOf(leavesQty));
+                fields.put("AvgPx", String.valueOf(avgPx));
+                if (text != null) fields.put("Text", text);
+
+                dt.addMessage(clOrdId, new MessageEvent(
+                        System.currentTimeMillis(), "RECEIVED",
+                        FixTags.MsgTypes.ExecutionReport,
+                        "ExecutionReport (" + execTypeStr + ")",
+                        fields, execReport.toString()));
+                dt.updateOrder(clOrdId, state, cumQty, leavesQty, avgPx);
+            }
         }
     }
 

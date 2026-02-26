@@ -1,8 +1,12 @@
+import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store/appStore'
 import { useSessionStore } from '../store/sessionStore'
 import { SessionsTable } from '../components/SessionsTable'
 import { ConnectionStatus } from '../components/ConnectionStatus'
+import { OrdersPanel } from '../components/OrdersPanel'
+import { fetchOrderCapabilities } from '../api/orders'
+import type { OrderCapabilities } from '../types'
 
 export function AppDetail() {
   const { appId } = useParams<{ appId: string }>()
@@ -10,6 +14,13 @@ export function AppDetail() {
   const app = useAppStore((state) => state.getApp(appId || ''))
   const { getSessions, getStats, getConnectionStatus, getLastError } =
     useSessionStore()
+  const [activeTab, setActiveTab] = useState<'sessions' | 'orders'>('sessions')
+  const [orderCapabilities, setOrderCapabilities] = useState<OrderCapabilities | null>(null)
+
+  useEffect(() => {
+    if (!app) return
+    fetchOrderCapabilities(app).then(setOrderCapabilities)
+  }, [app])
 
   if (!app) {
     return (
@@ -29,6 +40,7 @@ export function AppDetail() {
   const stats = getStats(app.id)
   const connectionStatus = getConnectionStatus(app.id)
   const lastError = getLastError(app.id)
+  const hasOrders = orderCapabilities != null
 
   return (
     <div>
@@ -69,16 +81,50 @@ export function AppDetail() {
         />
       </div>
 
+      {/* Tabs */}
+      {hasOrders && (
+        <div className="flex gap-1 mb-4">
+          <button
+            onClick={() => setActiveTab('sessions')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'sessions'
+                ? 'bg-gray-800 text-white border border-gray-700 border-b-0'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Sessions
+          </button>
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'orders'
+                ? 'bg-gray-800 text-white border border-gray-700 border-b-0'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Orders
+          </button>
+        </div>
+      )}
+
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h2 className="text-lg font-semibold text-white mb-4">Sessions</h2>
-        {connectionStatus === 'connected' ? (
-          <SessionsTable sessions={sessions} app={app} />
+        {activeTab === 'sessions' ? (
+          <>
+            {!hasOrders && (
+              <h2 className="text-lg font-semibold text-white mb-4">Sessions</h2>
+            )}
+            {connectionStatus === 'connected' ? (
+              <SessionsTable sessions={sessions} app={app} />
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                {connectionStatus === 'connecting'
+                  ? 'Connecting to application...'
+                  : 'Not connected to application'}
+              </div>
+            )}
+          </>
         ) : (
-          <div className="text-center py-8 text-gray-400">
-            {connectionStatus === 'connecting'
-              ? 'Connecting to application...'
-              : 'Not connected to application'}
-          </div>
+          orderCapabilities && <OrdersPanel app={app} capabilities={orderCapabilities} />
         )}
       </div>
     </div>

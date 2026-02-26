@@ -1,6 +1,9 @@
 package com.omnibridge.apps.fix.initiator;
 
+import com.omnibridge.admin.AdminServer;
 import com.omnibridge.apps.common.ApplicationBase;
+import com.omnibridge.apps.common.demo.DemoOrderTracker;
+import com.omnibridge.apps.fix.initiator.routes.InitiatorOrderRoutes;
 import com.omnibridge.fix.engine.FixEngine;
 import com.omnibridge.fix.engine.session.FixSession;
 import org.slf4j.Logger;
@@ -54,8 +57,12 @@ public class SampleInitiator extends ApplicationBase {
     @Option(names = {"--backpressure-timeout"}, description = "Seconds to wait in backpressure before aborting", defaultValue = "5")
     private int backpressureTimeoutSeconds;
 
+    @Option(names = {"--demo"}, description = "Enable demo mode (order tracking UI, no auto-exit)", defaultValue = "false")
+    private boolean demoMode;
+
     private CountDownLatch logonLatch;
     private InitiatorMessageListener messageListener;
+    private DemoOrderTracker demoTracker;
 
     @Override
     protected List<String> getConfigFiles() {
@@ -93,23 +100,25 @@ public class SampleInitiator extends ApplicationBase {
             return;
         }
 
-        // Run initiator logic (message sending)
+        // Run initiator logic (connect, logon, run mode, optionally stay alive)
         runInitiatorLogic(engine, sessions);
-
-        // Signal shutdown after initiator logic completes
-        running = false;
     }
 
     @Override
     protected void awaitShutdown() throws InterruptedException {
         // For initiator, postStart runs the test logic and sets running=false when done
-        // Just wait for running to become false
+        // In demo mode, running stays true so the process stays alive
         while (running) {
             Thread.sleep(100);
         }
     }
 
     private void configureEngine(FixEngine engine, List<FixSession> sessions) {
+        // Check config-based demo flag as alternative to CLI
+        if (!demoMode && provider.getConfig().hasPath("demo.enabled")) {
+            demoMode = provider.getConfig().getBoolean("demo.enabled");
+        }
+
         if (latencyMode) {
             setLogLevel("ERROR");
             System.out.println("Latency tracking mode enabled - log level set to ERROR");
@@ -123,6 +132,15 @@ public class SampleInitiator extends ApplicationBase {
         logonLatch = new CountDownLatch(1);
         InitiatorStateListener stateListener = new InitiatorStateListener(logonLatch, reason -> running = false);
         messageListener = new InitiatorMessageListener(latencyMode);
+
+        // Enable demo tracker if in demo mode and not latency mode
+        if (demoMode && !latencyMode) {
+            int maxOrders = provider.getConfig().hasPath("demo.max-orders")
+                    ? provider.getConfig().getInt("demo.max-orders") : 500;
+            demoTracker = new DemoOrderTracker(true, maxOrders);
+            messageListener.setDemoTracker(demoTracker);
+            log.info("Demo mode enabled (max orders: {})", maxOrders);
+        }
 
         engine.addStateListener(stateListener);
         engine.addMessageListener(messageListener);
@@ -143,6 +161,7 @@ public class SampleInitiator extends ApplicationBase {
 
         if (!logonLatch.await(30, TimeUnit.SECONDS)) {
             System.err.println("Timeout waiting for logon");
+            running = false;
             return;
         }
 
@@ -150,6 +169,18 @@ public class SampleInitiator extends ApplicationBase {
             System.out.println("Logged on successfully!");
         } else {
             log.info("Logged on successfully!");
+        }
+
+        // Register demo order routes (before running any mode so tracking captures everything)
+        if (demoMode && !latencyMode) {
+            try {
+                AdminServer adminServer = provider.getComponent(AdminServer.class);
+                InitiatorOrderRoutes orderRoutes = new InitiatorOrderRoutes(demoTracker, () -> session);
+                orderRoutes.registerRoutes(adminServer.getApp(), adminServer.getConfig().getContextPath());
+                log.info("Registered demo order routes at /api/orders");
+            } catch (IllegalArgumentException e) {
+                log.warn("AdminServer not configured, demo routes unavailable");
+            }
         }
 
         // Run the selected mode
@@ -160,14 +191,23 @@ public class SampleInitiator extends ApplicationBase {
         } else if (autoMode) {
             AutoModeRunner runner = new AutoModeRunner(session, orderCount, ordersPerSecond);
             runner.run();
-        } else {
+        } else if (!demoMode) {
+            // Interactive mode only when not in demo mode (demo stays alive for REST API)
             InteractiveModeRunner runner = new InteractiveModeRunner(session);
             runner.run();
         }
 
-        // Logout gracefully
+        // In demo mode: stay alive for REST API orders (don't logout, don't exit)
+        if (demoMode && !latencyMode) {
+            log.info("Demo mode active - process will stay alive. Use admin API to send orders.");
+            // running stays true → awaitShutdown() keeps the process alive
+            return;
+        }
+
+        // Non-demo: logout and signal shutdown
         session.logout("User requested logout");
         Thread.sleep(1000);
+        running = false;
     }
 
     // ==================== Legacy Mode ====================
