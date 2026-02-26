@@ -1110,9 +1110,63 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
   },
   "panels": [
     {
+      "title": "Session Details",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "State" }, "properties": [
+            { "id": "mappings", "value": [
+              { "type": "value", "options": {
+                "0": { "text": "CREATED", "color": "text" },
+                "1": { "text": "DISCONNECTED", "color": "red" },
+                "2": { "text": "CONNECTING", "color": "yellow" },
+                "3": { "text": "CONNECTED", "color": "orange" },
+                "4": { "text": "LOGON_SENT", "color": "orange" },
+                "5": { "text": "LOGGED_ON", "color": "green" },
+                "6": { "text": "RESENDING", "color": "blue" },
+                "7": { "text": "LOGOUT_SENT", "color": "yellow" },
+                "8": { "text": "STOPPED", "color": "red" }
+              }}
+            ]},
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+          ]},
+          { "matcher": { "id": "byName", "options": "Last Recv (s)" }, "properties": [
+            { "id": "unit", "value": "s" },
+            { "id": "decimals", "value": 1 },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 35 }, { "color": "red", "value": 65 }] } },
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+          ]},
+          { "matcher": { "id": "byName", "options": "Msgs Sent" }, "properties": [{ "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Msgs Recv" }, "properties": [{ "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Out SeqNum" }, "properties": [{ "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "In SeqNum" }, "properties": [{ "id": "decimals", "value": 0 }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Session", "desc": false }], "footer": { "show": false } },
+      "targets": [
+        { "expr": "omnibridge_session_state{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "A" },
+        { "expr": "omnibridge_sequence_outgoing{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "B" },
+        { "expr": "omnibridge_sequence_incoming_expected{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "C" },
+        { "expr": "omnibridge_messages_sent_total{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "D" },
+        { "expr": "omnibridge_messages_received_total{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "E" },
+        { "expr": "omnibridge_heartbeat_last_received_seconds{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "F" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": {
+          "excludeByName": { "Time": true, "__name__": true, "instance": true, "app": true, "environment": true },
+          "renameByName": { "session_id": "Session", "job": "App", "protocol": "Protocol", "role": "Role", "Value #A": "State", "Value #B": "Out SeqNum", "Value #C": "In SeqNum", "Value #D": "Msgs Sent", "Value #E": "Msgs Recv", "Value #F": "Last Recv (s)" },
+          "indexByName": { "Session": 0, "App": 1, "Protocol": 2, "Role": 3, "State": 4, "Out SeqNum": 5, "In SeqNum": 6, "Msgs Sent": 7, "Msgs Recv": 8, "Last Recv (s)": 9 }
+        }}
+      ]
+    },
+    {
       "title": "Session Status",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 10 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -1129,7 +1183,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Aggregate Sessions",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 10 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
       "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
@@ -1142,7 +1196,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Processing Latency p99 (ns)",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 10 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -1157,7 +1211,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Messages Sent Rate",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ops", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [{ "expr": "rate(omnibridge_messages_sent_total{job=~\"\$job\",session_id=~\"\$session_id\"}[1m])", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
@@ -1165,7 +1219,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Messages Received Rate",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ops", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [{ "expr": "rate(omnibridge_messages_received_total{job=~\"\$job\",session_id=~\"\$session_id\"}[1m])", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
@@ -1173,7 +1227,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Message Processing Latency",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ns", "min": 0, "custom": { "fillOpacity": 5, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1187,7 +1241,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Heartbeat Rate",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ops", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1198,7 +1252,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Heartbeat Timeouts & Test Requests",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1210,7 +1264,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Outgoing Sequence Number",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [{ "expr": "omnibridge_sequence_outgoing{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
@@ -1218,7 +1272,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Expected Incoming Sequence Number",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [{ "expr": "omnibridge_sequence_incoming_expected{job=~\"\$job\",session_id=~\"\$session_id\"}", "legendFormat": "{{job}} / {{session_id}}", "refId": "A" }]
@@ -1226,7 +1280,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Session Lifecycle Events (5m)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1239,7 +1293,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Message Rejects (5m)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1250,7 +1304,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Resend Requests (5m)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 54 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1261,7 +1315,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Sequence Gaps & Resets (5m)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 54 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars", "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1273,7 +1327,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Seconds Since Last Message Received",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 62 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [
@@ -1284,7 +1338,7 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
     {
       "title": "Messages Sent / Received (Total)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 62 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "min": 0, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
       "targets": [

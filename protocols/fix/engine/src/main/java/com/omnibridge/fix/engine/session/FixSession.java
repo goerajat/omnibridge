@@ -102,6 +102,10 @@ public class FixSession implements NetworkHandler {
     private Counter claimFailedCounter;
     private DistributionSummary processingTimeSummary;
 
+    // Local message counters (single-threaded network loop, no sync needed)
+    private long localMessagesSentCount;
+    private long localMessagesReceivedCount;
+
     public FixSession(SessionConfig config, LogStore logStore) {
         this.config = config;
         this.logStore = logStore;
@@ -319,6 +323,22 @@ public class FixSession implements NetworkHandler {
         return channel;
     }
 
+    public long getLocalMessagesSentCount() {
+        return localMessagesSentCount;
+    }
+
+    public long getLocalMessagesReceivedCount() {
+        return localMessagesReceivedCount;
+    }
+
+    public long getLastSentTime() {
+        return lastSentTime;
+    }
+
+    public long getLastReceivedTime() {
+        return lastReceivedTime;
+    }
+
     /**
      * Get the session configuration.
      */
@@ -527,6 +547,7 @@ public class FixSession implements NetworkHandler {
         String msgType = message.getMsgType();
         int seqNum = message.getSeqNum();
 
+        localMessagesReceivedCount++;
         if (messagesReceivedCounter != null) {
             messagesReceivedCounter.increment();
         }
@@ -1022,6 +1043,7 @@ public class FixSession implements NetworkHandler {
             ch.commit(msg.getClaimIndex());
             lastSentTime = clockProvider.currentTimeMillis();
 
+            localMessagesSentCount++;
             if (messagesSentCounter != null) {
                 messagesSentCounter.increment();
             }

@@ -4,6 +4,8 @@ import com.omnibridge.config.session.DefaultSessionManagementService;
 import com.omnibridge.config.session.ManagedSession;
 import com.omnibridge.config.session.SessionConnectionState;
 
+import com.omnibridge.network.TcpChannel;
+
 import java.net.InetSocketAddress;
 
 /**
@@ -166,6 +168,54 @@ public class OuchSessionAdapter implements ManagedSession, OuchSession.SessionSt
         // OUCH session configuration is immutable after creation
         throw new UnsupportedOperationException(
                 "OUCH session connection address cannot be updated dynamically");
+    }
+
+    // ========== Message Statistics ==========
+
+    @Override
+    public long messagesSent() {
+        return session.getLocalMessagesSentCount();
+    }
+
+    @Override
+    public long messagesReceived() {
+        return session.getLocalMessagesReceivedCount();
+    }
+
+    @Override
+    public long lastSentTimeMs() {
+        return session.getLastSentTime();
+    }
+
+    @Override
+    public long lastReceivedTimeMs() {
+        return session.getLastReceivedTime();
+    }
+
+    @Override
+    public String remoteAddress() {
+        TcpChannel ch = session.getChannel();
+        if (ch != null && ch.isConnected()) {
+            return ch.getRemoteAddress();
+        }
+        return null;
+    }
+
+    @Override
+    public int localPort() {
+        TcpChannel ch = session.getChannel();
+        if (ch != null && ch.isConnected()) {
+            String localAddr = ch.getLocalAddress();
+            int colonIndex = localAddr.lastIndexOf(':');
+            if (colonIndex >= 0) {
+                try {
+                    return Integer.parseInt(localAddr.substring(colonIndex + 1));
+                } catch (NumberFormatException e) {
+                    return -1;
+                }
+            }
+        }
+        return -1;
     }
 
     // ========== Underlying Session Access ==========

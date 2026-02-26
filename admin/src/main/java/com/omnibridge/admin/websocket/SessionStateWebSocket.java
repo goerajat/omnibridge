@@ -20,6 +20,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -51,12 +55,15 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
 
     private static final Logger log = LoggerFactory.getLogger(SessionStateWebSocket.class);
     private static final long DEFAULT_IDLE_TIMEOUT_MS = 300000; // 5 minutes
+    private static final long SNAPSHOT_INTERVAL_MS = 2000; // 2 seconds
 
     private final SessionManagementService sessionService;
     private final Set<WsContext> clients;
     private final ObjectMapper objectMapper;
     private volatile boolean active;
     private volatile long idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
+    private ScheduledExecutorService snapshotScheduler;
+    private ScheduledFuture<?> snapshotFuture;
 
     public SessionStateWebSocket(SessionManagementService sessionService) {
         this.sessionService = sessionService;
@@ -125,12 +132,35 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
     public void onServerStart() {
         active = true;
         sessionService.addStateChangeListener(this);
-        log.info("Session state WebSocket activated");
+
+        // Start periodic snapshot broadcast
+        snapshotScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "session-snapshot-broadcaster");
+            t.setDaemon(true);
+            return t;
+        });
+        snapshotFuture = snapshotScheduler.scheduleAtFixedRate(
+                this::broadcastSnapshot,
+                SNAPSHOT_INTERVAL_MS,
+                SNAPSHOT_INTERVAL_MS,
+                TimeUnit.MILLISECONDS
+        );
+
+        log.info("Session state WebSocket activated (snapshot interval: {}ms)", SNAPSHOT_INTERVAL_MS);
     }
 
     @Override
     public void onServerStop() {
         active = false;
+
+        // Stop snapshot broadcaster
+        if (snapshotFuture != null) {
+            snapshotFuture.cancel(false);
+        }
+        if (snapshotScheduler != null) {
+            snapshotScheduler.shutdown();
+        }
+
         sessionService.removeStateChangeListener(this);
 
         // Close all client connections
@@ -258,6 +288,29 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
         return stats;
     }
 
+    private void broadcastSnapshot() {
+        if (!active || clients.isEmpty()) return;
+
+        try {
+            var allSessions = sessionService.getAllSessions();
+
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("sessions", allSessions.stream()
+                    .map(this::toSessionDto)
+                    .toList());
+            payload.put("stats", computeStats(allSessions));
+
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("type", "SESSION_SNAPSHOT");
+            event.put("timestamp", Instant.now().toString());
+            event.put("payload", payload);
+
+            broadcast(event);
+        } catch (Exception e) {
+            log.debug("Error broadcasting session snapshot", e);
+        }
+    }
+
     private Map<String, Object> toSessionDto(ManagedSession session) {
         Map<String, Object> dto = new LinkedHashMap<>();
         dto.put("sessionId", session.getSessionId());
@@ -267,6 +320,23 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
         dto.put("connected", session.isConnected());
         dto.put("loggedOn", session.isLoggedOn());
         dto.put("enabled", session.isEnabled());
+        dto.put("incomingSeqNum", session.incomingSeqNum());
+        dto.put("outgoingSeqNum", session.outgoingSeqNum());
+        dto.put("messagesSent", session.messagesSent());
+        dto.put("messagesReceived", session.messagesReceived());
+        dto.put("lastSentTimeMs", session.lastSentTimeMs());
+        dto.put("lastReceivedTimeMs", session.lastReceivedTimeMs());
+
+        String remoteAddr = session.remoteAddress();
+        if (remoteAddr != null) {
+            dto.put("remoteAddress", remoteAddr);
+        }
+
+        int lp = session.localPort();
+        if (lp > 0) {
+            dto.put("localPort", lp);
+        }
+
         return dto;
     }
 

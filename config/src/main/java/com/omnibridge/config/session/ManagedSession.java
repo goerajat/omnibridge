@@ -150,6 +150,62 @@ public interface ManagedSession {
      */
     void updateConnectionAddress(String host, int port);
 
+    // ========== Message Statistics ==========
+
+    /**
+     * Get the total number of messages sent on this session.
+     *
+     * @return the number of messages sent
+     */
+    default long messagesSent() {
+        return 0;
+    }
+
+    /**
+     * Get the total number of messages received on this session.
+     *
+     * @return the number of messages received
+     */
+    default long messagesReceived() {
+        return 0;
+    }
+
+    /**
+     * Get the time the last message was sent, in epoch milliseconds.
+     *
+     * @return epoch ms of last sent message, or 0 if none
+     */
+    default long lastSentTimeMs() {
+        return 0;
+    }
+
+    /**
+     * Get the time the last message was received, in epoch milliseconds.
+     *
+     * @return epoch ms of last received message, or 0 if none
+     */
+    default long lastReceivedTimeMs() {
+        return 0;
+    }
+
+    /**
+     * Get the remote peer address as "host:port".
+     *
+     * @return the remote address string, or null if not connected
+     */
+    default String remoteAddress() {
+        return null;
+    }
+
+    /**
+     * Get the local port used for the current connection.
+     *
+     * @return the local port, or -1 if not connected
+     */
+    default int localPort() {
+        return -1;
+    }
+
     // ========== Underlying Session Access ==========
 
     /**

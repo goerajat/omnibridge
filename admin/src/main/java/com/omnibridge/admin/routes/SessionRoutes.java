@@ -258,13 +258,28 @@ public class SessionRoutes implements RouteProvider {
         dto.put("connected", session.isConnected());
         dto.put("loggedOn", session.isLoggedOn());
         dto.put("enabled", session.isEnabled());
+        dto.put("incomingSeqNum", session.incomingSeqNum());
+        dto.put("outgoingSeqNum", session.outgoingSeqNum());
+        dto.put("messagesSent", session.messagesSent());
+        dto.put("messagesReceived", session.messagesReceived());
+        dto.put("lastSentTimeMs", session.lastSentTimeMs());
+        dto.put("lastReceivedTimeMs", session.lastReceivedTimeMs());
+
+        String remoteAddr = session.remoteAddress();
+        if (remoteAddr != null) {
+            dto.put("remoteAddress", remoteAddr);
+        }
+
+        int lp = session.localPort();
+        if (lp > 0) {
+            dto.put("localPort", lp);
+        }
+
         return dto;
     }
 
     private Map<String, Object> toDetailedDto(ManagedSession session) {
         Map<String, Object> dto = toDto(session);
-        dto.put("incomingSeqNum", session.incomingSeqNum());
-        dto.put("outgoingSeqNum", session.outgoingSeqNum());
 
         if (session.connectionAddress() != null) {
             dto.put("connectionAddress", session.connectionAddress().toString());

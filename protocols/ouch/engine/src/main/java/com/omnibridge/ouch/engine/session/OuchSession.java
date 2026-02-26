@@ -114,6 +114,12 @@ public class OuchSession implements NetworkHandler {
     private Counter ordersSentCounter;
     private DistributionSummary processingTimeSummary;
 
+    // Local message counters and timing (single-threaded network loop, no sync needed)
+    private long localMessagesSentCount;
+    private long localMessagesReceivedCount;
+    private long lastSentTime;
+    private long lastReceivedTime;
+
     /**
      * Create a new OUCH session with default V42 protocol version.
      */
@@ -292,6 +298,22 @@ public class OuchSession implements NetworkHandler {
 
     public TcpChannel getChannel() {
         return channel;
+    }
+
+    public long getLocalMessagesSentCount() {
+        return localMessagesSentCount;
+    }
+
+    public long getLocalMessagesReceivedCount() {
+        return localMessagesReceivedCount;
+    }
+
+    public long getLastSentTime() {
+        return lastSentTime;
+    }
+
+    public long getLastReceivedTime() {
+        return lastReceivedTime;
     }
 
     @Override
@@ -499,6 +521,8 @@ public class OuchSession implements NetworkHandler {
     }
 
     private void processIncomingMessage(OuchMessage msg) {
+        localMessagesReceivedCount++;
+        lastReceivedTime = System.currentTimeMillis();
         if (messagesReceivedCounter != null) {
             messagesReceivedCounter.increment();
         }
@@ -901,6 +925,8 @@ public class OuchSession implements NetworkHandler {
             return false;
         }
 
+        localMessagesSentCount++;
+        lastSentTime = System.currentTimeMillis();
         if (messagesSentCounter != null) {
             messagesSentCounter.increment();
         }
