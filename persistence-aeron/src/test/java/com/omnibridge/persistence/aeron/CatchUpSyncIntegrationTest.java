@@ -298,13 +298,13 @@ class CatchUpSyncIntegrationTest {
         // Phase 3: Restart store WITH its existing data (not a clean restart)
         // Store has entries 1-50, engine has 1-80.
         // The store sends a CATCH_UP_REQUEST listing last seq=50,
-        // and the engine replays 51-80.
+        // and the engine replays only the 30 missing entries (51-80).
         startRemoteStore();
 
-        // The catch-up sync (connection detection) will replay ALL 80 entries anyway,
-        // but the CATCH_UP_REQUEST mechanism also kicks in for incremental catch-up.
-        awaitReplication(aeronRemoteStore, 80, 20000);
+        // Only 30 entries sent via Aeron (incremental catch-up, not full replay)
+        awaitReplication(aeronRemoteStore, 30, 20000);
 
+        // Store had 50 locally + 30 incremental = 80 total
         assertEquals(80, aeronRemoteStore.getStore().getEntryCount(PUB_PREFIX + "STORE-CATCHUP"));
         assertEntriesMatch(aeronLogStore.getLocalStore(), "STORE-CATCHUP",
                 aeronRemoteStore.getStore(), PUB_PREFIX + "STORE-CATCHUP");

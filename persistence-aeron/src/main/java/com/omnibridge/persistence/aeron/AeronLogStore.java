@@ -63,6 +63,15 @@ public class AeronLogStore implements LogStore, Component {
     private Thread catchUpThread;
     private volatile boolean catchUpRunning;
 
+    // Timestamp of the last catch-up (either connection-based or CATCH_UP_REQUEST-based).
+    // Used to suppress duplicate catch-ups when both mechanisms fire within a short window.
+    private volatile long lastCatchUpTimeMs;
+
+    // Pending CATCH_UP_REQUEST from the remote store, deferred for processing
+    // after the subscriber connection has time to stabilize.
+    private volatile CatchUpRequestCodec.DecodedRequest pendingCatchUpRequest;
+    private volatile long pendingCatchUpRequestTimeMs;
+
     public AeronLogStore(PersistenceConfig persistenceConfig, AeronLogStoreConfig aeronConfig) {
         this.localStore = new ChronicleLogStore(persistenceConfig);
         this.aeronConfig = aeronConfig;
@@ -175,18 +184,27 @@ public class AeronLogStore implements LogStore, Component {
 
     // ==================== Catch-Up Sync ====================
 
+    private static final long CATCH_UP_SUPPRESS_MS = 3_000;
+    private static final long CATCH_UP_REQUEST_DEFER_MS = 2_000;
+
     /**
-     * Background loop that monitors subscriber connections and triggers a
-     * catch-up replay of all local Chronicle entries when a subscriber
-     * transitions from disconnected to connected.
+     * Background loop that monitors subscriber connections and polls the replay
+     * subscription for {@code CATCH_UP_REQUEST} messages from the remote store.
      *
-     * <p>Also polls the replay subscription for incoming {@code CATCH_UP_REQUEST}
-     * messages from the remote store. When the store restarts, it sends a
-     * catch-up request listing the last sequence number it has for each stream,
-     * so the engine can replay only the missing entries.
+     * <p>Two catch-up mechanisms cooperate:
+     * <ol>
+     *   <li><b>Connection-based</b>: when the engine detects a subscriber
+     *       transitioning from disconnected to connected, it replays all local
+     *       entries (full catch-up). If a pending {@code CATCH_UP_REQUEST}
+     *       exists, only missing entries are replayed (incremental catch-up).</li>
+     *   <li><b>Store-initiated</b>: the remote store sends a {@code CATCH_UP_REQUEST}
+     *       on startup listing the last sequence number it has for each stream.
+     *       The request is deferred for {@link #CATCH_UP_REQUEST_DEFER_MS} to
+     *       allow the subscriber connection to stabilize before replaying.</li>
+     * </ol>
      *
-     * <p>This ensures no messages are lost when the remote store starts after
-     * the engine, or when the remote store restarts.</p>
+     * <p>A timestamp-based guard ({@link #lastCatchUpTimeMs}) prevents the
+     * deferred handler from duplicating a connection-based catch-up.
      */
     private void catchUpLoop() {
         log.info("Catch-up sync thread started");
@@ -196,17 +214,38 @@ public class AeronLogStore implements LogStore, Component {
             try {
                 int work = 0;
 
-                // 1. Check subscriber connection transitions (engine → store catch-up)
+                // 1. Poll replay subscription for CATCH_UP_REQUEST (store → engine)
+                work += transport.getReplaySubscription().poll(replayHandler, 10);
+
+                // 2. Check subscriber connection transitions (engine → store)
                 List<SubscriberConnection> subscribers = transport.getSubscribers();
                 for (int i = 0; i < subscribers.size(); i++) {
                     SubscriberConnection sub = subscribers.get(i);
                     if (sub.checkAndClearCatchUpNeeded()) {
-                        syncLocalToSubscriber(sub);
+                        CatchUpRequestCodec.DecodedRequest pending = pendingCatchUpRequest;
+                        pendingCatchUpRequest = null;
+                        if (pending != null && !pending.streams().isEmpty()) {
+                            syncIncrementalToSubscriber(sub, pending);
+                        } else {
+                            syncLocalToSubscriber(sub);
+                        }
+                        lastCatchUpTimeMs = System.currentTimeMillis();
                     }
                 }
 
-                // 2. Poll replay subscription for CATCH_UP_REQUEST (store → engine catch-up)
-                work += transport.getReplaySubscription().poll(replayHandler, 10);
+                // 3. Deferred CATCH_UP_REQUEST processing (when connection transition didn't fire)
+                CatchUpRequestCodec.DecodedRequest pending = pendingCatchUpRequest;
+                if (pending != null &&
+                        System.currentTimeMillis() - pendingCatchUpRequestTimeMs > CATCH_UP_REQUEST_DEFER_MS) {
+                    pendingCatchUpRequest = null;
+                    if (System.currentTimeMillis() - lastCatchUpTimeMs > CATCH_UP_SUPPRESS_MS) {
+                        processStoreCatchUpRequest(pending, subscribers);
+                        lastCatchUpTimeMs = System.currentTimeMillis();
+                    } else {
+                        log.info("Skipping deferred CATCH_UP_REQUEST — recent catch-up handled {}ms ago",
+                                System.currentTimeMillis() - lastCatchUpTimeMs);
+                    }
+                }
 
                 if (work == 0) {
                     Thread.sleep(100);
@@ -230,54 +269,80 @@ public class AeronLogStore implements LogStore, Component {
                                    io.aeron.logbuffer.Header header) {
         int templateId = AeronMessageHeader.readTemplateId(buffer, offset);
         if (templateId == MessageTypes.CATCH_UP_REQUEST) {
-            handleCatchUpRequest(buffer, offset);
+            CatchUpRequestCodec.DecodedRequest request = CatchUpRequestCodec.decode(buffer, offset);
+            long requestPublisherId = request.publisherId();
+
+            if (requestPublisherId != 0 && requestPublisherId != publisherId) {
+                log.debug("Ignoring CATCH_UP_REQUEST for publisherId={} (this={})",
+                        requestPublisherId, publisherId);
+                return;
+            }
+
+            log.info("Received CATCH_UP_REQUEST: publisherId={}, streams={}, lastTimestamp={}",
+                    requestPublisherId, request.streams().size(), request.lastTimestamp());
+
+            pendingCatchUpRequest = request;
+            pendingCatchUpRequestTimeMs = System.currentTimeMillis();
         }
         // Ignore other template IDs — they're for ReplayClient
     }
 
     /**
-     * Handle an incoming CATCH_UP_REQUEST from the remote store.
-     * For each local stream, replays entries that the store is missing
-     * (i.e., entries with sequence numbers greater than what the store reports).
+     * Process a deferred CATCH_UP_REQUEST by replaying missing entries to the
+     * first available subscriber. Used when the connection transition didn't fire
+     * (e.g., quick store restart within Aeron's connection timeout).
      */
-    private void handleCatchUpRequest(DirectBuffer buffer, int offset) {
-        CatchUpRequestCodec.DecodedRequest request = CatchUpRequestCodec.decode(buffer, offset);
-        long requestPublisherId = request.publisherId();
-
-        // Only process requests targeting this publisher (or all publishers)
-        if (requestPublisherId != 0 && requestPublisherId != publisherId) {
-            log.debug("Ignoring CATCH_UP_REQUEST for publisherId={} (this={})",
-                    requestPublisherId, publisherId);
+    private void processStoreCatchUpRequest(CatchUpRequestCodec.DecodedRequest request,
+                                             List<SubscriberConnection> subscribers) {
+        if (subscribers.isEmpty()) {
+            log.warn("No subscribers configured, cannot process CATCH_UP_REQUEST");
             return;
         }
+        SubscriberConnection subscriber = subscribers.get(0);
 
-        log.info("Received CATCH_UP_REQUEST: publisherId={}, streams={}, lastTimestamp={}",
-                requestPublisherId, request.streams().size(), request.lastTimestamp());
+        if (!request.streams().isEmpty()) {
+            syncIncrementalToSubscriber(subscriber, request);
+        } else {
+            syncLocalToSubscriber(subscriber);
+        }
+    }
 
-        // Build a map of stream -> last seq# the store has
+    /**
+     * Replay only entries that the store is missing, based on the stream positions
+     * reported in a CATCH_UP_REQUEST.
+     */
+    private void syncIncrementalToSubscriber(SubscriberConnection subscriber,
+                                              CatchUpRequestCodec.DecodedRequest request) {
         java.util.Map<String, Integer> storePositions = new java.util.HashMap<>();
         for (CatchUpRequestCodec.StreamPosition sp : request.streams()) {
             storePositions.put(sp.streamName(), sp.lastSeqNum());
         }
 
         MutableDirectBuffer syncBuffer = new ExpandableDirectByteBuffer(8192);
-        long[] totalReplayed = {0};
+        long[] count = {0};
 
-        // Replay missing entries for each local stream
+        log.info("Starting incremental catch-up to subscriber {} — {} stream positions reported",
+                subscriber.getConfig().getName(), storePositions.size());
+
         for (String streamName : localStore.getStreamNames()) {
             int storeLastSeq = storePositions.getOrDefault(streamName, 0);
-
-            // Replay entries with seqNum > storeLastSeq
             localStore.replay(streamName, null, storeLastSeq + 1, 0, entry -> {
-                // Publish to all subscribers
-                int len = LogEntryCodec.encode(syncBuffer, 0, entry, publisherId);
-                transport.publishEntry(syncBuffer, 0, len);
-                totalReplayed[0]++;
+                int length = LogEntryCodec.encode(syncBuffer, 0, entry, publisherId);
+                long result = subscriber.offerData(syncBuffer, 0, length);
+                if (result < 0) {
+                    try { Thread.sleep(1); } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return false;
+                    }
+                    subscriber.offerData(syncBuffer, 0, length);
+                }
+                count[0]++;
                 return true;
             });
         }
 
-        log.info("CATCH_UP_REQUEST handled: replayed {} entries to subscribers", totalReplayed[0]);
+        log.info("Incremental catch-up to subscriber {} complete — {} entries replayed",
+                subscriber.getConfig().getName(), count[0]);
     }
 
     /**
