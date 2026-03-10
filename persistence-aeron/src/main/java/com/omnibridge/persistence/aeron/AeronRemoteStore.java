@@ -15,10 +15,9 @@ import io.aeron.driver.ThreadingMode;
 import io.aeron.FragmentAssembler;
 import io.aeron.logbuffer.FragmentHandler;
 import org.agrona.DirectBuffer;
-import org.agrona.concurrent.BusySpinIdleStrategy;
+import org.agrona.ExpandableDirectByteBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.IdleStrategy;
-import org.agrona.concurrent.SleepingIdleStrategy;
-import org.agrona.concurrent.YieldingIdleStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -167,6 +166,7 @@ public class AeronRemoteStore implements Component, Runnable {
         store.startActive();
         startAeron();
         startPolling();
+        sendCatchUpRequests();
         componentState = ComponentState.ACTIVE;
         log.info("AeronRemoteStore started in ACTIVE mode (data={}, control={})",
                 config.getDataChannel(), config.getControlChannel());
@@ -184,6 +184,7 @@ public class AeronRemoteStore implements Component, Runnable {
         store.becomeActive();
         startAeron();
         startPolling();
+        sendCatchUpRequests();
         componentState = ComponentState.ACTIVE;
         log.info("AeronRemoteStore transitioned to ACTIVE mode");
     }
@@ -309,12 +310,76 @@ public class AeronRemoteStore implements Component, Runnable {
         }
     }
 
+    /**
+     * Send a CATCH_UP_REQUEST to each configured engine so they can replay
+     * entries that the store missed while it was down.
+     *
+     * <p>For each engine, the local Chronicle store is scanned for streams
+     * belonging to that engine's publisher ID. The last sequence number for
+     * each stream is included in the request so the engine knows where to
+     * start replaying from.
+     */
+    private void sendCatchUpRequests() {
+        MutableDirectBuffer requestBuffer = new ExpandableDirectByteBuffer(1024);
+
+        for (int i = 0; i < config.getEngines().size(); i++) {
+            AeronRemoteStoreConfig.EngineConfig engine = config.getEngines().get(i);
+            long publisherId = engine.getPublisherId();
+            String prefix = "pub~" + publisherId + "~";
+
+            // Scan local Chronicle for streams belonging to this publisher
+            List<CatchUpRequestCodec.StreamPosition> positions = new ArrayList<>();
+            long latestTimestamp = 0;
+
+            for (String streamName : store.getStreamNames()) {
+                if (streamName.startsWith(prefix)) {
+                    String originalName = streamName.substring(prefix.length());
+                    // Get the latest entry for this stream to find last seq#
+                    LogEntry lastInbound = store.getLatest(streamName, LogEntry.Direction.INBOUND);
+                    LogEntry lastOutbound = store.getLatest(streamName, LogEntry.Direction.OUTBOUND);
+                    int lastSeq = Math.max(
+                            lastInbound != null ? lastInbound.getSequenceNumber() : 0,
+                            lastOutbound != null ? lastOutbound.getSequenceNumber() : 0);
+                    long lastTs = Math.max(
+                            lastInbound != null ? lastInbound.getTimestamp() : 0,
+                            lastOutbound != null ? lastOutbound.getTimestamp() : 0);
+                    latestTimestamp = Math.max(latestTimestamp, lastTs);
+                    positions.add(new CatchUpRequestCodec.StreamPosition(originalName, lastSeq));
+                }
+            }
+
+            int length = CatchUpRequestCodec.encode(requestBuffer, 0,
+                    publisherId, latestTimestamp, positions);
+
+            // Send via the replay publication for this engine
+            if (i < replayPublications.size()) {
+                Publication replayPub = replayPublications.get(i);
+                // Retry a few times since the publication may not be connected yet
+                for (int attempt = 0; attempt < 50; attempt++) {
+                    long result = replayPub.offer(requestBuffer, 0, length);
+                    if (result > 0) {
+                        log.info("Sent CATCH_UP_REQUEST to engine {} (publisherId={}, streams={}, lastTs={})",
+                                engine.getName(), publisherId, positions.size(), latestTimestamp);
+                        break;
+                    }
+                    if (result == Publication.CLOSED || result == Publication.MAX_POSITION_EXCEEDED) {
+                        log.warn("Cannot send CATCH_UP_REQUEST to engine {}: publication unavailable (result={})",
+                                engine.getName(), result);
+                        break;
+                    }
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     private IdleStrategy createIdleStrategy() {
-        return switch (config.getIdleStrategy()) {
-            case "busy-spin" -> new BusySpinIdleStrategy();
-            case "yielding" -> new YieldingIdleStrategy();
-            default -> new SleepingIdleStrategy(1_000_000); // 1ms
-        };
+        return AeronIdleStrategyUtil.create(config.getIdleStrategy());
     }
 
     public ChronicleLogStore getStore() {

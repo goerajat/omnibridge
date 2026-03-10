@@ -8,10 +8,7 @@ import io.aeron.Subscription;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import org.agrona.DirectBuffer;
-import org.agrona.concurrent.BusySpinIdleStrategy;
 import org.agrona.concurrent.IdleStrategy;
-import org.agrona.concurrent.SleepingIdleStrategy;
-import org.agrona.concurrent.YieldingIdleStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,11 +106,7 @@ public class AeronTransport {
     }
 
     public IdleStrategy createIdleStrategy() {
-        return switch (config.getIdleStrategy()) {
-            case "busy-spin" -> new BusySpinIdleStrategy();
-            case "yielding" -> new YieldingIdleStrategy();
-            default -> new SleepingIdleStrategy(1_000_000); // 1ms
-        };
+        return AeronIdleStrategyUtil.create(config.getIdleStrategy());
     }
 
     public void stop() {

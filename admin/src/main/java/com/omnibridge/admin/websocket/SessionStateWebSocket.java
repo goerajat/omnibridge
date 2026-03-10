@@ -168,7 +168,7 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
             try {
                 client.session.close();
             } catch (Exception e) {
-                log.debug("Error closing WebSocket client", e);
+                log.warn("Error closing WebSocket client", e);
             }
         }
         clients.clear();
@@ -307,7 +307,7 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
 
             broadcast(event);
         } catch (Exception e) {
-            log.debug("Error broadcasting session snapshot", e);
+            log.warn("Error broadcasting session snapshot", e);
         }
     }
 
@@ -351,7 +351,7 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
                     client.send(json);
                     sent++;
                 } catch (Exception e) {
-                    log.debug("Failed to send to WebSocket client", e);
+                    log.warn("Failed to send to WebSocket client", e);
                     clients.remove(client);
                 }
             } else {
@@ -369,7 +369,7 @@ public class SessionStateWebSocket implements ConfigurableWebSocketHandler, Sess
         try {
             ctx.send(json);
         } catch (Exception e) {
-            log.debug("Failed to send to WebSocket client", e);
+            log.warn("Failed to send to WebSocket client", e);
             clients.remove(ctx);
         }
     }

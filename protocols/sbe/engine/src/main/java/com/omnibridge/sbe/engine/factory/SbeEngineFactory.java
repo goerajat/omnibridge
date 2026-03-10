@@ -2,6 +2,7 @@ package com.omnibridge.sbe.engine.factory;
 
 import com.omnibridge.config.ComponentFactory;
 import com.omnibridge.config.provider.ComponentProvider;
+import com.omnibridge.config.util.MetricsInjector;
 import com.omnibridge.sbe.engine.SbeEngine;
 import com.omnibridge.sbe.engine.config.SbeEngineConfig;
 import com.omnibridge.sbe.engine.config.SbeSessionConfig;
@@ -62,25 +63,10 @@ public abstract class SbeEngineFactory<E extends SbeEngine<?, ?, ?>> implements 
         E engine = createEngine(engineConfig, provider);
 
         // Inject meter registry if metrics component is available
-        try {
-            Object metricsComponent = null;
-            try {
-                Class<?> metricsClass = Class.forName("com.omnibridge.metrics.MetricsComponent");
-                metricsComponent = provider.getComponent(metricsClass.asSubclass(com.omnibridge.config.Component.class));
-            } catch (ClassNotFoundException | IllegalArgumentException e) {
-                log.debug("No MetricsComponent available, metrics disabled for {} engine", getConfigPath());
-            }
-
-            if (metricsComponent != null) {
-                java.lang.reflect.Method getRegistry = metricsComponent.getClass().getMethod("getMeterRegistry");
-                MeterRegistry registry = (MeterRegistry) getRegistry.invoke(metricsComponent);
-                if (registry != null) {
-                    engine.setMeterRegistry(registry);
-                    log.info("Injected MeterRegistry into {} engine", getConfigPath());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not inject MeterRegistry into {} engine: {}", getConfigPath(), e.getMessage());
+        MeterRegistry registry = (MeterRegistry) MetricsInjector.findMeterRegistry(provider);
+        if (registry != null) {
+            engine.setMeterRegistry(registry);
+            log.info("Injected MeterRegistry into {} engine", configPath);
         }
 
         return engine;

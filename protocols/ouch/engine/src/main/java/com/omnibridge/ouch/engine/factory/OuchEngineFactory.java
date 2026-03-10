@@ -2,6 +2,7 @@ package com.omnibridge.ouch.engine.factory;
 
 import com.omnibridge.config.ComponentFactory;
 import com.omnibridge.config.provider.ComponentProvider;
+import com.omnibridge.config.util.MetricsInjector;
 import com.omnibridge.ouch.engine.OuchEngine;
 import com.omnibridge.ouch.engine.config.OuchEngineConfig;
 import com.typesafe.config.Config;
@@ -28,21 +29,10 @@ public class OuchEngineFactory implements ComponentFactory<OuchEngine> {
         OuchEngine engine = new OuchEngine(engineConfig, provider);
 
         // Inject meter registry if metrics component is available
-        try {
-            Class<?> metricsClass = Class.forName("com.omnibridge.metrics.MetricsComponent");
-            Object metricsComponent = provider.getComponent(metricsClass.asSubclass(com.omnibridge.config.Component.class));
-            if (metricsComponent != null) {
-                java.lang.reflect.Method getRegistry = metricsComponent.getClass().getMethod("getMeterRegistry");
-                MeterRegistry registry = (MeterRegistry) getRegistry.invoke(metricsComponent);
-                if (registry != null) {
-                    engine.setMeterRegistry(registry);
-                    log.info("Injected MeterRegistry into OUCH engine");
-                }
-            }
-        } catch (ClassNotFoundException | IllegalArgumentException e) {
-            log.debug("No MetricsComponent available, metrics disabled for OUCH engine");
-        } catch (Exception e) {
-            log.debug("Could not inject MeterRegistry into OUCH engine: {}", e.getMessage());
+        MeterRegistry registry = (MeterRegistry) MetricsInjector.findMeterRegistry(provider);
+        if (registry != null) {
+            engine.setMeterRegistry(registry);
+            log.info("Injected MeterRegistry into OUCH engine");
         }
 
         return engine;

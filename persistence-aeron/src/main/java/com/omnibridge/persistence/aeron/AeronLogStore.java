@@ -3,8 +3,13 @@ package com.omnibridge.persistence.aeron;
 import com.omnibridge.config.Component;
 import com.omnibridge.config.ComponentState;
 import com.omnibridge.persistence.*;
+import com.omnibridge.persistence.aeron.codec.AeronMessageHeader;
+import com.omnibridge.persistence.aeron.codec.CatchUpRequestCodec;
 import com.omnibridge.persistence.aeron.codec.LogEntryCodec;
 import com.omnibridge.persistence.aeron.codec.MessageTypes;
+import io.aeron.FragmentAssembler;
+import io.aeron.logbuffer.FragmentHandler;
+import org.agrona.DirectBuffer;
 import com.omnibridge.persistence.aeron.config.AeronLogStoreConfig;
 import com.omnibridge.persistence.chronicle.ChronicleLogStore;
 import com.omnibridge.persistence.config.PersistenceConfig;
@@ -175,13 +180,23 @@ public class AeronLogStore implements LogStore, Component {
      * catch-up replay of all local Chronicle entries when a subscriber
      * transitions from disconnected to connected.
      *
+     * <p>Also polls the replay subscription for incoming {@code CATCH_UP_REQUEST}
+     * messages from the remote store. When the store restarts, it sends a
+     * catch-up request listing the last sequence number it has for each stream,
+     * so the engine can replay only the missing entries.
+     *
      * <p>This ensures no messages are lost when the remote store starts after
      * the engine, or when the remote store restarts.</p>
      */
     private void catchUpLoop() {
         log.info("Catch-up sync thread started");
+        FragmentHandler replayHandler = new FragmentAssembler(this::onCatchUpFragment);
+
         while (catchUpRunning) {
             try {
+                int work = 0;
+
+                // 1. Check subscriber connection transitions (engine → store catch-up)
                 List<SubscriberConnection> subscribers = transport.getSubscribers();
                 for (int i = 0; i < subscribers.size(); i++) {
                     SubscriberConnection sub = subscribers.get(i);
@@ -189,7 +204,13 @@ public class AeronLogStore implements LogStore, Component {
                         syncLocalToSubscriber(sub);
                     }
                 }
-                Thread.sleep(1000); // Check every second
+
+                // 2. Poll replay subscription for CATCH_UP_REQUEST (store → engine catch-up)
+                work += transport.getReplaySubscription().poll(replayHandler, 10);
+
+                if (work == 0) {
+                    Thread.sleep(100);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -198,6 +219,65 @@ public class AeronLogStore implements LogStore, Component {
             }
         }
         log.info("Catch-up sync thread stopped");
+    }
+
+    /**
+     * Handle fragments on the replay subscription during the catch-up loop.
+     * Only processes CATCH_UP_REQUEST messages; other template IDs (REPLAY_ENTRY,
+     * REPLAY_COMPLETE) are handled by ReplayClient during active recovery.
+     */
+    private void onCatchUpFragment(DirectBuffer buffer, int offset, int length,
+                                   io.aeron.logbuffer.Header header) {
+        int templateId = AeronMessageHeader.readTemplateId(buffer, offset);
+        if (templateId == MessageTypes.CATCH_UP_REQUEST) {
+            handleCatchUpRequest(buffer, offset);
+        }
+        // Ignore other template IDs — they're for ReplayClient
+    }
+
+    /**
+     * Handle an incoming CATCH_UP_REQUEST from the remote store.
+     * For each local stream, replays entries that the store is missing
+     * (i.e., entries with sequence numbers greater than what the store reports).
+     */
+    private void handleCatchUpRequest(DirectBuffer buffer, int offset) {
+        CatchUpRequestCodec.DecodedRequest request = CatchUpRequestCodec.decode(buffer, offset);
+        long requestPublisherId = request.publisherId();
+
+        // Only process requests targeting this publisher (or all publishers)
+        if (requestPublisherId != 0 && requestPublisherId != publisherId) {
+            log.debug("Ignoring CATCH_UP_REQUEST for publisherId={} (this={})",
+                    requestPublisherId, publisherId);
+            return;
+        }
+
+        log.info("Received CATCH_UP_REQUEST: publisherId={}, streams={}, lastTimestamp={}",
+                requestPublisherId, request.streams().size(), request.lastTimestamp());
+
+        // Build a map of stream -> last seq# the store has
+        java.util.Map<String, Integer> storePositions = new java.util.HashMap<>();
+        for (CatchUpRequestCodec.StreamPosition sp : request.streams()) {
+            storePositions.put(sp.streamName(), sp.lastSeqNum());
+        }
+
+        MutableDirectBuffer syncBuffer = new ExpandableDirectByteBuffer(8192);
+        long[] totalReplayed = {0};
+
+        // Replay missing entries for each local stream
+        for (String streamName : localStore.getStreamNames()) {
+            int storeLastSeq = storePositions.getOrDefault(streamName, 0);
+
+            // Replay entries with seqNum > storeLastSeq
+            localStore.replay(streamName, null, storeLastSeq + 1, 0, entry -> {
+                // Publish to all subscribers
+                int len = LogEntryCodec.encode(syncBuffer, 0, entry, publisherId);
+                transport.publishEntry(syncBuffer, 0, len);
+                totalReplayed[0]++;
+                return true;
+            });
+        }
+
+        log.info("CATCH_UP_REQUEST handled: replayed {} entries to subscribers", totalReplayed[0]);
     }
 
     /**

@@ -16,6 +16,7 @@ public final class MessageTypes {
     public static final int STREAM_INFO_RESPONSE = 6;
     public static final int HEARTBEAT = 7;
     public static final int ACK = 8;
+    public static final int CATCH_UP_REQUEST = 9;
 
     // Aeron stream IDs
     public static final int DATA_STREAM_ID = 1;

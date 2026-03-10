@@ -100,7 +100,7 @@ public class TcpAcceptor implements AutoCloseable {
             }
             serverChannel.close();
         } catch (IOException e) {
-            log.debug("Error closing acceptor: {}", e.getMessage());
+            log.warn("Error closing acceptor: {}", bindAddress, e);
         }
 
         log.info("TcpAcceptor closed: {}", bindAddress);

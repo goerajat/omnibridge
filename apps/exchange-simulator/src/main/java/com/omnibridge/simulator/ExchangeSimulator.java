@@ -104,7 +104,7 @@ public class ExchangeSimulator extends ApplicationBase {
                 log.info("Registered FIX handler for session: {}", session.getConfig().getSessionId());
             }
         } catch (IllegalArgumentException e) {
-            log.debug("FIX engine not configured");
+            log.info("FIX engine not configured");
         }
 
         // Wire OUCH engine
@@ -115,7 +115,7 @@ public class ExchangeSimulator extends ApplicationBase {
                 log.info("Registered OUCH handler for session: {}", session.getSessionId());
             }
         } catch (IllegalArgumentException e) {
-            log.debug("OUCH engine not configured");
+            log.info("OUCH engine not configured");
         }
 
         // Wire iLink3 engine
@@ -124,7 +124,7 @@ public class ExchangeSimulator extends ApplicationBase {
             ilink3Engine.addMessageListener((session, msg) -> ilink3Handler.onMessage(session, msg));
             log.info("Registered iLink3 handler");
         } catch (IllegalArgumentException e) {
-            log.debug("iLink3 engine not configured");
+            log.info("iLink3 engine not configured");
         }
 
         // Wire Optiq engine
@@ -133,7 +133,7 @@ public class ExchangeSimulator extends ApplicationBase {
             optiqEngine.addMessageListener((session, msg) -> optiqHandler.onMessage(session, msg));
             log.info("Registered Optiq handler");
         } catch (IllegalArgumentException e) {
-            log.debug("Optiq engine not configured");
+            log.info("Optiq engine not configured");
         }
 
         // Wire Pillar engine
@@ -142,7 +142,7 @@ public class ExchangeSimulator extends ApplicationBase {
             pillarEngine.addMessageListener((session, msg) -> pillarHandler.onMessage((PillarSession) session, msg));
             log.info("Registered Pillar handler");
         } catch (IllegalArgumentException e) {
-            log.debug("Pillar engine not configured");
+            log.info("Pillar engine not configured");
         }
 
         // Register demo order routes
@@ -155,7 +155,7 @@ public class ExchangeSimulator extends ApplicationBase {
                 orderRoutes.registerRoutes(adminServer.getApp(), adminServer.getConfig().getContextPath());
                 log.info("Registered demo order routes at /api/orders");
             } catch (IllegalArgumentException e) {
-                log.debug("AdminServer not configured, skipping demo routes");
+                log.info("AdminServer not configured, skipping demo routes");
             }
         }
 
