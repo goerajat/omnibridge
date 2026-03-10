@@ -1183,9 +1183,9 @@ cat > "$DEPLOY_DIR/grafana/dashboards/fix-engine.json" << 'FIX_DASHBOARD'
         { "expr": "omnibridge_heartbeat_last_received_seconds{job=~\"\$job\",session_id=~\"\$session_id\"}", "format": "table", "instant": true, "refId": "F" }
       ],
       "transformations": [
+        { "id": "filterFieldsByName", "options": { "include": { "pattern": "^(?!__name__|Time|instance|app|environment)" } } },
         { "id": "merge", "options": {} },
         { "id": "organize", "options": {
-          "excludeByName": { "Time": true, "__name__": true, "instance": true, "app": true, "environment": true },
           "renameByName": { "session_id": "Session", "job": "App", "protocol": "Protocol", "role": "Role", "Value #A": "State", "Value #B": "Out SeqNum", "Value #C": "In SeqNum", "Value #D": "Msgs Sent", "Value #E": "Msgs Recv", "Value #F": "Last Recv (s)" },
           "indexByName": { "Session": 0, "App": 1, "Protocol": 2, "Role": 3, "State": 4, "Out SeqNum": 5, "In SeqNum": 6, "Msgs Sent": 7, "Msgs Recv": 8, "Last Recv (s)": 9 }
         }}
