@@ -20,7 +20,7 @@
 #   --skip <name>      Skip a specific component (repeatable)
 #   --ssh-port         SSH port (default: 22)
 #
-# Components: exchange-simulator, fix-initiator, aeron-store, omniview, monitoring
+# Components: exchange-simulator, fix-initiator, aeron-store, mcp-server, omniview, monitoring
 #
 # Examples:
 #   ./setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip <name>      Skip a specific component (repeatable)"
             echo "  --ssh-port         SSH port (default: 22)"
             echo ""
-            echo "Components: exchange-simulator, fix-initiator, aeron-store, omniview, monitoring"
+            echo "Components: exchange-simulator, fix-initiator, aeron-store, mcp-server, omniview, monitoring"
             exit 0
             ;;
         *)
@@ -695,6 +695,115 @@ SERVICE
 
 sudo systemctl daemon-reload
 sudo systemctl enable aeron-remote-store
+
+echo "[$COMP] Deployment complete on $HOST"
+REMOTE
+
+    if [ $? -eq 0 ]; then
+        RESULTS+=("OK   $COMP -> $HOST")
+        echo ""
+    else
+        RESULTS+=("FAIL $COMP -> $HOST")
+        FAILED=$((FAILED+1))
+        echo "[$COMP] ERROR: Deployment failed"
+        echo ""
+    fi
+}
+
+# =========================================================================
+# Deploy: MCP Server  (Aeron persistence instance, reads Chronicle data)
+# =========================================================================
+deploy_mcp_server() {
+    local HOST="$AERON_IP"
+    local COMP="mcp-server"
+    local DEPLOY_DIR="/opt/mcp-server"
+    local DIST="mcp-server-${VERSION}-dist.tar.gz"
+
+    echo "============================================================"
+    echo "[$COMP] Deploying to $HOST"
+    echo "============================================================"
+
+    wait_for_ssh "$HOST" "$COMP" "jump" || { RESULTS+=("FAIL $COMP -> $HOST"); FAILED=$((FAILED+1)); return; }
+    ensure_prerequisites "$HOST" "$COMP" "jump"
+
+    remote_exec "$HOST" "$COMP" "jump" << REMOTE
+set -e
+echo "[$COMP] Downloading $DIST from S3..."
+aws s3 cp "$S3_PREFIX/$DIST" "/tmp/$DIST"
+
+echo "[$COMP] Extracting to $DEPLOY_DIR..."
+sudo mkdir -p "$DEPLOY_DIR"
+sudo chown $SSH_USER:$SSH_USER "$DEPLOY_DIR"
+tar -xzf "/tmp/$DIST" -C "$DEPLOY_DIR" --strip-components=1
+chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
+rm -f "/tmp/$DIST"
+
+echo "[$COMP] Writing MCP server configuration..."
+cat > "$DEPLOY_DIR/conf/mcp-server.conf" << 'MCP_CONF'
+mcp-server {
+    transport = "http"
+    port = 8090
+
+    persistence {
+        store-type = "chronicle"
+        base-path = "/opt/aeron-store/data/remote-store"
+    }
+
+    query {
+        default-limit = 100
+        max-limit = 1000
+    }
+
+    index {
+        enabled = true
+        data-dir = "\$DEPLOY_DIR/data/fix-index"
+        checkpoint-interval = 1000
+    }
+}
+MCP_CONF
+
+# Substitute variables in the generated config
+sed -i "s|\\\$DEPLOY_DIR|$DEPLOY_DIR|g" "$DEPLOY_DIR/conf/mcp-server.conf"
+
+echo "[$COMP] Creating systemd service..."
+sudo tee /etc/systemd/system/mcp-server.service > /dev/null << SERVICE
+[Unit]
+Description=OmniBridge MCP Server - FIX Message Query
+After=network.target aeron-remote-store.service
+
+[Service]
+Type=simple
+User=$SSH_USER
+WorkingDirectory=$DEPLOY_DIR
+ExecStart=/usr/bin/java \\
+    -Xms256m -Xmx512m \\
+    -XX:+UseZGC \\
+    --add-opens java.base/java.lang=ALL-UNNAMED \\
+    --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
+    --add-opens java.base/java.io=ALL-UNNAMED \\
+    --add-opens java.base/java.nio=ALL-UNNAMED \\
+    --add-opens java.base/sun.nio.ch=ALL-UNNAMED \\
+    --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.misc=ALL-UNNAMED \\
+    --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
+    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
+    -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
+    -jar $DEPLOY_DIR/lib/mcp-server.jar \\
+    --base-path /opt/aeron-store/data/remote-store \\
+    --transport http \\
+    --port 8090 \\
+    --index \\
+    --index-dir $DEPLOY_DIR/data/fix-index
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable mcp-server
 
 echo "[$COMP] Deployment complete on $HOST"
 REMOTE
@@ -1464,6 +1573,9 @@ REMOTE
 
 # 1. Aeron Remote Store (no dependencies)
 should_deploy "aeron-store" && deploy_aeron_store
+
+# 1.5. MCP Server (depends on Aeron Store data dir)
+should_deploy "mcp-server" && deploy_mcp_server
 
 # 2. Exchange Simulator (depends on Aeron Store IP)
 should_deploy "exchange-simulator" && deploy_exchange_simulator

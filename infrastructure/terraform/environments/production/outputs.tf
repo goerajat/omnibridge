@@ -80,6 +80,7 @@ output "connection_info" {
     fix_admin     = "${module.fix_acceptor.private_ip}:8081"
     ouch_admin    = "${module.ouch_acceptor.private_ip}:8082"
     aeron_store   = "${module.aeron_persistence.private_ip}:40456"
+    mcp_server    = "${module.aeron_persistence.private_ip}:8090"
     grafana       = module.monitoring.grafana_url
   }
 }

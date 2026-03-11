@@ -7,7 +7,7 @@
 # Usage: ./upload-artifacts.sh [options] [component...]
 #
 # Components: all (default), exchange-simulator, fix-samples, ouch-samples,
-#             aeron-remote-store, log-viewer, omniview
+#             aeron-remote-store, log-viewer, omniview, mcp-server
 #
 # Options:
 #   -v, --version     Version string (default: auto-detected from pom.xml)
@@ -142,8 +142,9 @@ ARTIFACTS[ouch-samples]="apps/ouch-samples/target/ouch-samples-${VERSION}-dist.t
 ARTIFACTS[aeron-remote-store]="apps/aeron-remote-store/target/aeron-remote-store-${VERSION}-dist.tar.gz"
 ARTIFACTS[log-viewer]="apps/log-viewer/target/log-viewer-${VERSION}-dist.tar.gz"
 ARTIFACTS[omniview]="omniview/target/omniview-${VERSION}-dist.tar.gz"
+ARTIFACTS[mcp-server]="mcp-server/target/mcp-server-${VERSION}-dist.tar.gz"
 
-ALL_COMPONENTS=(exchange-simulator fix-samples ouch-samples aeron-remote-store log-viewer omniview)
+ALL_COMPONENTS=(exchange-simulator fix-samples ouch-samples aeron-remote-store log-viewer omniview mcp-server)
 
 # Resolve "all" to the full list
 RESOLVED=()

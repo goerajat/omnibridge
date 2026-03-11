@@ -9,7 +9,7 @@
 # Commands: start, stop, restart, status
 #
 # Components: all (default), exchange-simulator, fix-initiator, aeron-store,
-#             omniview, monitoring
+#             mcp-server, omniview, monitoring
 #
 # Options:
 #   -f, --tf-outputs   Terraform output JSON file (required)
@@ -126,7 +126,7 @@ PROXY_CMD="ssh -i $PEM_FILE -o StrictHostKeyChecking=no -p $SSH_PORT -W %h:%p $S
 # -------------------------------------------------------------------------
 # Order matters for start (dependencies first) and stop (reverse).
 
-ALL_COMPONENTS_ORDERED=(aeron-store exchange-simulator fix-initiator omniview monitoring)
+ALL_COMPONENTS_ORDERED=(aeron-store mcp-server exchange-simulator fix-initiator omniview monitoring)
 
 declare -A SVC_HOST SVC_JUMP SVC_NAME SVC_LABEL SVC_TYPE
 
@@ -135,6 +135,12 @@ SVC_JUMP[aeron-store]="jump"
 SVC_NAME[aeron-store]="aeron-remote-store"
 SVC_LABEL[aeron-store]="Aeron Remote Store"
 SVC_TYPE[aeron-store]="systemd"
+
+SVC_HOST[mcp-server]="$AERON_IP"
+SVC_JUMP[mcp-server]="jump"
+SVC_NAME[mcp-server]="mcp-server"
+SVC_LABEL[mcp-server]="MCP Server"
+SVC_TYPE[mcp-server]="systemd"
 
 SVC_HOST[exchange-simulator]="$FIX_IP"
 SVC_JUMP[exchange-simulator]="jump"

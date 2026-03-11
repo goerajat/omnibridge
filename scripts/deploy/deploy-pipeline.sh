@@ -30,7 +30,7 @@
 #   --validate-only    Skip stages 1-4, only run validation
 #   --wait <secs>      Seconds to wait between restart and validate (default: 15)
 #
-# Components: aeron-store, exchange-simulator, fix-initiator, omniview, monitoring
+# Components: aeron-store, mcp-server, exchange-simulator, fix-initiator, omniview, monitoring
 # =============================================================================
 
 set -euo pipefail
@@ -104,7 +104,7 @@ if ! command -v jq &>/dev/null; then
 fi
 
 # Validate component name if specified
-VALID_COMPONENTS=(aeron-store exchange-simulator fix-initiator omniview monitoring)
+VALID_COMPONENTS=(aeron-store mcp-server exchange-simulator fix-initiator omniview monitoring)
 if [ -n "$COMPONENT" ]; then
     FOUND=false
     for c in "${VALID_COMPONENTS[@]}"; do
@@ -135,6 +135,7 @@ UPLOAD_MAP[aeron-store]="aeron-remote-store"
 UPLOAD_MAP[exchange-simulator]="exchange-simulator"
 UPLOAD_MAP[fix-initiator]="fix-samples"
 UPLOAD_MAP[omniview]="omniview"
+UPLOAD_MAP[mcp-server]="mcp-server"
 # monitoring has no artifact to upload
 
 # =========================================================================
@@ -338,6 +339,7 @@ fi
 
 declare -A SVC_HOST SVC_JUMP SVC_NAME SVC_TYPE
 SVC_HOST[aeron-store]="$AERON_IP";       SVC_JUMP[aeron-store]="jump";   SVC_NAME[aeron-store]="aeron-remote-store"; SVC_TYPE[aeron-store]="systemd"
+SVC_HOST[mcp-server]="$AERON_IP";       SVC_JUMP[mcp-server]="jump";   SVC_NAME[mcp-server]="mcp-server"; SVC_TYPE[mcp-server]="systemd"
 SVC_HOST[exchange-simulator]="$FIX_IP";  SVC_JUMP[exchange-simulator]="jump";  SVC_NAME[exchange-simulator]="exchange-simulator"; SVC_TYPE[exchange-simulator]="systemd"
 SVC_HOST[fix-initiator]="$OUCH_IP";     SVC_JUMP[fix-initiator]="jump"; SVC_NAME[fix-initiator]="fix-initiator"; SVC_TYPE[fix-initiator]="systemd"
 SVC_HOST[omniview]="$MONITORING_IP";    SVC_JUMP[omniview]="direct";    SVC_NAME[omniview]="omniview"; SVC_TYPE[omniview]="systemd"
@@ -384,7 +386,7 @@ done
 echo ""
 echo "--- Check 2: Journal errors (last 5 min) ---"
 
-SYSTEMD_SERVICES=(aeron-store exchange-simulator fix-initiator omniview)
+SYSTEMD_SERVICES=(aeron-store mcp-server exchange-simulator fix-initiator omniview)
 
 for svc in "${SYSTEMD_SERVICES[@]}"; do
     if ! should_check "$svc"; then continue; fi
@@ -465,10 +467,27 @@ else
     check_skip "omniview: health (not selected)"
 fi
 
-# --- Check 6: Monitoring stack ---
+# --- Check 6: MCP Server health ---
 
 echo ""
-echo "--- Check 6: Monitoring stack ---"
+echo "--- Check 6: MCP Server health ---"
+
+if should_check "mcp-server"; then
+    mcp_output=$(remote_exec "$AERON_IP" "jump" "curl -sf http://localhost:8090/sse 2>/dev/null" 2>/dev/null) || mcp_output=""
+
+    if [ -n "$mcp_output" ] || remote_exec "$AERON_IP" "jump" "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8090/sse 2>/dev/null" 2>/dev/null | grep -q "200\|405"; then
+        check_pass "mcp-server: HTTP endpoint responding on :8090"
+    else
+        check_fail "mcp-server: HTTP endpoint not responding on :8090"
+    fi
+else
+    check_skip "mcp-server: health (not selected)"
+fi
+
+# --- Check 7: Monitoring stack ---
+
+echo ""
+echo "--- Check 7: Monitoring stack ---"
 
 if should_check "monitoring"; then
     docker_ps=$(remote_exec "$MONITORING_IP" "direct" "cd /opt/monitoring && sudo docker compose ps --format '{{.Name}}:{{.State}}' 2>/dev/null" 2>/dev/null) || docker_ps=""
