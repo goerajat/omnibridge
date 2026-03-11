@@ -19,6 +19,5 @@
         <module>engine</module>
         <module>session-tester</module>
         <module>reference-tester</module>
-        <module>admin-api</module>
     </modules>
 </project>
