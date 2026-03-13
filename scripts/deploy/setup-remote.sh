@@ -856,14 +856,24 @@ cat > "$DEPLOY_DIR/data/apps.json" << APPS_JSON
     "name": "Exchange Simulator",
     "host": "$FIX_IP",
     "port": 8080,
-    "enabled": true
+    "enabled": true,
+    "type": "engine"
   },
   {
     "id": "fix-init",
     "name": "FIX Initiator",
     "host": "$OUCH_IP",
     "port": 8082,
-    "enabled": true
+    "enabled": true,
+    "type": "engine"
+  },
+  {
+    "id": "aeron-store",
+    "name": "Aeron Remote Store",
+    "host": "$AERON_IP",
+    "port": 8083,
+    "enabled": true,
+    "type": "store"
   }
 ]
 APPS_JSON
