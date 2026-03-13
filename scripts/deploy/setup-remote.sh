@@ -343,8 +343,13 @@ chmod +x "$DEPLOY_DIR/bin/"*.sh 2>/dev/null || true
 rm -f "/tmp/$DIST"
 
 echo "[$COMP] Writing Aeron persistence config overlay..."
-cat > "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf" << 'AERON_CONF'
-include "exchange-simulator.conf"
+# Write to $DEPLOY_DIR/exchange-simulator.conf (working directory level) so that
+# ConfigLoader.loadConfigFile("exchange-simulator.conf") finds this file on the
+# filesystem BEFORE falling back to the classpath JAR version.
+# Using include classpath(...) ensures the JAR defaults are loaded without
+# filesystem shadowing causing infinite inclusion.
+cat > "$DEPLOY_DIR/exchange-simulator.conf" << 'AERON_CONF'
+include classpath("exchange-simulator.conf")
 
 demo {
     enabled = true
@@ -391,8 +396,8 @@ persistence {
 AERON_CONF
 
 # Substitute variables in the generated config (they are literal above)
-sed -i "s|\\\$DEPLOY_DIR|$DEPLOY_DIR|g" "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf"
-sed -i "s|\\\$AERON_IP|$AERON_IP|g" "$DEPLOY_DIR/conf/exchange-simulator-aeron.conf"
+sed -i "s|\\\$DEPLOY_DIR|$DEPLOY_DIR|g" "$DEPLOY_DIR/exchange-simulator.conf"
+sed -i "s|\\\$AERON_IP|$AERON_IP|g" "$DEPLOY_DIR/exchange-simulator.conf"
 
 echo "[$COMP] Creating systemd service..."
 sudo tee /etc/systemd/system/exchange-simulator.service > /dev/null << SERVICE
@@ -418,7 +423,6 @@ ExecStart=/usr/bin/java \\
     --add-exports java.base/jdk.internal.ref=ALL-UNNAMED \\
     --add-exports java.base/jdk.internal.util=ALL-UNNAMED \\
     --add-exports java.base/sun.nio.ch=ALL-UNNAMED \\
-    -Dconfig.file=$DEPLOY_DIR/conf/exchange-simulator-aeron.conf \\
     -Dlogback.configurationFile=$DEPLOY_DIR/conf/logback.xml \\
     -Dadmin.port=8080 \\
     -cp '$DEPLOY_DIR/conf:$DEPLOY_DIR/lib/*' \\

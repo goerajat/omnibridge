@@ -56,6 +56,13 @@
             <artifactId>pillar-engine</artifactId>
         </dependency>
 
+        <!-- Aeron Persistence (for remote store replication) -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>persistence-aeron</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Admin API -->
         <dependency>
             <groupId>com.omnibridge</groupId>
