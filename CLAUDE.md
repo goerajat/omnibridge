@@ -406,7 +406,42 @@ ssh -i omnibridge-key.pem ubuntu@<MONITORING_IP> "cd /opt/monitoring && sudo doc
 Services have dependencies and must start in this order:
 
 1. `aeron-store` — no dependencies
-2. `exchange-simulator` — needs Aeron store
-3. `fix-initiator` — needs exchange simulator
-4. `omniview` — needs admin ports of simulator + initiator
-5. `monitoring` — needs metrics endpoints of simulator + initiator
+2. `mcp-server` — needs Aeron store data directory
+3. `exchange-simulator` — needs Aeron store
+4. `fix-initiator` — needs exchange simulator
+5. `omniview` — needs admin ports of simulator + initiator
+6. `monitoring` — needs metrics endpoints of simulator + initiator
+
+## Claude GitHub Actions
+
+A GitHub Actions workflow (`.github/workflows/claude.yml`) enables Claude to automatically respond to issues and PR comments.
+
+### Prerequisites
+
+1. **Install the Claude GitHub App**: Visit [github.com/apps/claude](https://github.com/apps/claude) and grant access to this repository. Alternatively, run `/install-github-app` from Claude Code CLI.
+2. **Add API key secret**: Go to repo **Settings → Secrets → Actions** and create `ANTHROPIC_API_KEY` with your key from [console.anthropic.com](https://console.anthropic.com).
+
+### Usage
+
+Tag `@claude` in any issue or PR comment:
+
+```
+@claude fix the NPE in FixProtocolHandler when session disconnects
+@claude implement a new fill rule that delays execution by 500ms for DELAY* symbols
+@claude review this PR for thread safety issues
+@claude run the session tests and fix any failures
+```
+
+Claude will:
+1. Read the issue/PR context and explore the codebase
+2. Implement the fix or feature
+3. Run `mvn install -DskipTests` and `mvn test` to verify
+4. Create a PR with the changes for review
+
+### Configuration
+
+- **Model**: Sonnet (default, fast/cheap). Change to `claude-opus-4-6` in the workflow for complex tasks.
+- **Max turns**: 25 (enough for build/test cycles)
+- **Timeout**: 30 minutes
+- **JDK**: 21 (Temurin) with Maven cache pre-configured
+- **Project context**: Claude reads this `CLAUDE.md` file for build commands, test scripts, and architecture guidelines.
