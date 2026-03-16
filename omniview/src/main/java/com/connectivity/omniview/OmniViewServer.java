@@ -1,5 +1,6 @@
 package com.connectivity.omniview;
 
+import com.connectivity.omniview.chat.ChatHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ResourceHandler;
@@ -135,8 +136,11 @@ public class OmniViewServer {
             });
         });
 
-        // Chain: ContextHandler → WebSocketUpgradeHandler → ApiHandler → SpaHandler → ResourceHandler
-        wsHandler.setHandler(apiHandler);
+        // Create chat handler (wraps ApiHandler)
+        ChatHandler chatHandler = new ChatHandler(apiHandler, objectMapper);
+
+        // Chain: ContextHandler → WebSocketUpgradeHandler → ChatHandler → ApiHandler → SpaHandler → ResourceHandler
+        wsHandler.setHandler(chatHandler);
         contextHandler.setHandler(wsHandler);
 
         server.setHandler(contextHandler);

@@ -6,6 +6,7 @@ export function Layout() {
   const navItems = [
     { path: '/', label: 'Dashboard' },
     { path: '/stores', label: 'Stores' },
+    { path: '/chat', label: 'Chat' },
     { path: '/settings', label: 'Settings' },
   ]
 

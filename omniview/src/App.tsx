@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { AppDetail } from './pages/AppDetail'
 import { AeronStores } from './pages/AeronStores'
+import { Chat } from './pages/Chat'
 import { Settings } from './pages/Settings'
 import { useAppConnections } from './hooks/useAppConnections'
 import { useAppStore } from './store/appStore'
@@ -35,6 +36,7 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="app/:appId" element={<AppDetail />} />
         <Route path="stores" element={<AeronStores />} />
+        <Route path="chat" element={<Chat />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
