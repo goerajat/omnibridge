@@ -60,6 +60,8 @@ public class FixReader {
     // Buffer for accumulating incoming data (uses UnsafeBuffer for efficient access)
     private MutableDirectBuffer accumulationBuffer;
     private int accumulationPosition;
+    // Start of the bytes not yet returned as a message; everything before it has been read
+    private int readPosition;
     private static final int DEFAULT_BUFFER_SIZE = 64 * 1024;
 
     /**
@@ -85,7 +87,7 @@ public class FixReader {
      * @return the number of bytes needed for the next read
      */
     public int getBytesNeeded() {
-        int currentBytes = accumulationPosition;
+        int currentBytes = accumulationPosition - readPosition;
 
         if (expectedTotalMessageLength > 0) {
             // We know the total message length, return remaining bytes needed
@@ -120,12 +122,12 @@ public class FixReader {
      * This is called internally when we have enough bytes but haven't parsed yet.
      */
     private void tryParseHeader() {
-        if (accumulationPosition < 20) {
+        if (accumulationPosition - readPosition < 20) {
             return; // Not enough data for minimal header
         }
 
-        int startPos = 0;
-        int available = accumulationPosition;
+        int startPos = readPosition;
+        int available = accumulationPosition - readPosition;
 
         // Find BeginString
         int msgStart = findBeginString(accumulationBuffer, startPos, available);
@@ -158,17 +160,21 @@ public class FixReader {
         // Calculate expected total message length
         // Message = BeginString + BodyLength + Body + CheckSum
         // CheckSum is always "10=XXX<SOH>" = 7 bytes
-        expectedTotalMessageLength = bodyStartPos + bodyLengthValue + 7;
+        expectedTotalMessageLength = bodyStartPos - startPos + bodyLengthValue + 7;
     }
 
     /**
      * Add incoming data to the reader's internal buffer.
+     *
+     * <p>Bytes already returned as messages are discarded here, so a message from
+     * {@link #readIncomingMessage} stays valid until the next call to this method.</p>
      *
      * @param data the DirectBuffer containing incoming data
      * @param offset the offset in the buffer where data starts
      * @param length the number of bytes to add
      */
     public void addData(DirectBuffer data, int offset, int length) {
+        discardRead();
         ensureCapacity(length);
         accumulationBuffer.putBytes(accumulationPosition, data, offset, length);
         accumulationPosition += length;
@@ -184,12 +190,24 @@ public class FixReader {
     @Deprecated
     public void addData(ByteBuffer data) {
         int length = data.remaining();
+        discardRead();
         ensureCapacity(length);
         // Copy from ByteBuffer to accumulation buffer
         for (int i = 0; i < length; i++) {
             accumulationBuffer.putByte(accumulationPosition + i, data.get());
         }
         accumulationPosition += length;
+    }
+
+    private void discardRead() {
+        if (readPosition > 0) {
+            int remaining = accumulationPosition - readPosition;
+            if (remaining > 0) {
+                accumulationBuffer.putBytes(0, accumulationBuffer, readPosition, remaining);
+            }
+            accumulationPosition = remaining;
+            readPosition = 0;
+        }
     }
 
     /**
@@ -212,24 +230,27 @@ public class FixReader {
      * <p>This is the preferred method for latency-optimized message processing.
      * The message should be released back to its pool after processing.</p>
      *
+     * <p>The message is a view over the reader's buffer. It stays valid while further
+     * messages are read from the same data, until the next {@link #addData} call.</p>
+     *
      * @param message the IncomingFixMessage to populate (typically from a pool)
      * @return true if a message was successfully read, false if more data is needed
      */
     public boolean readIncomingMessage(IncomingFixMessage message) {
-        if (accumulationPosition == 0) {
+        int available = accumulationPosition - readPosition;
+        if (available == 0) {
             return false;
         }
 
-        int result = read(accumulationBuffer, 0, accumulationPosition, message);
+        int result = read(accumulationBuffer, readPosition, available, message);
 
         if (result > 0) {
-            // Successfully read a message, compact remaining data
-            int remaining = accumulationPosition - result;
-            if (remaining > 0) {
-                accumulationBuffer.putBytes(0, accumulationBuffer, result, remaining);
+            // Advance past the message (and any garbage skipped before it); no bytes move
+            readPosition = message.getStartOffset() + result;
+            if (readPosition == accumulationPosition) {
+                readPosition = 0;
+                accumulationPosition = 0;
             }
-            accumulationPosition = remaining;
-            // Reset expected length for next message
             expectedTotalMessageLength = -1;
             return true;
         }
@@ -248,6 +269,7 @@ public class FixReader {
         // Clear the accumulation buffer - critical for reconnection scenarios
         // where old data from a previous connection should not be mixed with new data
         accumulationPosition = 0;
+        readPosition = 0;
     }
 
     /**

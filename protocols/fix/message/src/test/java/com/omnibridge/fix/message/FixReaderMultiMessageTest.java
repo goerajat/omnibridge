@@ -50,6 +50,34 @@ class FixReaderMultiMessageTest {
     }
 
     @Test
+    void sameMessagesWhateverTheChunkBoundaries() {
+        StringBuilder stream = new StringBuilder();
+        for (int i = 1; i <= 20; i++) {
+            stream.append(fix("35=D|34=" + i + "|49=CLIENT|56=BROKER|11=ORD-" + i + "|58=" + "x".repeat(i * 7) + "|"));
+        }
+        byte[] bytes = stream.toString().getBytes(StandardCharsets.US_ASCII);
+
+        java.util.Random random = new java.util.Random(42);
+        for (int maxChunk : new int[] {1, 2, 7, 64, 1000, bytes.length}) {
+            FixReader reader = new FixReader();
+            IncomingFixMessage msg = new IncomingFixMessage();
+            int expected = 1;
+            int pos = 0;
+            while (pos < bytes.length) {
+                int n = Math.min(bytes.length - pos, 1 + random.nextInt(maxChunk));
+                reader.addData(new UnsafeBuffer(bytes), pos, n);
+                pos += n;
+                while (reader.readIncomingMessage(msg)) {
+                    assertEquals(expected, msg.getSeqNum(), "chunk size up to " + maxChunk);
+                    assertEquals("ORD-" + expected, msg.getCharSequence(11).toString());
+                    expected++;
+                }
+            }
+            assertEquals(21, expected, "all messages read with chunk size up to " + maxChunk);
+        }
+    }
+
+    @Test
     void logonSurvivesWhenOrderFollowsInSameBuffer() {
         FixReader reader = new FixReader();
         feed(reader, fix("35=A|34=1|49=CLIENT|56=BROKER|98=0|108=30|")
