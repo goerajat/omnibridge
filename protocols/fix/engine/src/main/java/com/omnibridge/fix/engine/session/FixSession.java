@@ -1013,8 +1013,7 @@ public class FixSession implements NetworkHandler {
         MutableDirectBuffer buffer = ch.buffer();
         RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
         message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
-                config.getBeginString(), config.getSenderCompId(), config.getTargetCompId());
-        message.setMsgType(msgType);
+                config.getBeginString(), config.getSenderCompId(), config.getTargetCompId(), msgType);
 
         return message;
     }
@@ -1122,8 +1121,7 @@ public class FixSession implements NetworkHandler {
         MutableDirectBuffer buffer = ch.buffer();
         RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
         message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
-                config.getBeginString(), config.getSenderCompId(), config.getTargetCompId());
-        message.setMsgType(msgType);
+                config.getBeginString(), config.getSenderCompId(), config.getTargetCompId(), msgType);
 
         return message;
     }

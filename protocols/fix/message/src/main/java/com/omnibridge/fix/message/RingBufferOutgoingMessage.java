@@ -1,9 +1,9 @@
 package com.omnibridge.fix.message;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.IntHashSet;
-
-import java.nio.charset.StandardCharsets;
+import org.agrona.concurrent.UnsafeBuffer;
 
 /**
  * FIX message that encodes directly into a ring buffer region for zero-copy sending.
@@ -77,6 +77,34 @@ public class RingBufferOutgoingMessage {
     private String senderCompId;
     private String targetCompId;
 
+    // Header bytes per MsgType length, built once for the strings above
+    private HeaderTemplate[] headerTemplates;
+    private HeaderTemplate header;
+
+    private static final class HeaderTemplate {
+        final DirectBuffer bytes;
+        final int length;
+        final int bodyLengthValueOffset;
+        final int msgTypeOffset;
+        final int msgTypeLength;
+        final int seqNumValueOffset;
+        final int sendingTimeValueOffset;
+        // Byte sum of the header excluding the four values filled in per message
+        final int constantSum;
+
+        HeaderTemplate(DirectBuffer bytes, int length, int bodyLengthValueOffset, int msgTypeOffset,
+                       int msgTypeLength, int seqNumValueOffset, int sendingTimeValueOffset, int constantSum) {
+            this.bytes = bytes;
+            this.length = length;
+            this.bodyLengthValueOffset = bodyLengthValueOffset;
+            this.msgTypeOffset = msgTypeOffset;
+            this.msgTypeLength = msgTypeLength;
+            this.seqNumValueOffset = seqNumValueOffset;
+            this.sendingTimeValueOffset = sendingTimeValueOffset;
+            this.constantSum = constantSum;
+        }
+    }
+
     /**
      * Create a new RingBufferOutgoingMessage with default configuration.
      */
@@ -117,99 +145,154 @@ public class RingBufferOutgoingMessage {
     public void wrap(MutableDirectBuffer buffer, int offset, int length,
                      int seqNum, int claimIndex,
                      String beginString, String senderCompId, String targetCompId) {
+        wrapRegion(buffer, offset, length, seqNum, claimIndex, beginString, senderCompId, targetCompId);
+        this.msgType = null;
+        applyHeaderTemplate(1);
+    }
+
+    /**
+     * Wrap this message around a claimed ring buffer region and write its header,
+     * including the message type, in a single copy from a cached header template.
+     *
+     * @param msgType the message type (e.g., "D" or "AE")
+     */
+    public void wrap(MutableDirectBuffer buffer, int offset, int length,
+                     int seqNum, int claimIndex,
+                     String beginString, String senderCompId, String targetCompId,
+                     String msgType) {
+        checkMsgType(msgType);
+        wrapRegion(buffer, offset, length, seqNum, claimIndex, beginString, senderCompId, targetCompId);
+        applyHeaderTemplate(msgType.length());
+        writeMsgType(msgType);
+    }
+
+    private void wrapRegion(MutableDirectBuffer buffer, int offset, int length, int seqNum, int claimIndex,
+                            String beginString, String senderCompId, String targetCompId) {
         this.buffer = buffer;
         this.bufferOffset = offset;
         this.maxLength = length;
         this.seqNum = seqNum;
         this.claimIndex = claimIndex;
-        this.beginString = beginString;
-        this.senderCompId = senderCompId;
-        this.targetCompId = targetCompId;
-        this.msgType = null;
+        if (!sameHeaderStrings(beginString, senderCompId, targetCompId)) {
+            this.beginString = beginString;
+            this.senderCompId = senderCompId;
+            this.targetCompId = targetCompId;
+            this.headerTemplates = new HeaderTemplate[3];
+        }
         this.tagSet.clear();
+    }
 
-        // Reset and build header
-        initializeHeader();
+    private boolean sameHeaderStrings(String begin, String sender, String target) {
+        return headerTemplates != null
+                && (begin == beginString || begin.equals(beginString))
+                && (sender == senderCompId || sender.equals(senderCompId))
+                && (target == targetCompId || target.equals(targetCompId));
     }
 
     /**
-     * Initialize the FIX message header.
+     * Copy the header for a message type of the given length into the claimed region
+     * and point the header field positions at it.
+     */
+    private void applyHeaderTemplate(int msgTypeLength) {
+        HeaderTemplate[] templates = headerTemplates;
+        if (msgTypeLength >= templates.length) {
+            templates = java.util.Arrays.copyOf(templates, msgTypeLength + 1);
+            headerTemplates = templates;
+        }
+        HeaderTemplate t = templates[msgTypeLength];
+        if (t == null) {
+            t = buildHeaderTemplate(msgTypeLength);
+            templates[msgTypeLength] = t;
+        }
+
+        int base = bufferOffset + LENGTH_PREFIX_SIZE;
+        buffer.putBytes(base, t.bytes, 0, t.length);
+        this.header = t;
+        this.bodyLengthValuePos = base + t.bodyLengthValueOffset;
+        this.msgTypePos = base + t.msgTypeOffset;
+        this.msgTypeEndPos = msgTypePos + msgTypeLength + 1;
+        this.seqNumValuePos = base + t.seqNumValueOffset;
+        this.sendingTimeValuePos = base + t.sendingTimeValueOffset;
+        this.bodyStartPos = base + t.length;
+        this.writePos = bodyStartPos;
+    }
+
+    /**
+     * Build the header bytes for one MsgType length.
      * Layout: 8=FIX.4.4|9=XXXXX|35=X|34=NNNNNNNN|49=SENDER|56=TARGET|52=YYYYMMDD-HH:MM:SS.sss|
      */
-    private void initializeHeader() {
-        // Start after the length prefix
-        int pos = bufferOffset + LENGTH_PREFIX_SIZE;
+    private HeaderTemplate buildHeaderTemplate(int msgTypeLength) {
+        UnsafeBuffer b = new UnsafeBuffer(new byte[beginString.length() + senderCompId.length()
+                + targetCompId.length() + bodyLengthDigits + seqNumDigits + msgTypeLength
+                + FastTimestampEncoder.TIMESTAMP_LENGTH + 32]);
+        int pos = putField(b, 0, FixTags.BeginString, beginString);
 
-        // 8=BeginString|
-        pos = writeField(pos, FixTags.BeginString, beginString);
+        pos = putTag(b, pos, FixTags.BodyLength);
+        int bodyLengthOffset = pos;
+        pos = putFill(b, pos, '0', bodyLengthDigits);
+        b.putByte(pos++, SOH);
 
-        // 9=XXXXX| (placeholder for body length)
-        pos = writeTag(pos, FixTags.BodyLength);
-        this.bodyLengthValuePos = pos;
-        for (int i = 0; i < bodyLengthDigits; i++) {
-            buffer.putByte(pos++, (byte) '0');
-        }
-        buffer.putByte(pos++, SOH);
+        pos = putTag(b, pos, FixTags.MsgType);
+        int msgTypeOffset = pos;
+        pos = putFill(b, pos, ' ', msgTypeLength);
+        b.putByte(pos++, SOH);
 
-        // 35=X| (placeholder for msg type - will be filled by setMsgType)
-        pos = writeTag(pos, FixTags.MsgType);
-        this.msgTypePos = pos;
-        // Leave space for msg type (max 2 chars typically)
-        buffer.putByte(pos++, (byte) ' ');
-        buffer.putByte(pos++, SOH);
-        this.msgTypeEndPos = pos;  // Will be updated by setMsgType
+        pos = putTag(b, pos, FixTags.MsgSeqNum);
+        int seqNumOffset = pos;
+        pos = putFill(b, pos, '0', seqNumDigits);
+        b.putByte(pos++, SOH);
 
-        // 34=NNNNNNNN| (placeholder for sequence number)
-        pos = writeTag(pos, FixTags.MsgSeqNum);
-        this.seqNumValuePos = pos;
-        for (int i = 0; i < seqNumDigits; i++) {
-            buffer.putByte(pos++, (byte) '0');
-        }
-        buffer.putByte(pos++, SOH);
+        pos = putField(b, pos, FixTags.SenderCompID, senderCompId);
+        pos = putField(b, pos, FixTags.TargetCompID, targetCompId);
 
-        // 49=SENDER| (pre-populated)
-        pos = writeField(pos, FixTags.SenderCompID, senderCompId);
+        pos = putTag(b, pos, FixTags.SendingTime);
+        int sendingTimeOffset = pos;
+        pos = putFill(b, pos, '0', FastTimestampEncoder.TIMESTAMP_LENGTH);
+        b.putByte(pos++, SOH);
 
-        // 56=TARGET| (pre-populated)
-        pos = writeField(pos, FixTags.TargetCompID, targetCompId);
+        int constantSum = sum(b, 0, pos)
+                - sum(b, bodyLengthOffset, bodyLengthDigits)
+                - sum(b, msgTypeOffset, msgTypeLength)
+                - sum(b, seqNumOffset, seqNumDigits)
+                - sum(b, sendingTimeOffset, FastTimestampEncoder.TIMESTAMP_LENGTH);
 
-        // 52=YYYYMMDD-HH:MM:SS.sss| (placeholder for sending time)
-        pos = writeTag(pos, FixTags.SendingTime);
-        this.sendingTimeValuePos = pos;
-        // Pre-fill with placeholder timestamp (21 bytes)
-        for (int i = 0; i < FastTimestampEncoder.TIMESTAMP_LENGTH; i++) {
-            buffer.putByte(pos++, (byte) '0');
-        }
-        buffer.putByte(pos++, SOH);
-
-        // Body starts here
-        this.bodyStartPos = pos;
-        this.writePos = pos;
+        return new HeaderTemplate(b, pos, bodyLengthOffset, msgTypeOffset, msgTypeLength,
+                seqNumOffset, sendingTimeOffset, constantSum);
     }
 
     /**
      * Set the message type.
      *
+     * <p>Prefer {@link #wrap(MutableDirectBuffer, int, int, int, int, String, String, String, String)},
+     * which writes the type with the header. A type of a different length can only be set
+     * before any body field, since it moves every field after it.</p>
+     *
      * @param msgType the message type (e.g., "D" for NewOrderSingle)
+     * @throws IllegalStateException if the length changes after body fields were written
      */
     public void setMsgType(String msgType) {
+        checkMsgType(msgType);
+        if (msgType.length() != header.msgTypeLength) {
+            if (writePos != bodyStartPos) {
+                throw new IllegalStateException("MsgType '" + msgType
+                        + "' changes the header length after body fields were written");
+            }
+            applyHeaderTemplate(msgType.length());
+        }
+        writeMsgType(msgType);
+    }
+
+    private static void checkMsgType(String msgType) {
         if (msgType == null || msgType.isEmpty()) {
             throw new IllegalArgumentException("Message type cannot be null or empty");
         }
+    }
 
+    private void writeMsgType(String msgType) {
         this.msgType = msgType;
-        byte[] msgTypeBytes = msgType.getBytes(StandardCharsets.US_ASCII);
-
-        // Update the msg type in the buffer
-        int pos = msgTypePos;
-        for (byte b : msgTypeBytes) {
-            buffer.putByte(pos++, b);
+        for (int i = 0, n = msgType.length(); i < n; i++) {
+            buffer.putByte(msgTypePos + i, (byte) msgType.charAt(i));
         }
-        buffer.putByte(pos++, SOH);
-        this.msgTypeEndPos = pos;
-
-        // If msg type is shorter than 2 chars, we need to adjust subsequent fields
-        // For simplicity, we'll just handle 1-2 char msg types in the header
     }
 
     /**
@@ -356,13 +439,14 @@ public class RingBufferOutgoingMessage {
         int bodyLength = writePos - bodyLengthStart;
         encodeIntFixedWidth(bodyLength, bodyLengthValuePos, bodyLengthDigits);
 
-        // 4. Calculate CheckSum (sum of all bytes mod 256)
-        int checksum = 0;
-        int messageStart = bufferOffset + LENGTH_PREFIX_SIZE;
-        for (int i = messageStart; i < writePos; i++) {
-            checksum += (buffer.getByte(i) & 0xFF);
-        }
-        checksum %= 256;
+        // 4. Calculate CheckSum (sum of all bytes mod 256); the header's fixed bytes are pre-summed
+        int checksum = header.constantSum
+                + sum(buffer, bodyLengthValuePos, bodyLengthDigits)
+                + sum(buffer, msgTypePos, header.msgTypeLength)
+                + sum(buffer, seqNumValuePos, seqNumDigits)
+                + sum(buffer, sendingTimeValuePos, FastTimestampEncoder.TIMESTAMP_LENGTH)
+                + sum(buffer, bodyStartPos, writePos - bodyStartPos);
+        checksum &= 0xFF;
 
         // 5. Write CheckSum (10=XXX|)
         buffer.putByte(writePos++, (byte) '1');
@@ -515,6 +599,10 @@ public class RingBufferOutgoingMessage {
      * @return the new position after writing
      */
     private int writeTag(int pos, int tag) {
+        return putTag(buffer, pos, tag);
+    }
+
+    private static int putTag(MutableDirectBuffer buffer, int pos, int tag) {
         if (tag < 10) {
             buffer.putByte(pos++, (byte) ('0' + tag));
         } else if (tag < 100) {
@@ -541,17 +629,32 @@ public class RingBufferOutgoingMessage {
     }
 
     /**
-     * Write a field (tag=value|) during header construction.
+     * Write a field (tag=value|) during header template construction.
      *
      * @return the new position after writing
      */
-    private int writeField(int pos, int tag, String value) {
-        pos = writeTag(pos, tag);
-        byte[] valueBytes = value.getBytes(StandardCharsets.US_ASCII);
-        buffer.putBytes(pos, valueBytes);
-        pos += valueBytes.length;
+    private static int putField(MutableDirectBuffer buffer, int pos, int tag, String value) {
+        pos = putTag(buffer, pos, tag);
+        for (int i = 0, n = value.length(); i < n; i++) {
+            buffer.putByte(pos++, (byte) value.charAt(i));
+        }
         buffer.putByte(pos++, SOH);
         return pos;
+    }
+
+    private static int putFill(MutableDirectBuffer buffer, int pos, char c, int count) {
+        for (int i = 0; i < count; i++) {
+            buffer.putByte(pos++, (byte) c);
+        }
+        return pos;
+    }
+
+    private static int sum(DirectBuffer buffer, int pos, int length) {
+        int s = 0;
+        for (int i = pos, end = pos + length; i < end; i++) {
+            s += buffer.getByte(i) & 0xFF;
+        }
+        return s;
     }
 
     /**

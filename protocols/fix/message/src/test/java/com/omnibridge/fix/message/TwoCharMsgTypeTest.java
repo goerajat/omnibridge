@@ -2,6 +2,7 @@ package com.omnibridge.fix.message;
 
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -53,6 +54,32 @@ class TwoCharMsgTypeTest {
 
         assertTrue(wire.contains("\u000135=" + msgType + "\u000134="),
                 "35=" + msgType + " must be followed by 34=, got: " + wire.replace('\u0001', '|'));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"D", "AE", "XYZ"})
+    void encodesExactWireBytes(String msgType) {
+        String body = "35=" + msgType + "|34=00000007|49=SENDER|56=TARGET|52=20231114-22:13:20.000|58=text|";
+        String head = "8=FIX.4.4|9=" + String.format("%05d", body.length()) + "|";
+        int sum = 0;
+        for (char c : (head + body).replace('|', '\u0001').toCharArray()) {
+            sum += c;
+        }
+        String expected = head + body + String.format("10=%03d|", sum % 256);
+
+        String wire = new String(encode(msgType), StandardCharsets.US_ASCII).replace('\u0001', '|');
+
+        assertEquals(expected, wire);
+    }
+
+    @Test
+    void msgTypeLengthCannotChangeAfterBodyFields() {
+        message.wrap(buffer, 0, BUFFER_SIZE + RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE,
+                SEQ_NUM, 0, "FIX.4.4", "SENDER", "TARGET");
+        message.setMsgType("D");
+        message.setField(11, "ORD-1");
+
+        assertThrows(IllegalStateException.class, () -> message.setMsgType("AE"));
     }
 
     @ParameterizedTest
