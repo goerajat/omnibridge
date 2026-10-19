@@ -20,6 +20,7 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -418,6 +419,7 @@ public class FixSession implements NetworkHandler {
     public void onConnected(TcpChannel channel) {
         log.info("[{}] Connected to {}:{}", config.getSessionId(), config.getHost(), config.getPort());
         this.channel = channel;
+        this.ioThread = Thread.currentThread();
         channel.setOutgoingFrameHandler(this::onOutgoingFrame);
         registerOutgoingMessageListener(channel);
         setState(SessionState.CONNECTED);
@@ -688,6 +690,12 @@ public class FixSession implements NetworkHandler {
     // Ring record types for outgoing messages (TcpChannel.MSG_TYPE_RAW is sent unchanged)
     private static final int FRAME_STAMP_SEQ_NUM = 2;
     private static final int FRAME_SET_NEXT_SEQ_NUM = 3;
+    private static final long SEQ_NUM_CONTROL_WAIT_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(1);
+
+    private final java.util.concurrent.atomic.AtomicLong seqNumControlsIssued = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong seqNumControlsApplied = new java.util.concurrent.atomic.AtomicLong();
+    // The event loop thread that drains this session's channel
+    private volatile Thread ioThread;
 
     private TcpChannel claimedChannel(RingBufferOutgoingMessage msg) {
         Object owner = msg.getClaimOwner();
@@ -711,6 +719,7 @@ public class FixSession implements NetworkHandler {
         }
         if (msgTypeId == FRAME_SET_NEXT_SEQ_NUM) {
             outgoingSeqNum.set(buffer.getInt(offset));
+            seqNumControlsApplied.incrementAndGet();
             return false;
         }
         return true;
@@ -754,12 +763,39 @@ public class FixSession implements NetworkHandler {
 
     /**
      * Set the number the next sent message gets. While connected this travels through the
-     * ring buffer, so messages committed before the call keep the old numbering.
+     * ring buffer, so messages committed before the call keep the old numbering; the call
+     * returns once the event loop has applied it, so getOutgoingSeqNum() reflects it.
      */
     private void setNextOutgoingSeqNum(int next) {
         TcpChannel ch = channel;
-        if (ch == null || ch.isClosed() || !ch.writeControl(FRAME_SET_NEXT_SEQ_NUM, next)) {
+        if (ch == null || ch.isClosed()) {
             outgoingSeqNum.set(next);
+            return;
+        }
+        long issued = seqNumControlsIssued.incrementAndGet();
+        if (!ch.writeControl(FRAME_SET_NEXT_SEQ_NUM, next)) {
+            seqNumControlsIssued.decrementAndGet();
+            outgoingSeqNum.set(next);
+            return;
+        }
+
+        if (Thread.currentThread() == ioThread) {
+            // We are the drainer: send what is queued ahead of the control record now
+            try {
+                ch.drainRingBufferToSocket();
+            } catch (IOException e) {
+                log.warn("[{}] Write failed while applying sequence number {}: {}",
+                        config.getSessionId(), next, e.getMessage());
+            }
+        } else {
+            long deadline = System.nanoTime() + SEQ_NUM_CONTROL_WAIT_NANOS;
+            while (seqNumControlsApplied.get() < issued && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+        }
+        if (seqNumControlsApplied.get() < issued) {
+            log.warn("[{}] Next outgoing sequence number {} is queued behind unsent messages",
+                    config.getSessionId(), next);
         }
     }
 
