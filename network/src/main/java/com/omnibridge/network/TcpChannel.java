@@ -30,14 +30,29 @@ public class TcpChannel {
         void onOutgoingMessage(org.agrona.DirectBuffer buffer, int offset, int length);
     }
 
+    /**
+     * Sees each ring buffer record on the event loop thread, in ring order, before its
+     * first byte is written and before the {@link OutgoingMessageListener}. It may modify
+     * the payload in place (e.g., to stamp a sequence number) or consume a control record.
+     */
+    @FunctionalInterface
+    public interface OutgoingFrameHandler {
+        /**
+         * @param msgTypeId the type the record was claimed with
+         * @return true to send the payload, false to consume the record without sending it
+         */
+        boolean onFrame(int msgTypeId, MutableDirectBuffer buffer, int offset, int length);
+    }
+
+    /** Record type of payloads sent as-is; the default for {@link #tryClaim(int)} and {@link #writeRaw}. */
+    public static final int MSG_TYPE_RAW = 1;
+
     private static final Logger log = LoggerFactory.getLogger(TcpChannel.class);
     private static final AtomicLong ID_GENERATOR = new AtomicLong(0);
 
     // Default ring buffer capacity (1MB)
     public static final int DEFAULT_RING_BUFFER_CAPACITY = 1024 * 1024;
 
-    // Message type ID for ring buffer (arbitrary constant)
-    private static final int MSG_TYPE_FIX_MESSAGE = 1;
 
     // Length prefix size in ring buffer messages
     private static final int LENGTH_PREFIX_SIZE = 4;
@@ -60,6 +75,7 @@ public class TcpChannel {
     private final ByteBuffer ringBufferDirectView;
 
     private OutgoingMessageListener outgoingMessageListener;
+    private OutgoingFrameHandler outgoingFrameHandler;
 
     // Progress on the message at the head of the ring: bytes written, and whether it was announced
     private int partialSent;
@@ -211,6 +227,18 @@ public class TcpChannel {
         return outgoingMessageListener;
     }
 
+    /**
+     * Set the handler that sees each ring record before it is sent.
+     * The handler is called on the event loop thread.
+     */
+    public void setOutgoingFrameHandler(OutgoingFrameHandler handler) {
+        this.outgoingFrameHandler = handler;
+    }
+
+    public OutgoingFrameHandler getOutgoingFrameHandler() {
+        return outgoingFrameHandler;
+    }
+
     // ==================== Ring Buffer Methods ====================
 
     /**
@@ -231,7 +259,38 @@ public class TcpChannel {
      * @return the claim index if successful, or -1 if the buffer is full
      */
     public int tryClaim(int length) {
-        return ringBuffer.tryClaim(MSG_TYPE_FIX_MESSAGE, length);
+        return ringBuffer.tryClaim(MSG_TYPE_RAW, length);
+    }
+
+    /**
+     * Try to claim space for a record of the given type, which the {@link OutgoingFrameHandler}
+     * receives when the record is drained.
+     *
+     * @param msgTypeId the record type (must be positive)
+     * @param length the required length for the message (including length prefix)
+     * @return the claim index if successful, or -1 if the buffer is full
+     */
+    public int tryClaim(int msgTypeId, int length) {
+        return ringBuffer.tryClaim(msgTypeId, length);
+    }
+
+    /**
+     * Queue a control record carrying one int. It is delivered to the
+     * {@link OutgoingFrameHandler} in ring order with the messages around it and is
+     * never written to the socket if the handler consumes it.
+     *
+     * @return false if the ring buffer is full
+     */
+    public boolean writeControl(int msgTypeId, int value) {
+        int claimIndex = ringBuffer.tryClaim(msgTypeId, LENGTH_PREFIX_SIZE + Integer.BYTES);
+        if (claimIndex < 0) {
+            return false;
+        }
+        MutableDirectBuffer buf = ringBuffer.buffer();
+        buf.putInt(claimIndex, Integer.BYTES);
+        buf.putInt(claimIndex + LENGTH_PREFIX_SIZE, value);
+        commit(claimIndex);
+        return true;
     }
 
     /**
@@ -371,6 +430,10 @@ public class TcpChannel {
 
         // Notify once per message, before its first byte goes out (e.g., for persistence logging)
         if (!headNotified) {
+            if (outgoingFrameHandler != null
+                    && !outgoingFrameHandler.onFrame(msgTypeId, buffer, payloadOffset, payloadLength)) {
+                return ControlledMessageHandler.Action.CONTINUE;
+            }
             headNotified = true;
             if (outgoingMessageListener != null) {
                 outgoingMessageListener.onOutgoingMessage(buffer, payloadOffset, payloadLength);

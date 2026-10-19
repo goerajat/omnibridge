@@ -312,6 +312,7 @@ public class FixSession implements NetworkHandler {
     public void setChannel(TcpChannel channel) {
         this.channel = channel;
         if (channel != null) {
+            channel.setOutgoingFrameHandler(this::onOutgoingFrame);
             registerOutgoingMessageListener(channel);
         }
     }
@@ -417,6 +418,7 @@ public class FixSession implements NetworkHandler {
     public void onConnected(TcpChannel channel) {
         log.info("[{}] Connected to {}:{}", config.getSessionId(), config.getHost(), config.getPort());
         this.channel = channel;
+        channel.setOutgoingFrameHandler(this::onOutgoingFrame);
         registerOutgoingMessageListener(channel);
         setState(SessionState.CONNECTED);
         lastReceivedTime = clockProvider.currentTimeMillis();
@@ -683,6 +685,84 @@ public class FixSession implements NetworkHandler {
         }
     }
 
+    // Ring record types for outgoing messages (TcpChannel.MSG_TYPE_RAW is sent unchanged)
+    private static final int FRAME_STAMP_SEQ_NUM = 2;
+    private static final int FRAME_SET_NEXT_SEQ_NUM = 3;
+
+    private TcpChannel claimedChannel(RingBufferOutgoingMessage msg) {
+        Object owner = msg.getClaimOwner();
+        return owner instanceof TcpChannel ch ? ch : channel;
+    }
+
+    /**
+     * Event loop hook, called once per ring record in ring order before it is sent.
+     * This is the only place outgoing MsgSeqNum values are assigned while connected.
+     */
+    private boolean onOutgoingFrame(int msgTypeId, MutableDirectBuffer buffer, int offset, int length) {
+        if (msgTypeId == FRAME_STAMP_SEQ_NUM) {
+            int seqNum = outgoingSeqNum.get();
+            stampSeqNum(buffer, offset, length, seqNum);
+            outgoingSeqNum.lazySet(seqNum + 1);
+            if (config.isLogMessages() && log.isInfoEnabled()) {
+                log.info("[{}] OUT <<< {}", config.getSessionId(),
+                        buffer.getStringWithoutLengthAscii(offset, length).replace('\u0001', '|'));
+            }
+            return true;
+        }
+        if (msgTypeId == FRAME_SET_NEXT_SEQ_NUM) {
+            outgoingSeqNum.set(buffer.getInt(offset));
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Write seqNum into the zero-filled 34= field and correct CheckSum (10=) for the changed digits.
+     */
+    static void stampSeqNum(MutableDirectBuffer buffer, int offset, int length, int seqNum) {
+        int end = offset + length;
+        int pos = offset;
+        while (pos + 3 < end && !(buffer.getByte(pos) == 0x01 && buffer.getByte(pos + 1) == '3'
+                && buffer.getByte(pos + 2) == '4' && buffer.getByte(pos + 3) == '=')) {
+            pos++;
+        }
+        int valueStart = pos + 4;
+        int valueEnd = valueStart;
+        while (valueEnd < end && buffer.getByte(valueEnd) != 0x01) {
+            valueEnd++;
+        }
+
+        int delta = 0;
+        int value = seqNum;
+        for (int i = valueEnd - 1; i >= valueStart; i--) {
+            byte digit = (byte) ('0' + value % 10);
+            value /= 10;
+            delta += digit - buffer.getByte(i);
+            buffer.putByte(i, digit);
+        }
+
+        // Trailer is 10=NNN<SOH>; its digits sit just before the final SOH
+        int checksumPos = end - 4;
+        int checksum = (buffer.getByte(checksumPos) - '0') * 100
+                + (buffer.getByte(checksumPos + 1) - '0') * 10
+                + (buffer.getByte(checksumPos + 2) - '0');
+        checksum = ((checksum + delta) % 256 + 256) % 256;
+        buffer.putByte(checksumPos, (byte) ('0' + checksum / 100));
+        buffer.putByte(checksumPos + 1, (byte) ('0' + (checksum / 10) % 10));
+        buffer.putByte(checksumPos + 2, (byte) ('0' + checksum % 10));
+    }
+
+    /**
+     * Set the number the next sent message gets. While connected this travels through the
+     * ring buffer, so messages committed before the call keep the old numbering.
+     */
+    private void setNextOutgoingSeqNum(int next) {
+        TcpChannel ch = channel;
+        if (ch == null || ch.isClosed() || !ch.writeControl(FRAME_SET_NEXT_SEQ_NUM, next)) {
+            outgoingSeqNum.set(next);
+        }
+    }
+
     /**
      * Register an outgoing message listener on the channel for persistence logging.
      * The listener fires during ring buffer drain on the event loop thread,
@@ -754,9 +834,9 @@ public class FixSession implements NetworkHandler {
         if (resetSeqNum || config.isResetOnLogon()) {
             log.info("[{}] Resetting sequence numbers", config.getSessionId());
             if (config.isInitiator()) {
-                outgoingSeqNum.set(2);
+                setNextOutgoingSeqNum(2);
             } else {
-                outgoingSeqNum.set(1);
+                setNextOutgoingSeqNum(1);
             }
             expectedIncomingSeqNum.set(1);
             // Mark that we just reset - the seqNum increment logic will handle this specially
@@ -996,8 +1076,9 @@ public class FixSession implements NetworkHandler {
         // Calculate claim size: length prefix + max message length
         int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
 
-        // Try to claim space in the ring buffer
-        int claimIndex = ch.tryClaim(claimSize);
+        // Try to claim space in the ring buffer. MsgSeqNum is left as zeros and stamped by
+        // onOutgoingFrame on the event loop, so wire order and number order always agree.
+        int claimIndex = ch.tryClaim(FRAME_STAMP_SEQ_NUM, claimSize);
         if (claimIndex < 0) {
             // Ring buffer is full
             if (claimFailedCounter != null) {
@@ -1006,14 +1087,12 @@ public class FixSession implements NetworkHandler {
             return null;
         }
 
-        // Assign sequence number atomically
-        int seqNum = outgoingSeqNum.getAndIncrement();
-
         // Get the buffer and wrap the thread-local message
         MutableDirectBuffer buffer = ch.buffer();
         RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
-        message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
+        message.wrap(buffer, claimIndex, claimSize, 0, claimIndex,
                 config.getBeginString(), config.getSenderCompId(), config.getTargetCompId(), msgType);
+        message.setClaimOwner(ch);
 
         return message;
     }
@@ -1036,8 +1115,8 @@ public class FixSession implements NetworkHandler {
         // registered on the TcpChannel, which fires during ring buffer drain
         // on the event loop thread (ensuring single-writer for Chronicle Queue).
 
-        // Commit to ring buffer
-        TcpChannel ch = channel;
+        // Commit to the ring buffer the message was claimed from
+        TcpChannel ch = claimedChannel(msg);
         if (ch != null) {
             ch.commit(msg.getClaimIndex());
             lastSentTime = clockProvider.currentTimeMillis();
@@ -1047,28 +1126,20 @@ public class FixSession implements NetworkHandler {
                 messagesSentCounter.increment();
             }
 
-            log.debug("[{}] Committed to ring buffer: {} SeqNum={}",
-                    config.getSessionId(), msg.getMsgType(), msg.getSeqNum());
-            if (config.isLogMessages()) {
-                log.info("[{}] OUT <<< {}", config.getSessionId(), msg.toString());
-            }
+            log.debug("[{}] Committed to ring buffer: {}", config.getSessionId(), msg.getMsgType());
         }
     }
 
     /**
      * Abort a ring buffer message, discarding it.
      *
-     * <p>Use this method to rollback a claim if encoding fails. The sequence
-     * number is also rolled back.</p>
+     * <p>Use this method to rollback a claim if encoding fails. No sequence
+     * number is consumed: numbers are assigned only to messages that are sent.</p>
      *
      * @param msg the ring buffer message to abort
      */
     public void abortMessage(RingBufferOutgoingMessage msg) {
-        // Rollback sequence number
-        outgoingSeqNum.decrementAndGet();
-
-        // Abort the claim
-        TcpChannel ch = channel;
+        TcpChannel ch = claimedChannel(msg);
         if (ch != null) {
             ch.abort(msg.getClaimIndex());
             log.debug("[{}] Aborted ring buffer message: {}", config.getSessionId(), msg.getMsgType());
@@ -1110,8 +1181,8 @@ public class FixSession implements NetworkHandler {
         // Calculate claim size: length prefix + max message length
         int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
 
-        // Try to claim space in the ring buffer
-        int claimIndex = ch.tryClaim(claimSize);
+        // Try to claim space in the ring buffer (raw: the explicit number is not re-stamped)
+        int claimIndex = ch.tryClaim(TcpChannel.MSG_TYPE_RAW, claimSize);
         if (claimIndex < 0) {
             // Ring buffer is full
             return null;
@@ -1122,6 +1193,7 @@ public class FixSession implements NetworkHandler {
         RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
         message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
                 config.getBeginString(), config.getSenderCompId(), config.getTargetCompId(), msgType);
+        message.setClaimOwner(ch);
 
         return message;
     }
@@ -1318,7 +1390,7 @@ public class FixSession implements NetworkHandler {
      */
     public void resetSequenceNumbers() {
         log.info("[{}] Resetting sequence numbers", config.getSessionId());
-        outgoingSeqNum.set(1);
+        setNextOutgoingSeqNum(1);
         expectedIncomingSeqNum.set(1);
     }
 
@@ -1351,7 +1423,8 @@ public class FixSession implements NetworkHandler {
     }
 
     /**
-     * Get the next outgoing sequence number.
+     * Get the next outgoing sequence number: the one the next message to reach the wire gets.
+     * Messages committed but not yet drained by the event loop are not counted.
      */
     public int getOutgoingSeqNum() {
         return outgoingSeqNum.get();
@@ -1389,7 +1462,7 @@ public class FixSession implements NetworkHandler {
         }
         log.info("[{}] Setting outgoing sequence number: {} -> {}",
                 config.getSessionId(), outgoingSeqNum.get(), seqNum);
-        outgoingSeqNum.set(seqNum);
+        setNextOutgoingSeqNum(seqNum);
     }
 
     /**

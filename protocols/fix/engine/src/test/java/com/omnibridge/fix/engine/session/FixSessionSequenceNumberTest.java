@@ -1,6 +1,7 @@
 package com.omnibridge.fix.engine.session;
 
 import com.omnibridge.fix.engine.config.SessionConfig;
+import com.omnibridge.fix.message.IncomingFixMessage;
 import com.omnibridge.fix.message.RingBufferOutgoingMessage;
 import com.omnibridge.network.TcpChannel;
 import org.junit.jupiter.api.AfterEach;
@@ -144,28 +145,88 @@ class FixSessionSequenceNumberTest {
         ExecutorService threadB = Executors.newSingleThreadExecutor();
         try {
             RingBufferOutgoingMessage a = threadA.submit(() -> session.tryClaimMessage("D")).get();
-            int seqA = a.getSeqNum();
 
-            int seqB = threadB.submit(() -> {
+            threadB.submit(() -> {
                 RingBufferOutgoingMessage b = session.tryClaimMessage("D");
+                b.setField(11, "ORD-B");
                 session.commitMessage(b);
-                return b.getSeqNum();
             }).get();
 
             threadA.submit(() -> session.abortMessage(a)).get();
 
-            RingBufferOutgoingMessage next = session.tryClaimMessage("D");
-            int seqNext = next.getSeqNum();
-            session.abortMessage(next);
+            sendOrder("ORD-C");
+            channel.drainRingBufferToSocket();
 
-            assertEquals(1, seqA);
-            assertEquals(2, seqB);
-            assertNotEquals(seqB, seqNext,
-                    "after A aborts, the next claim reused MsgSeqNum " + seqB + " already committed by B");
+            List<IncomingFixMessage> received = readParsed(2);
+            assertEquals("ORD-B", received.get(0).getCharSequence(11).toString());
+            assertEquals(1, received.get(0).getSeqNum());
+            assertEquals("ORD-C", received.get(1).getCharSequence(11).toString());
+            assertEquals(2, received.get(1).getSeqNum(), "the aborted claim must neither reuse nor skip a number");
         } finally {
             threadA.shutdownNow();
             threadB.shutdownNow();
         }
+    }
+
+    @Test
+    void resetAppliesBetweenTheMessagesItWasIssuedBetween() throws Exception {
+        sendOrder("ORD-A");
+        session.setOutgoingSeqNum(100);
+        sendOrder("ORD-B");
+        channel.drainRingBufferToSocket();
+
+        List<IncomingFixMessage> received = readParsed(2);
+        assertEquals(1, received.get(0).getSeqNum());
+        assertEquals(100, received.get(1).getSeqNum());
+        assertEquals(101, session.getOutgoingSeqNum());
+    }
+
+    @Test
+    void stampedMessagesCarryValidChecksums() throws Exception {
+        session.setOutgoingSeqNum(98);
+        for (int i = 0; i < 5; i++) {
+            sendOrder("ORD-" + i);
+        }
+        channel.drainRingBufferToSocket();
+
+        // FixReader rejects a message whose CheckSum does not match its bytes
+        List<IncomingFixMessage> received = readParsed(5);
+        for (int i = 0; i < 5; i++) {
+            assertEquals(98 + i, received.get(i).getSeqNum());
+            assertEquals("ORD-" + i, received.get(i).getCharSequence(11).toString());
+        }
+    }
+
+    private void sendOrder(String clOrdId) {
+        RingBufferOutgoingMessage msg = session.tryClaimMessage("D");
+        msg.setField(11, clOrdId);
+        session.commitMessage(msg);
+    }
+
+    private List<IncomingFixMessage> readParsed(int expected) throws IOException {
+        List<IncomingFixMessage> parsed = new ArrayList<>();
+        com.omnibridge.fix.message.FixReader reader = new com.omnibridge.fix.message.FixReader();
+        byte[] buf = new byte[64 * 1024];
+        peer.socket().setSoTimeout(5_000);
+        InputStream in = peer.socket().getInputStream();
+        while (parsed.size() < expected) {
+            int n = in.read(buf);
+            if (n < 0) {
+                break;
+            }
+            // Copy each chunk so earlier messages stay readable after the next addData
+            byte[] chunk = java.util.Arrays.copyOf(buf, n);
+            reader.addData(new org.agrona.concurrent.UnsafeBuffer(chunk), 0, n);
+            IncomingFixMessage msg = new IncomingFixMessage();
+            while (reader.readIncomingMessage(msg)) {
+                IncomingFixMessage copy = new IncomingFixMessage();
+                byte[] raw = msg.getRawMessage();
+                copy.wrap(raw, 0, raw.length);
+                parsed.add(copy);
+            }
+        }
+        assertEquals(expected, parsed.size(), "messages that parsed with a valid checksum");
+        return parsed;
     }
 
     // Plain text split rather than FixReader, so the reader's own buffering can't affect the result.

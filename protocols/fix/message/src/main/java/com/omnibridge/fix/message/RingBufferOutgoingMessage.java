@@ -33,7 +33,7 @@ import org.agrona.concurrent.UnsafeBuffer;
  *     msg.setField(54, '1');
  *     msg.setField(38, 100);
  *     msg.setField(44, 150.25, 2);
- *     session.commitMessage(msg);  // Seq num already assigned at claim
+ *     session.commitMessage(msg);  // MsgSeqNum is assigned when the message is sent
  * } else {
  *     // Ring buffer full - retry or handle backpressure
  * }
@@ -71,6 +71,8 @@ public class RingBufferOutgoingMessage {
     // Claim index for commit/abort
     private int claimIndex;
     private int seqNum;
+    // Whatever the claim was made on (the session's channel), so commit/abort reach the same one
+    private Object claimOwner;
 
     // Configuration from session
     private String beginString;
@@ -492,12 +494,23 @@ public class RingBufferOutgoingMessage {
     }
 
     /**
-     * Get the sequence number assigned to this message.
+     * Get the sequence number written by {@link #prepareForSend}.
      *
-     * @return the sequence number
+     * <p>0 when the session assigns MsgSeqNum as the message is sent; the number
+     * then appears only in the bytes that reach the wire and the message log.</p>
+     *
+     * @return the sequence number, or 0 if assigned at send time
      */
     public int getSeqNum() {
         return seqNum;
+    }
+
+    public Object getClaimOwner() {
+        return claimOwner;
+    }
+
+    public void setClaimOwner(Object claimOwner) {
+        this.claimOwner = claimOwner;
     }
 
     /**

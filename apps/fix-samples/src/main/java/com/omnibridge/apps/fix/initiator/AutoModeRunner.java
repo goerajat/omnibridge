@@ -76,10 +76,9 @@ public class AutoModeRunner {
             order.setField(FixTags.TimeInForce, FixTags.TIF_DAY);
             order.setField(FixTags.TransactTime, Instant.now().toString());
 
-            int seqNum = order.getSeqNum();
             session.commitMessage(order);
-            log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}, SeqNum={}",
-                    clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price, seqNum);
+            log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}",
+                    clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price);
         } catch (Exception e) {
             log.error("Error sending order", e);
         }

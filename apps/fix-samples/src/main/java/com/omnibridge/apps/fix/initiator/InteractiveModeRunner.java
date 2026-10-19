@@ -124,10 +124,9 @@ public class InteractiveModeRunner {
                 order.setField(FixTags.Price, price, 2);
             }
 
-            int seqNum = order.getSeqNum();
             session.commitMessage(order);
-            log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}, SeqNum={}",
-                    clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price, seqNum);
+            log.info("Sent NewOrderSingle: ClOrdID={}, Symbol={}, Side={}, Qty={}, Price={}",
+                    clOrdId, symbol, side == FixTags.SIDE_BUY ? "BUY" : "SELL", qty, price);
         } catch (Exception e) {
             log.error("Error sending order", e);
         }
@@ -149,10 +148,9 @@ public class InteractiveModeRunner {
             cancel.setField(FixTags.Side, FixTags.SIDE_BUY); // In real app, would lookup
             cancel.setField(FixTags.TransactTime, Instant.now().toString());
 
-            int seqNum = cancel.getSeqNum();
             session.commitMessage(cancel);
-            log.info("Sent OrderCancelRequest: ClOrdID={}, OrigClOrdID={}, SeqNum={}",
-                    clOrdId, origClOrdId, seqNum);
+            log.info("Sent OrderCancelRequest: ClOrdID={}, OrigClOrdID={}",
+                    clOrdId, origClOrdId);
         } catch (Exception e) {
             log.error("Error sending cancel request", e);
         }

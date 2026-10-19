@@ -372,6 +372,11 @@ public class SslTcpChannel {
                 int payloadLength = buffer.getInt(index);
                 int payloadOffset = index + 4;
 
+                var frameHandler = delegateChannel.getOutgoingFrameHandler();
+                if (frameHandler != null && !frameHandler.onFrame(msgTypeId, buffer, payloadOffset, payloadLength)) {
+                    return org.agrona.concurrent.ControlledMessageHandler.Action.CONTINUE;
+                }
+
                 // Notify listener (e.g., for persistence logging)
                 var listener = delegateChannel.getOutgoingMessageListener();
                 if (listener != null) {
