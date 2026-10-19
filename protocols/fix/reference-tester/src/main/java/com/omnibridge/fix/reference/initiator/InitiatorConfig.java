@@ -139,7 +139,7 @@ public class InitiatorConfig {
 
         /**
          * Set the DefaultApplVerID for FIX 5.0+ sessions.
-         * Valid values: "9" (FIX50), "10" (FIX50SP1), "11" (FIX50SP2)
+         * Valid values: "7" (FIX50), "8" (FIX50SP1), "9" (FIX50SP2)
          */
         public Builder defaultApplVerID(String defaultApplVerID) {
             this.defaultApplVerID = defaultApplVerID;
@@ -148,11 +148,11 @@ public class InitiatorConfig {
 
         /**
          * Configure for FIX 5.0 using FIXT.1.1 transport.
-         * Sets beginString to FIXT.1.1 and defaultApplVerID to "9" (FIX 5.0).
+         * Sets beginString to FIXT.1.1 and defaultApplVerID to "7" (FIX 5.0).
          */
         public Builder fix50() {
             this.beginString = "FIXT.1.1";
-            this.defaultApplVerID = "9";  // FIX 5.0
+            this.defaultApplVerID = "7";  // FIX 5.0
             return this;
         }
 
@@ -161,7 +161,7 @@ public class InitiatorConfig {
          */
         public Builder fix50SP1() {
             this.beginString = "FIXT.1.1";
-            this.defaultApplVerID = "10";  // FIX 5.0 SP1
+            this.defaultApplVerID = "8";  // FIX 5.0 SP1
             return this;
         }
 
@@ -170,7 +170,7 @@ public class InitiatorConfig {
          */
         public Builder fix50SP2() {
             this.beginString = "FIXT.1.1";
-            this.defaultApplVerID = "11";  // FIX 5.0 SP2
+            this.defaultApplVerID = "9";  // FIX 5.0 SP2
             return this;
         }
 

@@ -79,7 +79,7 @@ public class ReferenceTester implements Callable<Integer> {
         @Option(names = {"--begin-string"}, description = "FIX version: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2 (default: FIX.4.4)")
         String beginString = "FIX.4.4";
 
-        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (9=FIX50, 10=FIX50SP1, 11=FIX50SP2)")
+        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (7=FIX50, 8=FIX50SP1, 9=FIX50SP2)")
         String defaultApplVerID = null;
 
         @Option(names = {"--heartbeat"}, description = "Heartbeat interval in seconds (default: 30)")
@@ -109,11 +109,11 @@ public class ReferenceTester implements Callable<Integer> {
                 effectiveBeginString = "FIXT.1.1";
                 if (effectiveApplVerID == null) {
                     if (beginString.contains("SP2")) {
-                        effectiveApplVerID = "11";  // FIX 5.0 SP2
+                        effectiveApplVerID = "9";  // FIX 5.0 SP2
                     } else if (beginString.contains("SP1")) {
-                        effectiveApplVerID = "10";  // FIX 5.0 SP1
+                        effectiveApplVerID = "8";  // FIX 5.0 SP1
                     } else {
-                        effectiveApplVerID = "9";   // FIX 5.0
+                        effectiveApplVerID = "7";   // FIX 5.0
                     }
                 }
             }
@@ -190,7 +190,7 @@ public class ReferenceTester implements Callable<Integer> {
         @Option(names = {"--begin-string"}, description = "FIX version: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2 (default: FIX.4.4)")
         String beginString = "FIX.4.4";
 
-        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (9=FIX50, 10=FIX50SP1, 11=FIX50SP2)")
+        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (7=FIX50, 8=FIX50SP1, 9=FIX50SP2)")
         String defaultApplVerID = null;
 
         @Option(names = {"--heartbeat"}, description = "Heartbeat interval in seconds (default: 30)")
@@ -226,11 +226,11 @@ public class ReferenceTester implements Callable<Integer> {
                 effectiveBeginString = "FIXT.1.1";
                 if (effectiveApplVerID == null) {
                     if (beginString.contains("SP2")) {
-                        effectiveApplVerID = "11";  // FIX 5.0 SP2
+                        effectiveApplVerID = "9";  // FIX 5.0 SP2
                     } else if (beginString.contains("SP1")) {
-                        effectiveApplVerID = "10";  // FIX 5.0 SP1
+                        effectiveApplVerID = "8";  // FIX 5.0 SP1
                     } else {
-                        effectiveApplVerID = "9";   // FIX 5.0
+                        effectiveApplVerID = "7";   // FIX 5.0
                     }
                 }
             }
@@ -390,7 +390,7 @@ public class ReferenceTester implements Callable<Integer> {
         @Option(names = {"--begin-string"}, description = "FIX version: FIX.4.2, FIX.4.4, FIX.5.0, FIX.5.0SP1, FIX.5.0SP2 (default: FIX.4.4)")
         String beginString = "FIX.4.4";
 
-        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (9=FIX50, 10=FIX50SP1, 11=FIX50SP2)")
+        @Option(names = {"--default-appl-ver-id"}, description = "DefaultApplVerID for FIX 5.0+ (7=FIX50, 8=FIX50SP1, 9=FIX50SP2)")
         String defaultApplVerID = null;
 
         @Option(names = {"-t", "--tests"}, description = "Comma-separated test names or 'all' (default: all)")
@@ -437,11 +437,11 @@ public class ReferenceTester implements Callable<Integer> {
                 effectiveBeginString = "FIXT.1.1";
                 if (effectiveApplVerID == null) {
                     if (beginString.contains("SP2")) {
-                        effectiveApplVerID = "11";  // FIX 5.0 SP2
+                        effectiveApplVerID = "9";  // FIX 5.0 SP2
                     } else if (beginString.contains("SP1")) {
-                        effectiveApplVerID = "10";  // FIX 5.0 SP1
+                        effectiveApplVerID = "8";  // FIX 5.0 SP1
                     } else {
-                        effectiveApplVerID = "9";   // FIX 5.0
+                        effectiveApplVerID = "7";   // FIX 5.0
                     }
                 }
             }

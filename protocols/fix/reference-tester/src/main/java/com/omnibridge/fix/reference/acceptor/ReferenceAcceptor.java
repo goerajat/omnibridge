@@ -124,11 +124,11 @@ public class ReferenceAcceptor implements Application {
             if (config.getDefaultApplVerID() != null) {
                 settings.setString(sessionId, "DefaultApplVerID", config.getDefaultApplVerID());
             } else {
-                settings.setString(sessionId, "DefaultApplVerID", "9"); // Default to FIX 5.0
+                settings.setString(sessionId, "DefaultApplVerID", "7"); // Default to FIX 5.0
             }
 
             log.info("Configured for FIXT.1.1 with DefaultApplVerID={}",
-                    config.getDefaultApplVerID() != null ? config.getDefaultApplVerID() : "9");
+                    config.getDefaultApplVerID() != null ? config.getDefaultApplVerID() : "7");
         } else {
             // FIX 4.x uses single dictionary
             settings.setString(sessionId, "DataDictionary",

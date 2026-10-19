@@ -41,19 +41,19 @@ public enum ApplVerID {
     FIX44("6", "FIX.4.4"),
 
     /**
-     * FIX 5.0 - ApplVerID value "9"
+     * FIX 5.0 - ApplVerID value "7"
      */
-    FIX50("9", "FIX.5.0"),
+    FIX50("7", "FIX.5.0"),
 
     /**
-     * FIX 5.0 SP1 - ApplVerID value "10"
+     * FIX 5.0 SP1 - ApplVerID value "8"
      */
-    FIX50SP1("10", "FIX.5.0SP1"),
+    FIX50SP1("8", "FIX.5.0SP1"),
 
     /**
-     * FIX 5.0 SP2 - ApplVerID value "11"
+     * FIX 5.0 SP2 - ApplVerID value "9"
      */
-    FIX50SP2("11", "FIX.5.0SP2");
+    FIX50SP2("9", "FIX.5.0SP2");
 
     private final String wireValue;
     private final String displayName;
@@ -67,7 +67,7 @@ public enum ApplVerID {
      * Get the wire format value for this ApplVerID.
      * This is the value sent in tag 1128 or 1137.
      *
-     * @return the wire format value (e.g., "9" for FIX 5.0)
+     * @return the wire format value (e.g., "7" for FIX 5.0)
      */
     public String getValue() {
         return wireValue;
@@ -94,7 +94,7 @@ public enum ApplVerID {
     /**
      * Parse ApplVerID from wire format value.
      *
-     * @param value the wire format value (e.g., "9", "10", "11")
+     * @param value the wire format value (e.g., "7", "8", "9")
      * @return the ApplVerID enum value
      * @throws IllegalArgumentException if value is not recognized
      */
