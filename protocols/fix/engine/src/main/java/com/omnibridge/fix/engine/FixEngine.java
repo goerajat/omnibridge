@@ -444,7 +444,7 @@ public class FixEngine implements Component {
      * Convert EngineSessionConfig to SessionConfig.
      * This bridges the new HOCON-based configuration with the existing session infrastructure.
      */
-    private SessionConfig convertToSessionConfig(EngineSessionConfig config) {
+    static SessionConfig convertToSessionConfig(EngineSessionConfig config) {
         SessionConfig.Builder builder = SessionConfig.builder()
                 .sessionName(config.getSessionName())
                 .beginString(config.getBeginString())
@@ -462,6 +462,17 @@ public class FixEngine implements Component {
                 .logMessages(config.isLogMessages())
                 .maxMessageLength(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber());
+
+        // fix-version also sets BeginString and, for FIX 5.0+, the DefaultApplVerID sent in Logon.
+        // A begin-string given without fix-version leaves the version at its FIX 4.4 default, so only
+        // apply the version when the two agree.
+        if (config.getFixVersion() != null
+                && config.getFixVersion().getBeginString().equals(config.getBeginString())) {
+            builder.fixVersion(config.getFixVersion());
+        }
+        if (config.getDefaultApplVerID() != null) {
+            builder.defaultApplVerID(config.getDefaultApplVerID());
+        }
 
         // Set role
         if (config.getRole() == EngineSessionConfig.Role.ACCEPTOR) {
