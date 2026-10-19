@@ -506,6 +506,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                     } catch (IOException e) {
                         log.error("Error draining ring buffer for channel {}: {}",
                                 channel.getId(), e.getMessage());
+                        closeChannel(channel, ctx.handler(), e);
                     }
                 }
             } else if (attachment instanceof SslChannelContext ctx) {

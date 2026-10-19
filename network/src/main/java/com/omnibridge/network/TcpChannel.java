@@ -47,7 +47,6 @@ public class TcpChannel {
     private final String remoteAddress;
     private final String localAddress;
     private final DirectByteBuffer readBuffer;
-    private final ByteBuffer writeBuffer;
 
     // Ring buffer for outgoing messages (many producers, single consumer)
     private final ManyToOneRingBuffer ringBuffer;
@@ -62,6 +61,12 @@ public class TcpChannel {
 
     private OutgoingMessageListener outgoingMessageListener;
 
+    // Progress on the message at the head of the ring: bytes written, and whether it was announced
+    private int partialSent;
+    private boolean headNotified;
+    private IOException drainFailure;
+    private final ControlledMessageHandler drainHandler = this::drainRecord;
+
     private SelectionKey selectionKey;
     private volatile boolean connected;
     private volatile boolean closed;
@@ -72,7 +77,7 @@ public class TcpChannel {
      *
      * @param socketChannel the underlying socket channel (must be in non-blocking mode)
      * @param readBufferSize size of the read buffer in bytes
-     * @param writeBufferSize size of the write buffer in bytes
+     * @param writeBufferSize unused; partial writes resume from the ring buffer (kept for compatibility)
      * @throws IOException if unable to get socket addresses
      */
     public TcpChannel(SocketChannel socketChannel, int readBufferSize, int writeBufferSize) throws IOException {
@@ -84,7 +89,7 @@ public class TcpChannel {
      *
      * @param socketChannel the underlying socket channel (must be in non-blocking mode)
      * @param readBufferSize size of the read buffer in bytes
-     * @param writeBufferSize size of the write buffer in bytes
+     * @param writeBufferSize unused; partial writes resume from the ring buffer (kept for compatibility)
      * @param ringBufferCapacity the ring buffer capacity (must be power of 2)
      * @throws IOException if unable to get socket addresses
      */
@@ -93,7 +98,6 @@ public class TcpChannel {
         this.id = ID_GENERATOR.incrementAndGet();
         this.socketChannel = socketChannel;
         this.readBuffer = new DirectByteBuffer(readBufferSize);
-        this.writeBuffer = ByteBuffer.allocateDirect(writeBufferSize);
         this.ringBufferCapacity = ringBufferCapacity;
 
         // Initialize ring buffer
@@ -324,107 +328,84 @@ public class TcpChannel {
     }
 
     /**
-     * Flush any pending write data, including ring buffer messages.
+     * Flush pending ring buffer messages to the socket.
      * Called by the event loop when the channel becomes writable.
      *
-     * <p>This method first drains all messages from the ring buffer to the socket,
-     * then flushes any remaining data in the write buffer.</p>
-     *
-     * @return true if all data was flushed, false if more data remains
+     * @return true if the ring buffer was fully drained, false if a message is still partly written
      * @throws IOException if an I/O error occurs
      */
     boolean flush() throws IOException {
-        // First, drain the ring buffer
         drainRingBuffer();
-
-        // Then flush the write buffer
-        if (writeBuffer.position() == 0) {
-            return true;
-        }
-
-        writeBuffer.flip();
-        try {
-            socketChannel.write(writeBuffer);
-            if (writeBuffer.hasRemaining()) {
-                writeBuffer.compact();
-                return false;
-            } else {
-                writeBuffer.clear();
-                // Remove write interest
-              //  if (selectionKey != null && selectionKey.isValid()) {
-              //      selectionKey.interestOps(selectionKey.interestOps() & ~SelectionKey.OP_WRITE);
-               // }
-                return true;
-            }
-        } catch (IOException e) {
-            writeBuffer.clear();
-            throw e;
-        }
+        return !headNotified;
     }
 
     /**
-     * Drain all messages from the ring buffer to the socket (zero-copy).
+     * Drain messages from the ring buffer to the socket (zero-copy).
      *
      * <p>Each message in the ring buffer has the format:</p>
      * <pre>
-     * [4 bytes: FIX message length][N bytes: FIX message payload]
+     * [4 bytes: message length][N bytes: message payload]
      * </pre>
      *
-     * <p>Only the FIX message payload is sent to the socket. The length prefix
-     * is used internally to know how many bytes to send.</p>
+     * <p>Only the payload is sent. When the socket accepts part of a message, the
+     * message stays at the head of the ring and the next drain resumes from the
+     * byte where this one stopped; OP_WRITE interest is held until it completes.</p>
      *
-     * <p>This method writes directly from the ring buffer to the socket without
-     * intermediate copies. If the socket buffer becomes full during a write,
-     * the remaining bytes are copied to the write buffer and processing stops.</p>
-     *
-     * @throws IOException if an I/O error occurs
+     * @throws IOException if writing to the socket fails; the message being written stays in the ring
      */
     private void drainRingBuffer() throws IOException {
-        // If there's pending data in writeBuffer from a previous partial write,
-        // don't drain more until it's flushed
-        if (writeBuffer.position() > 0) {
-            return;
+        ringBuffer.controlledRead(drainHandler);
+
+        IOException failure = drainFailure;
+        if (failure != null) {
+            drainFailure = null;
+            throw failure;
+        }
+        setWriteInterest(headNotified);
+    }
+
+    private ControlledMessageHandler.Action drainRecord(int msgTypeId, MutableDirectBuffer buffer,
+                                                        int index, int length) {
+        int payloadLength = buffer.getInt(index);
+        int payloadOffset = index + LENGTH_PREFIX_SIZE;
+
+        // Notify once per message, before its first byte goes out (e.g., for persistence logging)
+        if (!headNotified) {
+            headNotified = true;
+            if (outgoingMessageListener != null) {
+                outgoingMessageListener.onOutgoingMessage(buffer, payloadOffset, payloadLength);
+            }
         }
 
-        ringBuffer.controlledRead((msgTypeId, buffer, index, length) -> {
-            try {
-                // First 4 bytes = payload length (not sent)
-                int payloadLength = buffer.getInt(index);
-                int payloadOffset = index + LENGTH_PREFIX_SIZE;
-
-                // Notify listener (e.g., for persistence logging)
-                if (outgoingMessageListener != null) {
-                    outgoingMessageListener.onOutgoingMessage(buffer, payloadOffset, payloadLength);
+        ringBufferDirectView.limit(payloadOffset + payloadLength);
+        ringBufferDirectView.position(payloadOffset + partialSent);
+        try {
+            while (ringBufferDirectView.hasRemaining()) {
+                if (socketChannel.write(ringBufferDirectView) == 0) {
+                    partialSent = ringBufferDirectView.position() - payloadOffset;
+                    return ControlledMessageHandler.Action.ABORT;
                 }
-
-                // Set up direct view of payload (zero-copy)
-                ringBufferDirectView.limit(payloadOffset + payloadLength);
-                ringBufferDirectView.position(payloadOffset);
-
-                // Write directly to socket from ring buffer
-                while (ringBufferDirectView.hasRemaining()) {
-                    int written = socketChannel.write(ringBufferDirectView);
-                    if (written == 0) {
-                        // Socket buffer full - copy remaining to writeBuffer
-                        // (unavoidable since ring buffer memory will be reclaimed)
-                        if (writeBuffer.remaining() < ringBufferDirectView.remaining()) {
-                            log.error("Write buffer overflow during ring buffer drain");
-                            return ControlledMessageHandler.Action.BREAK;
-                        }
-                        writeBuffer.put(ringBufferDirectView);
-                        // Register for write interest
-                        if (selectionKey != null && selectionKey.isValid()) {
-                            selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_WRITE);
-                        }
-                        return ControlledMessageHandler.Action.BREAK; // Stop draining until socket is writable
-                    }
-                }
-                return ControlledMessageHandler.Action.CONTINUE;
-            } catch (IOException e) {
-                log.error("Error draining ring buffer to socket: {}", e.getMessage());
-                return ControlledMessageHandler.Action.BREAK;
             }
-        });
+        } catch (IOException e) {
+            partialSent = ringBufferDirectView.position() - payloadOffset;
+            drainFailure = e;
+            return ControlledMessageHandler.Action.ABORT;
+        }
+        partialSent = 0;
+        headNotified = false;
+        return ControlledMessageHandler.Action.CONTINUE;
+    }
+
+    private void setWriteInterest(boolean wanted) {
+        SelectionKey key = selectionKey;
+        if (key == null || !key.isValid()) {
+            return;
+        }
+        int ops = key.interestOps();
+        int updated = wanted ? ops | SelectionKey.OP_WRITE : ops & ~SelectionKey.OP_WRITE;
+        if (updated != ops) {
+            key.interestOps(updated);
+        }
     }
 
     /**

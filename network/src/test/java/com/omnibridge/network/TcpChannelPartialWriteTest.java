@@ -56,11 +56,17 @@ class TcpChannelPartialWriteTest {
 
     @Test
     void messageLargerThanWriteBufferArrivesWhole() throws Exception {
-        byte[] payload = new byte[1024 * 1024];
+        int[] notified = new int[1];
+        channel.setOutgoingMessageListener((buffer, offset, length) -> notified[0]++);
+
+        int messageSize = 512 * 1024;
+        byte[] payload = new byte[3 * messageSize];
         for (int i = 0; i < payload.length; i++) {
-            payload[i] = (byte) ('A' + i % 26);
+            payload[i] = (byte) ('A' + (i / messageSize) * 7 + i % 7);
         }
-        assertEquals(payload.length, channel.writeRaw(payload, 0, payload.length));
+        for (int m = 0; m < 3; m++) {
+            assertEquals(messageSize, channel.writeRaw(payload, m * messageSize, messageSize));
+        }
 
         // Peer not reading yet: the socket fills and the write stops part-way.
         channel.drainRingBufferToSocket();
@@ -76,6 +82,7 @@ class TcpChannelPartialWriteTest {
         byte[] got = received.get(10, TimeUnit.SECONDS);
         assertEquals(payload.length, got.length, "bytes delivered to the peer");
         assertArrayEquals(payload, got);
+        assertEquals(3, notified[0], "listener calls, one per message however many writes it took");
     }
 
     @Test
