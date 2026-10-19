@@ -30,12 +30,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * Test concurrent order sending from multiple threads.
  * Verifies:
  * - Multiple threads can prepare messages concurrently using thread-local ring buffer wrappers
- * - Messages are committed in sequence order to maintain FIX protocol compliance
- * - Receiver sees sequence numbers in correct (monotonically increasing) order
+ * - Threads claim, encode and commit with no external lock; the session numbers
+ *   messages as they are sent, so the receiver still sees increasing sequence numbers
  * - All orders receive acknowledgments
- *
- * <p>This test uses serialized commits to ensure FIX protocol compliance while still
- * demonstrating concurrent message preparation (encoding) across multiple threads.</p>
  */
 public class ConcurrentOrderTest implements SessionTest {
 
@@ -141,9 +138,6 @@ public class ConcurrentOrderTest implements SessionTest {
             FixSession session = context.getSession();
             session.addMessageListener(ackListener);
 
-            // Lock object for serialized commits
-            final Object commitLock = new Object();
-
             try {
                 // Create thread pool for concurrent sending
                 ExecutorService executor = Executors.newFixedThreadPool(numThreads);
@@ -166,38 +160,35 @@ public class ConcurrentOrderTest implements SessionTest {
                                 boolean sent = false;
                                 int attemptRetries = 0;
                                 while (!sent && attemptRetries < 100) {
-                                    // Serialize the claim and commit to ensure sequence order
-                                    synchronized (commitLock) {
-                                        // Check session state
-                                        SessionState currentState = session.getState();
-                                        if (!currentState.canSendAppMessage()) {
+                                    // Check session state
+                                    SessionState currentState = session.getState();
+                                    if (!currentState.canSendAppMessage()) {
+                                        attemptRetries++;
+                                        continue;
+                                    }
+
+                                    try {
+                                        // Claim, encode, and commit; other threads do the same concurrently
+                                        RingBufferOutgoingMessage order = session.tryClaimMessage(FixTags.MsgTypes.NewOrderSingle);
+                                        if (order == null) {
                                             attemptRetries++;
                                             continue;
                                         }
 
-                                        try {
-                                            // Claim, encode, and commit atomically
-                                            RingBufferOutgoingMessage order = session.tryClaimMessage(FixTags.MsgTypes.NewOrderSingle);
-                                            if (order == null) {
-                                                attemptRetries++;
-                                                continue;
-                                            }
+                                        // Encode message - each thread uses its own thread-local wrapper
+                                        order.setField(FixTags.ClOrdID, clOrdId);
+                                        order.setField(FixTags.Symbol, "TEST");
+                                        order.setField(FixTags.Side, FixTags.SIDE_BUY);
+                                        order.setField(FixTags.OrderQty, 100 + threadId);
+                                        order.setField(FixTags.OrdType, FixTags.ORD_TYPE_MARKET);
+                                        order.setField(FixTags.TransactTime, Instant.now().toString());
 
-                                            // Encode message - each thread uses its own thread-local wrapper
-                                            order.setField(FixTags.ClOrdID, clOrdId);
-                                            order.setField(FixTags.Symbol, "TEST");
-                                            order.setField(FixTags.Side, FixTags.SIDE_BUY);
-                                            order.setField(FixTags.OrderQty, 100 + threadId);
-                                            order.setField(FixTags.OrdType, FixTags.ORD_TYPE_MARKET);
-                                            order.setField(FixTags.TransactTime, Instant.now().toString());
-
-                                            sentOrders.add(clOrdId);
-                                            session.commitMessage(order);
-                                            totalSent.incrementAndGet();
-                                            sent = true;
-                                        } catch (IllegalStateException e) {
-                                            attemptRetries++;
-                                        }
+                                        sentOrders.add(clOrdId);
+                                        session.commitMessage(order);
+                                        totalSent.incrementAndGet();
+                                        sent = true;
+                                    } catch (IllegalStateException e) {
+                                        attemptRetries++;
                                     }
 
                                     if (!sent) {
