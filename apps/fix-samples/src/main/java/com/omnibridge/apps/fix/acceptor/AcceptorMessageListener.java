@@ -162,6 +162,9 @@ public class AcceptorMessageListener implements MessageListener {
             execReport.setField(FixTags.OrderID, orderId);
             execReport.setField(FixTags.ClOrdID, clOrdId);
             execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            if (session.requiresExecTransType()) {
+                execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
+            }
             execReport.setField(FixTags.ExecType, execType);
             execReport.setField(FixTags.OrdStatus, ordStatus);
             execReport.setField(FixTags.Symbol, symbol);

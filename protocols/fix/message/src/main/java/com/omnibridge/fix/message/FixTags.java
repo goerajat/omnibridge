@@ -107,6 +107,7 @@ public final class FixTags {
     public static final int ClOrdID = 11;
     public static final int OrderID = 37;
     public static final int ExecID = 17;
+    public static final int ExecTransType = 20;
     public static final int ExecType = 150;
     public static final int OrdStatus = 39;
     public static final int Symbol = 55;
@@ -219,6 +220,7 @@ public final class FixTags {
 
     // Exec type values
     public static final char EXEC_TYPE_NEW = '0';
+    public static final char EXEC_TRANS_TYPE_NEW = '0';
     public static final char EXEC_TYPE_PARTIAL_FILL = '1';
     public static final char EXEC_TYPE_FILL = '2';
     public static final char EXEC_TYPE_CANCELED = '4';

@@ -1459,6 +1459,15 @@ public class FixSession implements NetworkHandler {
     }
 
     /**
+     * Whether execution reports on this session must carry ExecTransType (20):
+     * required in FIX 4.0 to 4.2, removed from FIX 4.3 on.
+     */
+    public boolean requiresExecTransType() {
+        String beginString = config.getBeginString();
+        return "FIX.4.0".equals(beginString) || "FIX.4.1".equals(beginString) || "FIX.4.2".equals(beginString);
+    }
+
+    /**
      * Get the next outgoing sequence number: the one the next message to reach the wire gets.
      * Messages committed but not yet drained by the event loop are not counted.
      */
