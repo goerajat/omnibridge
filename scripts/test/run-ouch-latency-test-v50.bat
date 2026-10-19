@@ -112,5 +112,5 @@ echo ==========================================================================
 echo Acceptor log saved to: ouch-acceptor-v50.log
 echo ==========================================================================
 
-endlocal
-exit /b %TEST_EXIT_CODE%
+REM Expand before endlocal discards the variable
+endlocal & exit /b %TEST_EXIT_CODE%

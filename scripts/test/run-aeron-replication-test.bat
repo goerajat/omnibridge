@@ -142,9 +142,9 @@ timeout /t 5 /nobreak > nul
 
 REM Step 5: Kill acceptor and remote store
 echo Stopping processes...
-taskkill /f /fi "WINDOWTITLE eq FIXAcceptor" > nul 2>&1
-taskkill /f /fi "WINDOWTITLE eq AeronRemoteStore" > nul 2>&1
-REM Also kill by finding java processes on specific ports
+REM start /b opens no window, so WINDOWTITLE filters match nothing: kill the acceptor by its port
+REM and the remote store by its main class
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { $_.CommandLine -match 'AeronRemoteStoreMain' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" > nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":9876" ^| findstr "LISTENING" 2^>nul') do taskkill /f /pid %%a > nul 2>&1
 timeout /t 2 /nobreak > nul
 

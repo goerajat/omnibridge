@@ -115,5 +115,5 @@ echo ==========================================================================
 echo Acceptor log: acceptor-session-test.log
 echo ==========================================================================
 
-endlocal
-exit /b %TEST_EXIT_CODE%
+REM Expand before endlocal discards the variable
+endlocal & exit /b %TEST_EXIT_CODE%
