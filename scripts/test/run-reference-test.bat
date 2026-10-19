@@ -79,9 +79,16 @@ echo.
 echo Running Reference Tester (QuickFIX/J)...
 echo ==========================================================================
 echo.
-java %CHRONICLE_OPTS% -jar "%TESTER_JAR%" test --host localhost --port 9876 --sender CLIENT --target EXCHANGE --tests %TESTS%
-
-set TEST_EXIT_CODE=%ERRORLEVEL%
+REM One run per FIX version; the acceptor routes each SenderCompID to a session of that version
+set TEST_EXIT_CODE=0
+for %%v in ("FIX.4.4 CLIENT" "FIX.4.2 CLIENT42" "FIX.5.0SP2 CLIENT50") do (
+    for /f "tokens=1,2" %%a in (%%v) do (
+        echo.
+        echo --- %%a ^(SenderCompID %%b^) ---
+        java %CHRONICLE_OPTS% -jar "%TESTER_JAR%" test --host localhost --port 9876 --sender %%b --target EXCHANGE --begin-string %%a --tests %TESTS%
+        if !ERRORLEVEL! neq 0 set TEST_EXIT_CODE=1
+    )
+)
 
 :cleanup
 REM Cleanup: Kill acceptor process
@@ -111,5 +118,5 @@ echo ==========================================================================
 echo Acceptor log: acceptor-ref-test.log
 echo ==========================================================================
 
-endlocal
-exit /b %TEST_EXIT_CODE%
+REM On one line, so %TEST_EXIT_CODE% is expanded before endlocal discards it
+endlocal & exit /b %TEST_EXIT_CODE%

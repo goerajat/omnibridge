@@ -96,7 +96,14 @@ echo "==========================================================================
 echo ""
 
 TEST_EXIT_CODE=0
-java $CHRONICLE_OPTS -jar "$TESTER_JAR" test --host localhost --port 9876 --sender CLIENT --target EXCHANGE --tests $TESTS || TEST_EXIT_CODE=$?
+# One run per FIX version; the acceptor routes each SenderCompID to a session of that version
+for VERSION in "FIX.4.4 CLIENT" "FIX.4.2 CLIENT42" "FIX.5.0SP2 CLIENT50"; do
+    read -r BEGIN_STRING SENDER <<< "$VERSION"
+    echo ""
+    echo "--- $BEGIN_STRING (SenderCompID $SENDER) ---"
+    java $CHRONICLE_OPTS -jar "$TESTER_JAR" test --host localhost --port 9876 --sender "$SENDER" --target EXCHANGE \
+        --begin-string "$BEGIN_STRING" --tests $TESTS || TEST_EXIT_CODE=1
+done
 
 echo ""
 echo "=========================================================================="
