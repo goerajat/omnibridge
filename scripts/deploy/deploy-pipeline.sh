@@ -330,6 +330,17 @@ should_check() {
     [ -z "$COMPONENT" ] || [ "$COMPONENT" = "$1" ]
 }
 
+# Re-run a command until it succeeds or CHECK_TIMEOUT seconds pass. Services that
+# were just restarted need a few seconds to reconnect and log on.
+CHECK_TIMEOUT=60
+retry_check() {
+    local deadline=$(( $(date +%s) + CHECK_TIMEOUT ))
+    until "$@"; do
+        [ "$(date +%s)" -ge "$deadline" ] && return 1
+        sleep 5
+    done
+}
+
 # --- Check 1: Service status via manage-services.sh ---
 
 echo ""
@@ -357,8 +368,13 @@ for svc in "${SERVICES_TO_CHECK[@]}"; do
 
     if [ "$svc_type" = "systemd" ]; then
         status_output=$(remote_exec "$host" "$jump" "sudo systemctl status $svc_name 2>&1" 2>/dev/null) || true
-        if echo "$status_output" | grep -q "active (running)"; then
+        # Seconds since the unit last became active: a crash-looping service shows
+        # "active (running)" for a moment between restarts
+        up_secs=$(remote_exec "$host" "$jump" "t=\$(systemctl show -p ActiveEnterTimestampMonotonic --value $svc_name); u=\$(cut -d. -f1 /proc/uptime); echo \$(( u - t / 1000000 ))" 2>/dev/null | tr -d '[:space:]') || up_secs=""
+        if echo "$status_output" | grep -q "active (running)" && [ "${up_secs:-0}" -ge 5 ] 2>/dev/null; then
             check_pass "$svc: active (running)"
+        elif echo "$status_output" | grep -q "active (running)"; then
+            check_fail "$svc: restarting (up ${up_secs:-?}s; crash loop?)"
         else
             state=$(echo "$status_output" | grep -oP 'Active:\s+\K\S+ \([^)]+\)' 2>/dev/null || echo "unknown")
             check_fail "$svc: $state"
@@ -417,14 +433,16 @@ echo ""
 echo "--- Check 3: FIX logon ---"
 
 if should_check "fix-initiator"; then
-    # Check for LOGGED_ON state in recent journal (covers logon at any point since boot)
-    logon_state=$(remote_exec "$OUCH_IP" "jump" "journalctl -u fix-initiator --no-pager -q 2>/dev/null | grep -c 'LOGGED_ON'" 2>/dev/null) || logon_state="0"
-    logon_state=$(echo "$logon_state" | tr -d '[:space:]')
-
-    if [ "$logon_state" != "0" ] && [ -n "$logon_state" ]; then
-        check_pass "fix-initiator: FIX logon detected (LOGGED_ON state seen $logon_state time(s))"
+    # LOGGED_ON logged by the current process (an older process's logon does not count)
+    initiator_logged_on() {
+        local n
+        n=$(remote_exec "$OUCH_IP" "jump" "journalctl _PID=\$(systemctl show -p MainPID --value fix-initiator) --no-pager -q 2>/dev/null | grep -c 'State change: .*-> LOGGED_ON'" 2>/dev/null | tr -d '[:space:]')
+        [ -n "$n" ] && [ "$n" != "0" ]
+    }
+    if retry_check initiator_logged_on; then
+        check_pass "fix-initiator: FIX session logged on"
     else
-        check_fail "fix-initiator: no FIX logon found in journal"
+        check_fail "fix-initiator: no FIX logon within ${CHECK_TIMEOUT}s"
     fi
 else
     check_skip "fix-initiator: FIX logon (not selected)"
@@ -436,17 +454,17 @@ echo ""
 echo "--- Check 4: Simulator sessions ---"
 
 if should_check "exchange-simulator"; then
-    sessions_output=$(remote_exec "$FIX_IP" "jump" "curl -sf http://localhost:8080/api/sessions 2>/dev/null" 2>/dev/null) || sessions_output=""
-
-    if [ -n "$sessions_output" ]; then
-        # Check for at least one connected session
-        connected=$(echo "$sessions_output" | grep -c '"connected" *: *true' 2>/dev/null) || connected="0"
-        connected=$(echo "$connected" | tr -d '[:space:]')
-        if [ "$connected" != "0" ]; then
-            check_pass "exchange-simulator: $connected active session(s)"
-        else
-            check_fail "exchange-simulator: no connected sessions"
-        fi
+    sessions_output=""
+    connected="0"
+    simulator_has_session() {
+        sessions_output=$(remote_exec "$FIX_IP" "jump" "curl -sf -m 5 http://localhost:8080/api/sessions 2>/dev/null" 2>/dev/null) || sessions_output=""
+        connected=$(echo "$sessions_output" | grep -c '"connected" *: *true' 2>/dev/null | tr -d '[:space:]')
+        [ -n "$connected" ] && [ "$connected" != "0" ]
+    }
+    if retry_check simulator_has_session; then
+        check_pass "exchange-simulator: $connected active session(s)"
+    elif [ -n "$sessions_output" ]; then
+        check_fail "exchange-simulator: no connected sessions within ${CHECK_TIMEOUT}s"
     else
         check_fail "exchange-simulator: sessions API not responding"
     fi
@@ -477,9 +495,11 @@ echo ""
 echo "--- Check 6: MCP Server health ---"
 
 if should_check "mcp-server"; then
-    mcp_output=$(remote_exec "$AERON_IP" "jump" "curl -sf http://localhost:8090/sse 2>/dev/null" 2>/dev/null) || mcp_output=""
-
-    if [ -n "$mcp_output" ] || remote_exec "$AERON_IP" "jump" "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8090/sse 2>/dev/null" 2>/dev/null | grep -q "200\|405"; then
+    # /sse is a stream that never ends: cap curl at 3s and judge by the status code
+    mcp_responding() {
+        remote_exec "$AERON_IP" "jump" "curl -s -m 3 -o /dev/null -w '%{http_code}' http://localhost:8090/sse 2>/dev/null" 2>/dev/null | grep -q "200\|405"
+    }
+    if retry_check mcp_responding; then
         check_pass "mcp-server: HTTP endpoint responding on :8090"
     else
         check_fail "mcp-server: HTTP endpoint not responding on :8090"
