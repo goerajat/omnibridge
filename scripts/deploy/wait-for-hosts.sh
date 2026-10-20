@@ -72,7 +72,8 @@ fi
 
 PEM_FILE="$(cd "$(dirname "$PEM_FILE")" && pwd)/$(basename "$PEM_FILE")"
 
-out() { jq -r ".$1.value // empty" "$TF_OUTPUTS" | tr -d '\r'; }
+# jq reads from stdin: a native Windows jq cannot open Cygwin (/cygdrive/...) paths
+out() { jq -r ".$1.value // empty" < "$TF_OUTPUTS" | tr -d '\r'; }
 
 MONITORING_IP=$(out monitoring_public_ip)
 FIX_IP=$(out fix_acceptor_private_ip)
@@ -80,7 +81,7 @@ OUCH_IP=$(out ouch_acceptor_private_ip)
 AERON_IP=$(out aeron_persistence_private_ip)
 INSTANCE_IDS=$(jq -r '[.fix_acceptor_instance_id, .ouch_acceptor_instance_id,
                         .aeron_persistence_instance_id, .monitoring_instance_id]
-                       | map(.value // empty) | join(" ")' "$TF_OUTPUTS" | tr -d '\r')
+                       | map(.value // empty) | join(" ")' < "$TF_OUTPUTS" | tr -d '\r')
 
 if [ -z "$MONITORING_IP" ] || [ -z "$FIX_IP" ] || [ -z "$OUCH_IP" ] || [ -z "$AERON_IP" ]; then
     echo "Error: $TF_OUTPUTS is missing host IPs; re-run terraform-deploy.sh"

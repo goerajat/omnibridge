@@ -122,10 +122,10 @@ fi
 PEM_FILE="$(cd "$(dirname "$PEM_FILE")" && pwd)/$(basename "$PEM_FILE")"
 
 # Extract IPs
-FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
-OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
-AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
-MONITORING_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
+OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
+AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
+MONITORING_IP=$(jq -r '.monitoring_public_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
 
 SSH_OPTS="-i $PEM_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p $SSH_PORT"
 PROXY_CMD="ssh -i $PEM_FILE -o StrictHostKeyChecking=no -p $SSH_PORT -W %h:%p $SSH_USER@$MONITORING_IP"

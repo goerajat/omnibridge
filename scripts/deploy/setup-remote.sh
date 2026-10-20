@@ -123,10 +123,10 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
-OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
-AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' "$TF_OUTPUTS" | tr -d '\r')
-MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' "$TF_OUTPUTS" | tr -d '\r')
+FIX_IP=$(jq -r '.fix_acceptor_private_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
+OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
+AERON_IP=$(jq -r '.aeron_persistence_private_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
+MONITORING_PUBLIC_IP=$(jq -r '.monitoring_public_ip.value' < "$TF_OUTPUTS" | tr -d '\r')
 
 if [ "$FIX_IP" = "null" ] || [ "$OUCH_IP" = "null" ] || [ "$AERON_IP" = "null" ] || [ "$MONITORING_PUBLIC_IP" = "null" ]; then
     echo "Error: Could not extract all IPs from $TF_OUTPUTS"

@@ -274,11 +274,11 @@ echo "--------------------------------------------------------------"
 
 # Extract and display key IPs using portable parsing
 if command -v jq &> /dev/null; then
-    FIX_IP=$(jq -r '.fix_acceptor_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
-    OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
-    AERON_IP=$(jq -r '.aeron_persistence_private_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
-    MON_IP=$(jq -r '.monitoring_public_ip.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
-    GRAFANA=$(jq -r '.grafana_url.value // empty' "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    FIX_IP=$(jq -r '.fix_acceptor_private_ip.value // empty' < "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    OUCH_IP=$(jq -r '.ouch_acceptor_private_ip.value // empty' < "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    AERON_IP=$(jq -r '.aeron_persistence_private_ip.value // empty' < "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    MON_IP=$(jq -r '.monitoring_public_ip.value // empty' < "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
+    GRAFANA=$(jq -r '.grafana_url.value // empty' < "$OUTPUT_FILE" 2>/dev/null | tr -d '\r')
 
     printf "  %-25s %s\n" "FIX Acceptor:" "${FIX_IP:-N/A}"
     printf "  %-25s %s\n" "OUCH Acceptor:" "${OUCH_IP:-N/A}"
