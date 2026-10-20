@@ -495,9 +495,12 @@ echo ""
 echo "--- Check 6: MCP Server health ---"
 
 if should_check "mcp-server"; then
-    # /sse is a stream that never ends: cap curl at 3s and judge by the status code
+    # /sse is a stream that never ends: cap curl at 3s and judge by the status code.
+    # curl then exits 28 (timeout) even on a 200, so its exit status is ignored.
     mcp_responding() {
-        remote_exec "$AERON_IP" "jump" "curl -s -m 3 -o /dev/null -w '%{http_code}' http://localhost:8090/sse 2>/dev/null" 2>/dev/null | grep -q "200\|405"
+        local code
+        code=$(remote_exec "$AERON_IP" "jump" "curl -s -m 3 -o /dev/null -w '%{http_code}' http://localhost:8090/sse 2>/dev/null; true" 2>/dev/null) || code=""
+        [ "$code" = "200" ] || [ "$code" = "405" ]
     }
     if retry_check mcp_responding; then
         check_pass "mcp-server: HTTP endpoint responding on :8090"
