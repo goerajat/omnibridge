@@ -64,8 +64,13 @@ dist/
 *.key
 *.crt
 
-# Terraform
-infrastructure/terraform/environments/production/terraform.tfvars
+# Terraform: per-environment settings, working directories, saved plans and outputs
+infrastructure/terraform/environments/*/terraform.tfvars
+.terraform/
+*.tfstate
+*.tfstate.backup
+infrastructure/terraform/environments/*/tfplan*
+tf-outputs.json
 
 # Test output
 test-output/
