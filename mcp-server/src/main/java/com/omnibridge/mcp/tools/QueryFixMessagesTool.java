@@ -59,7 +59,7 @@ public class QueryFixMessagesTool {
                 "msg_type": {
                   "type": "array",
                   "items": {"type": "string"},
-                  "description": "Filter by FIX MsgType values (e.g., [\"D\", \"8\", \"F\"])"
+                  "description": "Filter by FIX MsgType values (e.g., [\\"D\\", \\"8\\", \\"F\\"])"
                 },
                 "symbol": {
                   "type": "array",
