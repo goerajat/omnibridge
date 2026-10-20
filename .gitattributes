@@ -1,0 +1,3 @@
+# Shell scripts and cloud-init templates run on Linux; keep them LF on every checkout
+*.sh     text eol=lf
+*.tftpl  text eol=lf

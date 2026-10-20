@@ -11,8 +11,9 @@ variable "aws_region" {
 }
 
 variable "ami_id" {
-  description = "AMI ID for all EC2 instances (Amazon Linux 2023)"
+  description = "AMI ID for all EC2 instances. Must be Ubuntu (setup-remote.sh uses apt); empty = newest Canonical Ubuntu 22.04"
   type        = string
+  default     = ""
 }
 
 variable "key_name" {

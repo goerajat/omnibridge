@@ -32,21 +32,55 @@ provider "aws" {
 }
 
 # -----------------------------------------------------------------------------
+# AMI - newest Canonical Ubuntu 22.04 unless ami_id pins one. setup-remote.sh
+# installs with apt and logs in as ubuntu, so the image must be Ubuntu.
+# -----------------------------------------------------------------------------
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+locals {
+  ami_id = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu.id
+}
+
+# -----------------------------------------------------------------------------
 # VPC
 # -----------------------------------------------------------------------------
 
 module "vpc" {
   source = "../../modules/vpc"
 
-  environment               = "production"
-  vpc_cidr                  = var.vpc_cidr
-  trading_subnet_a_cidr     = "10.0.1.0/24"
-  trading_subnet_b_cidr     = "10.0.2.0/24"
-  persistence_subnet_cidr   = "10.0.3.0/24"
-  monitoring_subnet_cidr    = "10.0.10.0/24"
-  client_cidrs              = var.client_cidrs
-  ssh_cidrs                 = var.ssh_cidrs
-  grafana_cidrs             = var.grafana_cidrs
+  environment             = "production"
+  vpc_cidr                = var.vpc_cidr
+  trading_subnet_a_cidr   = "10.0.1.0/24"
+  trading_subnet_b_cidr   = "10.0.2.0/24"
+  persistence_subnet_cidr = "10.0.3.0/24"
+  monitoring_subnet_cidr  = "10.0.10.0/24"
+  client_cidrs            = var.client_cidrs
+  ssh_cidrs               = var.ssh_cidrs
+  grafana_cidrs           = var.grafana_cidrs
+}
+
+# -----------------------------------------------------------------------------
+# Trading hosts share one AZ and a cluster placement group, so the
+# initiator -> exchange round trip stays inside one low-latency network segment.
+# -----------------------------------------------------------------------------
+
+resource "aws_placement_group" "trading" {
+  name     = "omnibridge-production-trading"
+  strategy = "cluster"
 }
 
 # -----------------------------------------------------------------------------
@@ -58,10 +92,11 @@ module "fix_acceptor" {
 
   environment       = "production"
   instance_type     = var.trading_instance_type
-  ami_id            = var.ami_id
+  ami_id            = local.ami_id
   key_name          = var.key_name
   subnet_id         = module.vpc.trading_subnet_a_id
   security_group_id = module.vpc.trading_security_group_id
+  placement_group   = aws_placement_group.trading.name
   app_type          = "fix"
   app_version       = var.app_version
   s3_bucket         = var.s3_artifact_bucket
@@ -79,10 +114,11 @@ module "ouch_acceptor" {
 
   environment       = "production"
   instance_type     = var.trading_instance_type
-  ami_id            = var.ami_id
+  ami_id            = local.ami_id
   key_name          = var.key_name
-  subnet_id         = module.vpc.trading_subnet_b_id
+  subnet_id         = module.vpc.trading_subnet_a_id
   security_group_id = module.vpc.trading_security_group_id
+  placement_group   = aws_placement_group.trading.name
   app_type          = "ouch"
   app_version       = var.app_version
   s3_bucket         = var.s3_artifact_bucket
@@ -100,7 +136,7 @@ module "aeron_persistence" {
 
   environment       = "production"
   instance_type     = var.persistence_instance_type
-  ami_id            = var.ami_id
+  ami_id            = local.ami_id
   key_name          = var.key_name
   subnet_id         = module.vpc.persistence_subnet_id
   security_group_id = module.vpc.persistence_security_group_id
@@ -122,7 +158,7 @@ module "monitoring" {
 
   environment            = "production"
   instance_type          = var.monitoring_instance_type
-  ami_id                 = var.ami_id
+  ami_id                 = local.ami_id
   key_name               = var.key_name
   subnet_id              = module.vpc.monitoring_subnet_id
   security_group_id      = module.vpc.monitoring_security_group_id

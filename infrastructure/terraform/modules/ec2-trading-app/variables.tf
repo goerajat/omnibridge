@@ -14,13 +14,19 @@ variable "instance_type" {
 }
 
 variable "ami_id" {
-  description = "AMI ID for the EC2 instance (Amazon Linux 2023 recommended)"
+  description = "AMI ID for the EC2 instance (Ubuntu 22.04; setup-remote.sh uses apt)"
   type        = string
 }
 
 variable "key_name" {
   description = "Name of the SSH key pair for instance access"
   type        = string
+}
+
+variable "placement_group" {
+  description = "Placement group to launch the instance in (null for none)"
+  type        = string
+  default     = null
 }
 
 variable "subnet_id" {
