@@ -17,6 +17,8 @@ public class FixResponseSender implements ResponseSender<FixSession> {
 
     private static final Logger log = LoggerFactory.getLogger(FixResponseSender.class);
 
+    // Single ExecID source for every ExecutionReport type; the execId passed to sendFill is
+    // numbered by the caller independently and would collide with acks and cancels.
     private final AtomicLong execIdCounter = new AtomicLong(1);
 
     @Override
@@ -68,7 +70,7 @@ public class FixResponseSender implements ResponseSender<FixSession> {
 
             execReport.setField(FixTags.OrderID, String.valueOf(order.getOrderId()));
             execReport.setField(FixTags.ClOrdID, order.getClientOrderId());
-            execReport.setField(FixTags.ExecID, "EXEC" + execId);
+            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }
@@ -140,7 +142,7 @@ public class FixResponseSender implements ResponseSender<FixSession> {
 
             execReport.setField(FixTags.OrderID, String.valueOf(order.getOrderId()));
             execReport.setField(FixTags.ClOrdID, clOrdId);
-            execReport.setField(37, order.getClientOrderId()); // OrigClOrdID
+            execReport.setField(41, order.getClientOrderId()); // OrigClOrdID
             execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
