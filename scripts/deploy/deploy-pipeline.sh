@@ -14,7 +14,8 @@
 # Stages:
 #   1. Build   - mvn install -DskipTests              (--skip-build)
 #   2. Upload  - upload-artifacts.sh                   (--skip-upload)
-#   3. Deploy  - setup-remote.sh --component X         (--skip-deploy)
+#   3. Deploy  - wait-for-hosts.sh, then              (--skip-deploy)
+#                setup-remote.sh --component X
 #   4. Restart - manage-services.sh restart X           (--skip-restart)
 #   5. Validate - health checks                        (always runs)
 #
@@ -253,6 +254,9 @@ if [ "$SKIP_DEPLOY" = true ]; then
 else
     banner "Stage 3: Deploy to Remote"
     stage_start "deploy"
+
+    # Fresh instances need a few minutes to boot and mount their data volumes
+    "$SCRIPT_DIR/wait-for-hosts.sh" -f "$TF_OUTPUTS" -i "$PEM_FILE" -u "$SSH_USER" --ssh-port "$SSH_PORT"
 
     DEPLOY_ARGS=(-f "$TF_OUTPUTS" -i "$PEM_FILE" -u "$SSH_USER" --ssh-port "$SSH_PORT")
     if [ -n "$COMPONENT" ]; then

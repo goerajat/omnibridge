@@ -363,13 +363,16 @@ mvn install -DskipTests
 # 2. Upload to S3
 ./scripts/deploy/upload-artifacts.sh
 
-# 3. Deploy to remote hosts
+# 3. Wait until the hosts have booted and mounted their data volumes
+./scripts/deploy/wait-for-hosts.sh
+
+# 4. Deploy to remote hosts
 ./scripts/deploy/setup-remote.sh -f tf-outputs.json -i omnibridge-key.pem
 
-# 4. Restart services
+# 5. Restart services
 ./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem restart
 
-# 5. Check status
+# 6. Check status
 ./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem status
 ```
 
