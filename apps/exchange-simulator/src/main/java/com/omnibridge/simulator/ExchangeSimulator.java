@@ -58,7 +58,9 @@ public class ExchangeSimulator extends ApplicationBase {
 
     @Override
     protected List<String> getConfigFiles() {
-        return List.of("exchange-simulator.conf", "simulator-components.conf");
+        // exchange-simulator.conf includes simulator-components.conf itself; loading that
+        // file again afterwards would let components.conf defaults override this app's settings
+        return List.of("exchange-simulator.conf");
     }
 
     @Override
