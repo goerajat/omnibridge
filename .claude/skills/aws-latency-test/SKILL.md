@@ -1,0 +1,131 @@
+---
+name: aws-latency-test
+description: Provision the AWS stack with Terraform, deploy the current code, run the FIX latency test with its sockperf network baseline, summarize the results against earlier runs, and destroy the stack.
+argument-hint: "[warmup test-orders rate] [--tune-simulator] [--skip-baseline] [--keep]"
+disable-model-invocation: true
+allowed-tools:
+  - Bash(./scripts/deploy/terraform-deploy.sh:*)
+  - Bash(./scripts/deploy/deploy-pipeline.sh:*)
+  - Bash(./scripts/deploy/wait-for-hosts.sh:*)
+  - Bash(./scripts/deploy/run-aws-latency-test.sh:*)
+  - Bash(./scripts/deploy/manage-services.sh:*)
+  - Bash(terraform:*)
+  - Bash(mvn install:*)
+  - Bash(aws sts get-caller-identity:*)
+  - Bash(ssh:*)
+  - Bash(jq:*)
+  - Bash(git status:*)
+  - Bash(git rev-parse:*)
+  - Bash(git diff:*)
+  - Bash(git checkout -- infrastructure/terraform/environments/production/terraform.tfvars)
+  - Bash(git add docs/latency-history.jsonl)
+  - Bash(git commit:*)
+---
+
+# AWS latency test
+
+Runs the current checkout on a fresh AWS stack, measures it, reports, and tears
+the stack down. Invoking this skill is the user's approval for every step below,
+including `terraform apply` and `terraform destroy` of the production
+environment in `infrastructure/terraform/environments/production`. It is not
+approval for anything else: never push, never change other infrastructure.
+
+Arguments: `$ARGUMENTS`
+
+- Up to three numbers: warmup orders, test orders, rate (defaults 10000 1000 100).
+  Keep the defaults unless the user gives others, so runs stay comparable.
+- `--tune-simulator`, `--skip-baseline`: passed through to the test script.
+- `--keep`: skip the destroy step and say so in the report. Only when passed.
+
+Long steps (Terraform, the pipeline, the test) take minutes: run them with
+`run_in_background` and wait for the notification, never sleep-poll. Run
+everything from the repository root.
+
+## 1. Preflight
+
+1. `git status --short` and `git rev-parse --short HEAD`. A dirty tree is
+   allowed but the results are marked `dirty`; say so in the report. Note
+   whether `infrastructure/terraform/environments/production/terraform.tfvars`
+   is already modified (step 6 restores it only if it was clean).
+2. Check `omnibridge-key.pem` exists and `aws sts get-caller-identity` works.
+3. `terraform -chdir=infrastructure/terraform/environments/production init -input=false`
+   then `terraform -chdir=infrastructure/terraform/environments/production state list`.
+   **If the state is not empty, a stack already exists. Stop and ask the user**
+   whether to use it and whether to destroy it afterwards: this skill's approval
+   covers only a stack it created itself.
+
+## 2. Provision and build (in parallel)
+
+Read the version from `pom.xml` (`<version>` of the root project), then start
+both in the background:
+
+- `./scripts/deploy/terraform-deploy.sh --auto-approve -v <version>`
+  (init, plan, apply, writes `tf-outputs.json`; it also writes the caller's
+  public IP into `terraform.tfvars`).
+- `mvn install -DskipTests -q`
+
+If the apply fails, show the Terraform error, go to step 6 (destroy whatever
+was created) and report.
+
+## 3. Deploy
+
+`./scripts/deploy/deploy-pipeline.sh --skip-build` uploads the artifacts, waits
+for the hosts (`wait-for-hosts.sh`), deploys, restarts and validates. If a
+service fails validation, read its log before going on, e.g.
+`ssh ... "journalctl -u exchange-simulator --since '15 min ago' --no-pager | tail -100"`
+(the SSH through the monitoring host is in CLAUDE.md, IPs in `tf-outputs.json`).
+Only continue to the test if `exchange-simulator` and `fix-initiator` are healthy;
+otherwise go to step 6 with the diagnosis.
+
+## 4. Test
+
+`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> [--tune-simulator] [--skip-baseline]`
+
+It prints the results directory (`logs/aws-latency/<time>/`) and appends the
+run to `docs/latency-history.jsonl`. On failure, read `fix-latency.log` and
+`sockperf.log` in that directory and the simulator/initiator journal.
+
+## 5. Read the results
+
+- `summary.json` in the results directory: TCP and FIX round trips (µs),
+  commit, instance type, options.
+- Earlier lines of `docs/latency-history.jsonl` with the same `options` and
+  `instance_type`: take the most recent clean one as the comparison point.
+
+## 6. Destroy (always, unless `--keep`)
+
+Also after any failure in steps 2 to 5, once the logs above have been read.
+
+1. `./scripts/deploy/terraform-deploy.sh --destroy-only --auto-approve -v <version>`
+2. Verify with `terraform -chdir=infrastructure/terraform/environments/production state list`:
+   it must be empty. If anything is left, retry the destroy once, then report
+   the leftover resources prominently (they cost money).
+3. If `terraform.tfvars` was clean in step 1:
+   `git checkout -- infrastructure/terraform/environments/production/terraform.tfvars`.
+
+## 7. Record and report
+
+If the test produced results, commit the history line:
+`git add docs/latency-history.jsonl` and
+`git commit -m "Latency run <commit>: FIX p50 <x> µs, TCP p50 <y> µs"` with the
+trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Commit
+nothing else, do not push.
+
+Report in this shape:
+
+```
+AWS latency run — <commit> (<branch>[, dirty]) on <instance type>
+Options: warmup W, test N at R/s, simulator tuning on/off
+
+                 min    p50    p90    p99    max   (µs)
+TCP (sockperf)   ...
+FIX round trip   ...
+FIX − TCP p50:   <difference>  (time spent in the engines, not the network)
+
+vs <previous commit> (<date>): p50 <±x µs>, p99 <±y µs>
+Stack: destroyed (state empty) | kept (--keep) | LEFTOVER: <resources>
+```
+
+Then two or three sentences: what changed since the comparison run, anything
+odd (max far above p99, sockperf missing, failed sequence realignment, a
+service that needed a restart), and where the logs are.

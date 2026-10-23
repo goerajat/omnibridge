@@ -390,7 +390,9 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 - The sockperf baseline uses port 11111, which Terraform opens between the trading hosts (`trading_sockperf_from_trading`). On a stack without that rule, `--sockperf-port 9876` borrows the FIX port and stops `exchange-simulator` while sockperf runs.
 - `--tune-simulator` appends busy-spin, `--simulator-cpu` and FIX-SIM-1 `log-messages = false` to `/opt/exchange-simulator/exchange-simulator.conf`; the file is backed up and restored afterwards.
 - Before the demo initiator restarts, FIX-SIM-1's sequence numbers are reset through the simulator admin API (incoming 1, outgoing `--outgoing-seq`, default 1000000), so the demo initiator doesn't disconnect.
-- Logs and `summary.txt` go to `logs/aws-latency/<time>/`.
+- Logs, `summary.txt` and `summary.json` go to `logs/aws-latency/<time>/`; each run is also appended to `docs/latency-history.jsonl` (commit, instance type, options, percentiles) for comparison across commits.
+
+End to end (provision → build → deploy → test → report → destroy): run the `/aws-latency-test [warmup test rate] [--tune-simulator] [--keep]` skill in `.claude/skills/aws-latency-test/`. It is pre-approved for `terraform apply`/`destroy` and always destroys the stack after the run unless `--keep` is passed; it stops and asks if a stack already exists.
 
 ### SSH Access & Log Checking
 

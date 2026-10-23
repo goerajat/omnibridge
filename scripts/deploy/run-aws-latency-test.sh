@@ -39,6 +39,8 @@
 #   --sockperf-port       sockperf TCP port (default: 11111)
 #   --outgoing-seq        Simulator outgoing seq set after the run (default: 1000000)
 #   -o, --output-dir      Local results directory (default: logs/aws-latency/<time>)
+#   --history             JSONL file each run's summary.json is appended to
+#                         (default: docs/latency-history.jsonl; "" to skip)
 #
 # Examples:
 #   ./run-aws-latency-test.sh
@@ -67,6 +69,7 @@ SP_SIZE=200
 SP_PORT=11111
 OUT_SEQ=1000000
 OUT_DIR=""
+HISTORY="$PROJECT_DIR/docs/latency-history.jsonl"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -86,7 +89,8 @@ while [[ $# -gt 0 ]]; do
         --sockperf-port)  SP_PORT="$2";       shift 2 ;;
         --outgoing-seq)   OUT_SEQ="$2";       shift 2 ;;
         -o|--output-dir)  OUT_DIR="$2";       shift 2 ;;
-        -h|--help)        sed -n '2,46p' "$0"; exit 0 ;;
+        --history)        HISTORY="$2";       shift 2 ;;
+        -h|--help)        sed -n '2,48p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -379,6 +383,25 @@ FX_ROW=("$(fx Min)" "$(fx p50)" "$(fx p90)" "$(fx p99)" "$(fx Max)")
     echo "  Simulator tuning: $TUNE_SIM; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
+
+# Machine-readable copy, one line per run in the history file, so runs can be
+# compared across commits and tuning options
+INSTANCE_TYPE=$(on_ouch 'T=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60"); curl -s -m 2 -H "X-aws-ec2-metadata-token: $T" http://169.254.169.254/latest/meta-data/instance-type' 2>/dev/null | tr -d '')
+COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
+BRANCH=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/null)" ] && echo true || echo false)
+jq -nc     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH"     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}"     --argjson tune "$TUNE_SIM" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE"     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC"     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" '
+    def stats: split(" ") | map(if . == "-" then null else tonumber end)
+               | {min: .[0], p50: .[1], p90: .[2], p99: .[3], max: .[4]};
+    {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
+     options: {tune_simulator: $tune, warmup: $warmup, test_orders: $orders, rate: $rate,
+               initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
+     tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
+     fix_rtt_us: ($fx | stats), fix_exit_code: $rc}' | tr -d '' > "$OUT_DIR/summary.json"
+if [ -n "$HISTORY" ] && [ -s "$OUT_DIR/summary.json" ]; then
+    mkdir -p "$(dirname "$HISTORY")"
+    cat "$OUT_DIR/summary.json" >> "$HISTORY"
+fi
 
 if [ "$FIX_RC" -ne 0 ] || [ "${FX_ROW[1]}" = "-" ]; then
     echo "  FIX run failed (exit $FIX_RC); see $FIX_LOG"
