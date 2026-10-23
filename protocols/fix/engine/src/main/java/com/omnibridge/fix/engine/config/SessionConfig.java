@@ -56,8 +56,10 @@ public class SessionConfig {
     private int reconnectInterval = 5;
     private int maxReconnectAttempts = -1; // -1 = unlimited
 
-    // Logging
+    // Logging: logMessages persists every message to the LogStore; traceMessages also
+    // writes each outgoing message to the application log (defaults to logMessages)
     private boolean logMessages = true;
+    private Boolean traceMessages;
 
     // Message encoding
     private int maxMessageLength = 4096;
@@ -188,6 +190,11 @@ public class SessionConfig {
 
         public Builder logMessages(boolean log) {
             config.logMessages = log;
+            return this;
+        }
+
+        public Builder traceMessages(boolean trace) {
+            config.traceMessages = trace;
             return this;
         }
 
@@ -425,6 +432,10 @@ public class SessionConfig {
 
     public boolean isLogMessages() {
         return logMessages;
+    }
+
+    public boolean isTraceMessages() {
+        return traceMessages != null ? traceMessages : logMessages;
     }
 
     public int getMaxMessageLength() {

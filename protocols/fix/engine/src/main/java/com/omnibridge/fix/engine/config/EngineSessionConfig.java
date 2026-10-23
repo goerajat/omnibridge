@@ -38,6 +38,7 @@ public final class EngineSessionConfig {
     private final LocalTime eodTime;
     private final boolean resetOnEod;
     private final boolean logMessages;
+    private final boolean traceMessages;
     private final int maxMessageLength;
     private final int maxTagNumber;
     private final String persistencePath;
@@ -70,6 +71,7 @@ public final class EngineSessionConfig {
         this.eodTime = builder.eodTime;
         this.resetOnEod = builder.resetOnEod;
         this.logMessages = builder.logMessages;
+        this.traceMessages = builder.traceMessages != null ? builder.traceMessages : builder.logMessages;
         this.maxMessageLength = builder.maxMessageLength;
         this.maxTagNumber = builder.maxTagNumber;
         this.persistencePath = builder.persistencePath;
@@ -133,6 +135,9 @@ public final class EngineSessionConfig {
         }
         if (config.hasPath("log-messages")) {
             builder.logMessages(config.getBoolean("log-messages"));
+        }
+        if (config.hasPath("trace-messages")) {
+            builder.traceMessages(config.getBoolean("trace-messages"));
         }
         if (config.hasPath("max-message-length")) {
             builder.maxMessageLength(config.getInt("max-message-length"));
@@ -296,6 +301,11 @@ public final class EngineSessionConfig {
         return logMessages;
     }
 
+    /** Whether each outgoing message is also written to the application log (defaults to log-messages). */
+    public boolean isTraceMessages() {
+        return traceMessages;
+    }
+
     public int getMaxMessageLength() {
         return maxMessageLength;
     }
@@ -391,6 +401,7 @@ public final class EngineSessionConfig {
         private LocalTime eodTime;
         private boolean resetOnEod = false;
         private boolean logMessages = true;
+        private Boolean traceMessages;
         private int maxMessageLength = 4096;
         private int maxTagNumber = 1000;
         private String persistencePath;
@@ -493,6 +504,11 @@ public final class EngineSessionConfig {
 
         public Builder logMessages(boolean logMessages) {
             this.logMessages = logMessages;
+            return this;
+        }
+
+        public Builder traceMessages(boolean traceMessages) {
+            this.traceMessages = traceMessages;
             return this;
         }
 

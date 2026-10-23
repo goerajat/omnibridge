@@ -144,6 +144,9 @@ public class EngineConfig {
         if (node.has("logMessages")) {
             builder.logMessages(node.get("logMessages").asBoolean());
         }
+        if (node.has("traceMessages")) {
+            builder.traceMessages(node.get("traceMessages").asBoolean());
+        }
         if (node.has("persistencePath")) {
             builder.persistencePath(node.get("persistencePath").asText());
         }

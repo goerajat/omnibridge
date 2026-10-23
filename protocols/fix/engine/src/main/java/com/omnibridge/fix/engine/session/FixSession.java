@@ -711,7 +711,7 @@ public class FixSession implements NetworkHandler {
             int seqNum = outgoingSeqNum.get();
             stampSeqNum(buffer, offset, length, seqNum);
             outgoingSeqNum.lazySet(seqNum + 1);
-            if (config.isLogMessages() && log.isInfoEnabled()) {
+            if (config.isTraceMessages() && log.isInfoEnabled()) {
                 log.info("[{}] OUT <<< {}", config.getSessionId(),
                         buffer.getStringWithoutLengthAscii(offset, length).replace('\u0001', '|'));
             }

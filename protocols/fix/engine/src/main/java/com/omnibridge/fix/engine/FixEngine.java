@@ -460,6 +460,7 @@ public class FixEngine implements Component {
                 .timeZone(config.getTimeZone())
                 .resetOnEod(config.isResetOnEod())
                 .logMessages(config.isLogMessages())
+                .traceMessages(config.isTraceMessages())
                 .maxMessageLength(config.getMaxMessageLength())
                 .maxTagNumber(config.getMaxTagNumber());
 

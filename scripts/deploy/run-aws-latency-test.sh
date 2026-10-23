@@ -50,6 +50,10 @@
 #   --no-host-check       Skip the affinity/isolation sampling
 #   --require-isolation   Fail unless the pinned cores are isolated, clear of
 #                         NIC IRQs and not preempted (default: only warn)
+#   --persistence         Persist every message to the session store on both
+#                         sides (log-messages = true) without tracing them to
+#                         the application log (trace-messages = false); by
+#                         default the measured sessions persist nothing
 #
 # Examples:
 #   ./run-aws-latency-test.sh
@@ -82,6 +86,7 @@ OUT_DIR=""
 HISTORY="$PROJECT_DIR/docs/latency-history.jsonl"
 HOST_CHECK=true
 REQUIRE_ISOLATION=false
+PERSIST=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -105,7 +110,8 @@ while [[ $# -gt 0 ]]; do
         --history)        HISTORY="$2";       shift 2 ;;
         --no-host-check)  HOST_CHECK=false;   shift ;;
         --require-isolation) REQUIRE_ISOLATION=true; shift ;;
-        -h|--help)        sed -n '2,58p' "$0"; exit 0 ;;
+        --persistence)    PERSIST=true;       shift ;;
+        -h|--help)        sed -n '2,62p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -161,6 +167,12 @@ SIM_CONF=$SIM_DIR/exchange-simulator.conf
 SIM_BACKUP=$SIM_CONF.latency-backup
 OVERRIDE=$INIT_DIR/conf/initiator-latency.conf
 SESSION_URL='http://localhost:8080/api/sessions/EXCH1-%3ECLIENT1'
+# Session settings for the measured sessions: store writes on or off, never traced
+if [ "$PERSIST" = true ]; then
+    MSG_CFG='log-messages = true, trace-messages = false'
+else
+    MSG_CFG='log-messages = false'
+fi
 
 echo "================================================================"
 echo "  AWS latency test"
@@ -170,6 +182,7 @@ echo "  OUCH host (initiator):  $OUCH_IP"
 echo "  Orders:                 warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
 echo "  Initiator core:         $INITIATOR_CPU"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
+echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off)"
 echo "  Baseline (sockperf):    $([ "$BASELINE" = true ] && echo "${SP_SIZE}B for ${SP_TIME}s on port $SP_PORT" || echo skipped)"
 echo "  Results:                $OUT_DIR"
 echo ""
@@ -275,7 +288,7 @@ fi
 # -----------------------------------------------------------------------------
 
 if [ "$TUNE_SIM" = true ]; then
-    echo "[3/4] Tuning simulator (busy-spin, core $SIM_CPU, FIX-SIM-1 log-messages = false)"
+    echo "[3/4] Tuning simulator (busy-spin, core $SIM_CPU, FIX-SIM-1 $MSG_CFG)"
     # The simulator loads only exchange-simulator.conf, so the tuning is appended
     # there. HOCON replaces arrays, so all five FIX sessions from the classpath
     # exchange-simulator.conf are restated. The deployed file is CRLF; HOCON
@@ -292,7 +305,7 @@ network {
 
 fix-engine {
     sessions = [
-        { session-id = "FIX-SIM-1", port = 9876, sender-comp-id = "EXCH1", target-comp-id = "CLIENT1", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30, log-messages = false },
+        { session-id = "FIX-SIM-1", port = 9876, sender-comp-id = "EXCH1", target-comp-id = "CLIENT1", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30, $MSG_CFG },
         { session-id = "FIX-SIM-2", port = 9876, sender-comp-id = "EXCH2", target-comp-id = "CLIENT2", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30 },
         { session-id = "FIX-SIM-3", port = 9876, sender-comp-id = "EXCH3", target-comp-id = "CLIENT3", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30 },
         { session-id = "FIX-SIM-4", port = 9876, sender-comp-id = "EXCH4", target-comp-id = "CLIENT4", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30 },
@@ -333,7 +346,7 @@ set -e
     echo '    base-path = "$INIT_DIR/data/latency-logs"'
     echo '}'
     tr -d '\r' < $INIT_DIR/conf/initiator-aws.conf | sed -n '/^fix-engine {/,\$p' \
-        | sed 's/^\( *\)initiator = true.*/&\n\1reset-on-logon = true\n\1log-messages = false/'
+        | sed 's/^\( *\)initiator = true.*/&\n\1reset-on-logon = true\n\1$MSG_CFG/'
 } > $OVERRIDE
 grep -q 'reset-on-logon = true' $OVERRIDE
 rm -rf $INIT_DIR/data/latency-logs
@@ -512,7 +525,7 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
             "${HC_FIX[seconds]:--}s, ${HC_FIX[samples]:--} samples"
         echo "================================================================"
     fi
-    echo "  Simulator tuning: $TUNE_SIM; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    echo "  Simulator tuning: $TUNE_SIM; persistence: $PERSIST; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
@@ -525,13 +538,13 @@ DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/nu
 jq -nc \
     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
-    --argjson tune "$TUNE_SIM" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
+    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" '
     def stats: split(" ") | map(if . == "-" then null else tonumber end)
                | {min: .[0], p50: .[1], p90: .[2], p99: .[3], max: .[4]};
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
-     options: {tune_simulator: $tune, warmup: $warmup, test_orders: $orders, rate: $rate,
+     options: {tune_simulator: $tune, persistence: $persist, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_exit_code: $rc}' | tr -d '\r' > "$OUT_DIR/summary.json"
