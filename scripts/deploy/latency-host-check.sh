@@ -59,7 +59,7 @@ echo "static networkio_threads $(grep -l '^NetworkIO-' /proc/$PID/task/*/comm 2>
 echo "static allowed $(taskset -pc "$TID" 2>/dev/null | awk -F': ' '{print $2}')"
 echo "static cpus $(nproc --all)"
 echo "static isolated $(cat /sys/devices/system/cpu/isolated 2>/dev/null)"
-echo "static nohz_full $(cat /sys/devices/system/cpu/nohz_full 2>/dev/null)"
+echo "static nohz_full $(grep -v '(null)' /sys/devices/system/cpu/nohz_full 2>/dev/null)"
 echo "static cmdline $(grep -oE '(isolcpus|nohz_full|rcu_nocbs|irqaffinity)=[^ ]*' /proc/cmdline | tr '\n' ' ')"
 echo "static irqbalance $(systemctl is-active irqbalance 2>/dev/null)"
 if [ "$CORE" -ge 0 ]; then

@@ -88,7 +88,12 @@ run to `docs/latency-history.jsonl`. On failure, read `fix-latency.log` and
 ## 5. Read the results
 
 - `summary.json` in the results directory: TCP and FIX round trips (µs),
-  commit, instance type, options.
+  commit, instance type, options, and `host_checks` per host (affinity,
+  busy-spin, isolation, NIC IRQs, preemption). Report every check that is not
+  PASS and what it means for the numbers: a FAIL means the configuration under
+  test did not take effect; WARNs mean the core was shared (IRQs, other
+  threads, an unisolated hyperthread sibling). `host-check-*.txt` has the
+  per-second samples and the NIC IRQ affinities.
 - Earlier lines of `docs/latency-history.jsonl` with the same `options` and
   `instance_type`: take the most recent clean one as the comparison point.
 
@@ -121,6 +126,8 @@ Options: warmup W, test N at R/s, simulator tuning on/off
 TCP (sockperf)   ...
 FIX round trip   ...
 FIX − TCP p50:   <difference>  (time spent in the engines, not the network)
+
+Host checks: initiator <PASS/WARN/FAIL per check>, simulator <...>
 
 vs <previous commit> (<date>): p50 <±x µs>, p99 <±y µs>
 Stack: destroyed (state empty) | kept (--keep) | LEFTOVER: <resources>
