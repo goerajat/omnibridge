@@ -33,6 +33,9 @@
 
     <!-- Network layer -->
     <logger name="com.omnibridge.network" level="WARN"/>
+    <!-- Event loop lifecycle and CPU affinity: a few lines at startup -->
+    <logger name="com.omnibridge.network.NetworkEventLoop" level="INFO"/>
+    <logger name="com.omnibridge.network.affinity" level="INFO"/>
 
     <!-- Admin API -->
     <logger name="com.omnibridge.admin" level="INFO"/>

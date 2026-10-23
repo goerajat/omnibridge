@@ -20,6 +20,11 @@
 #   5. Realign FIX-SIM-1's sequence numbers through the simulator admin API so
 #      the restarted demo initiator does not disconnect, then restart it.
 #
+# During step 4, latency-host-check.sh samples the event-loop thread on both
+# hosts. For the measured phase the summary reports whether the thread stayed
+# on its configured core, busy-spin CPU use, whether the core and its
+# hyperthread sibling are isolated, NIC IRQ placement, and preemptions.
+#
 # Usage: ./run-aws-latency-test.sh [options]
 #
 # Options:
@@ -41,6 +46,9 @@
 #   -o, --output-dir      Local results directory (default: logs/aws-latency/<time>)
 #   --history             JSONL file each run's summary.json is appended to
 #                         (default: docs/latency-history.jsonl; "" to skip)
+#   --no-host-check       Skip the affinity/isolation sampling
+#   --require-isolation   Fail unless the pinned cores are isolated, clear of
+#                         NIC IRQs and not preempted (default: only warn)
 #
 # Examples:
 #   ./run-aws-latency-test.sh
@@ -70,6 +78,8 @@ SP_PORT=11111
 OUT_SEQ=1000000
 OUT_DIR=""
 HISTORY="$PROJECT_DIR/docs/latency-history.jsonl"
+HOST_CHECK=true
+REQUIRE_ISOLATION=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -90,7 +100,9 @@ while [[ $# -gt 0 ]]; do
         --outgoing-seq)   OUT_SEQ="$2";       shift 2 ;;
         -o|--output-dir)  OUT_DIR="$2";       shift 2 ;;
         --history)        HISTORY="$2";       shift 2 ;;
-        -h|--help)        sed -n '2,48p' "$0"; exit 0 ;;
+        --no-host-check)  HOST_CHECK=false;   shift ;;
+        --require-isolation) REQUIRE_ISOLATION=true; shift ;;
+        -h|--help)        sed -n '2,56p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -189,8 +201,8 @@ cleanup() {
     echo "[cleanup] Restoring services"
 
     # A latency run cut short by Ctrl-C would keep its session open
-    on_ouch "pkill -f '[o]mnibridge.latency-test' || true" 2>/dev/null
-    on_fix "pkill -x sockperf || true" 2>/dev/null
+    on_ouch "pkill -f '[o]mnibridge.latency-test'; pkill -f '[l]atency-host-check'; true" 2>/dev/null
+    on_fix "pkill -x sockperf; pkill -f '[l]atency-host-check'; true" 2>/dev/null
 
     if [ "$SIM_TUNED" = true ]; then
         echo "[cleanup] Restoring $SIM_CONF"
@@ -332,8 +344,23 @@ fi
 RUN_TIMEOUT=$(( (WARMUP + TEST_ORDERS) / (RATE > 0 ? RATE : 1000) + 300 ))
 FIX_LOG="$OUT_DIR/fix-latency.log"
 
+# Samplers run on core 0, away from the cores they measure. The initiator's
+# ends with the latency run and marks the measured phase from its log.
+SIM_CHECK_CORE=-1
+[ "$TUNE_SIM" = true ] && SIM_CHECK_CORE=$SIM_CPU
+if [ "$HOST_CHECK" = true ]; then
+    for h in ouch fix; do
+        on_$h "rm -f /tmp/host-check.stop /tmp/host-check.out /tmp/fix-latency-run.log; cat > /tmp/latency-host-check.sh" \
+            < "$SCRIPT_DIR/latency-host-check.sh"
+    done
+    on_ouch "nohup taskset -c 0 bash /tmp/latency-host-check.sh $INITIATOR_CPU '[o]mnibridge.latency-test' $RUN_TIMEOUT \
+        /tmp/fix-latency-run.log > /tmp/host-check.out 2>&1 < /dev/null &"
+    on_fix "nohup taskset -c 0 bash /tmp/latency-host-check.sh $SIM_CHECK_CORE service:exchange-simulator $RUN_TIMEOUT \
+        > /tmp/host-check.out 2>&1 < /dev/null &"
+fi
+
 # JVM flags match the fix-initiator systemd unit in setup-remote.sh
-on_ouch "cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
+on_ouch "set -o pipefail; cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
     -Domnibridge.latency-test=true \
     -Xms512m -Xmx1g \
     -XX:+UseZGC \
@@ -351,8 +378,17 @@ on_ouch "cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
     -cp '$INIT_DIR/conf:$INIT_DIR/lib/*' \
     com.omnibridge.apps.fix.initiator.SampleInitiator \
     -c $INIT_DIR/conf/initiator-aws.conf,$OVERRIDE \
-    --latency --warmup-orders $WARMUP --test-orders $TEST_ORDERS --rate $RATE" 2>&1 | tee "$FIX_LOG"
+    --latency --warmup-orders $WARMUP --test-orders $TEST_ORDERS --rate $RATE 2>&1 \
+    | tee /tmp/fix-latency-run.log" 2>&1 | tee "$FIX_LOG"
 FIX_RC=${PIPESTATUS[0]}
+
+if [ "$HOST_CHECK" = true ]; then
+    for h in ouch fix; do
+        on_$h "touch /tmp/host-check.stop
+               for i in 1 2 3 4 5; do grep -qE '^(done|error)' /tmp/host-check.out && break; sleep 1; done
+               cat /tmp/host-check.out" > "$OUT_DIR/host-check-$h.txt" 2>&1
+    done
+fi
 
 # -----------------------------------------------------------------------------
 # Summary
@@ -371,6 +407,77 @@ else
 fi
 FX_ROW=("$(fx Min)" "$(fx p50)" "$(fx p90)" "$(fx p99)" "$(fx Max)")
 
+# Reduces latency-host-check.sh output to "key<TAB>value" lines over the
+# measured phase [start, end] (all samples when the marks are missing)
+host_summary() {
+    local file="$1" core="$2" spin="$3" start="$4" end="$5"
+    tr -d '\r' < "$file" | awk -v core="$core" -v spin="$spin" -v s="${start:-0}" -v e="${end:-9999999999}" '
+    function inlist(c, list,   n, i, a, r) {
+        n = split(list, a, ",")
+        for (i = 1; i <= n; i++) {
+            if (split(a[i], r, "-") == 2) { if (c + 0 >= r[1] + 0 && c + 0 <= r[2] + 0) return 1 }
+            else if (a[i] != "" && a[i] + 0 == c + 0) return 1
+        }
+        return 0
+    }
+    function out(k, v) { printf "%s\t%s\n", k, v }
+    $1 == "error" { err = $0 }
+    $1 == "static" && $2 == "nic_irq" {
+        nic = nic (nic == "" ? "" : " ") $3 "=" $4
+        if (core >= 0 && inlist(core, $4)) nicbad++
+        next
+    }
+    $1 == "static" { k = $2; $1 = ""; $2 = ""; sub(/^ +/, ""); sub(/ +$/, ""); st[k] = $0; next }
+    $1 == "sample" && $2 >= s && $2 <= e {
+        n++
+        if (n == 1) { t0 = $2; k0 = $4; v0 = $5; nv0 = $6; d0 = $7; l0 = $8 }
+        t1 = $2; k1 = $4; v1 = $5; nv1 = $6; d1 = $7; l1 = $8
+        if (!($3 in seen)) { seen[$3] = 1; ran = ran (ran == "" ? "" : ",") $3 }
+        if ($9 > others) others = $9
+    }
+    END {
+        if (err != "" || n < 2) { out("status", err != "" ? err : "too few samples"); exit }
+        dt = t1 - t0; clk = (st["clk_tck"] > 0 ? st["clk_tck"] : 100)
+        cpu = (k1 - k0) * 100 / (clk * dt); invol = (nv1 - nv0) / dt
+        out("samples", n); out("seconds", dt); out("core", core)
+        out("allowed", st["allowed"]); out("ran_on", ran); out("cpu_pct", sprintf("%.0f", cpu))
+        out("vol_cs_per_s", sprintf("%.1f", (v1 - v0) / dt)); out("invol_cs_per_s", sprintf("%.1f", invol))
+        out("dev_irq_per_s", sprintf("%.1f", (d1 - d0) / dt)); out("timer_irq_per_s", sprintf("%.0f", (l1 - l0) / dt))
+        out("max_other_runnable", others + 0)
+        out("isolated", st["isolated"]); out("nohz_full", st["nohz_full"]); out("cmdline", st["cmdline"])
+        out("siblings", st["siblings"]); out("irqbalance", st["irqbalance"]); out("nic_irqs", nic)
+        if (core < 0) {
+            out("affinity", "n/a"); out("isolation", "n/a"); out("nic_irq_check", "n/a")
+        } else {
+            out("affinity", (st["allowed"] == core && ran == core) ? "PASS" : "FAIL")
+            # The core and its hyperthread sibling(s) must all be isolated
+            iso = inlist(core, st["isolated"]); ns = split(st["siblings"], sb, ",")
+            for (i = 1; i <= ns; i++) {
+                if (split(sb[i], r, "-") == 2) { for (c = r[1]; c <= r[2]; c++) iso = iso && inlist(c, st["isolated"]) }
+                else iso = iso && inlist(sb[i], st["isolated"])
+            }
+            out("isolation", iso ? "PASS" : "WARN")
+            out("nic_irq_check", (nicbad > 0 || st["irqbalance"] == "active") ? "WARN" : "PASS")
+        }
+        out("busy_spin", spin == "true" ? (cpu >= 90 ? "PASS" : "FAIL") : "n/a")
+        out("preemption", (invol <= 1 && others == 0) ? "PASS" : "WARN")
+        out("status", "ok")
+    }'
+}
+
+declare -A HC_OUCH HC_FIX
+if [ "$HOST_CHECK" = true ]; then
+    MARK_START=$(tr -d '\r' < "$OUT_DIR/host-check-ouch.txt" | awk '$1 == "mark" && $2 == "start" {print $3}')
+    MARK_END=$(tr -d '\r' < "$OUT_DIR/host-check-ouch.txt" | awk '$1 == "mark" && $2 == "end" {print $3}')
+    host_summary "$OUT_DIR/host-check-ouch.txt" "$INITIATOR_CPU" true "$MARK_START" "$MARK_END" \
+        > "$OUT_DIR/host-check-ouch.tsv"
+    host_summary "$OUT_DIR/host-check-fix.txt" "$SIM_CHECK_CORE" "$TUNE_SIM" "$MARK_START" "$MARK_END" \
+        > "$OUT_DIR/host-check-fix.tsv"
+    while IFS=$'\t' read -r k v; do HC_OUCH[$k]="$v"; done < "$OUT_DIR/host-check-ouch.tsv"
+    while IFS=$'\t' read -r k v; do HC_FIX[$k]="$v"; done < "$OUT_DIR/host-check-fix.tsv"
+fi
+hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
+
 {
     echo ""
     echo "================================================================"
@@ -380,24 +487,58 @@ FX_ROW=("$(fx Min)" "$(fx p50)" "$(fx p90)" "$(fx p99)" "$(fx Max)")
     printf "  %-24s %9s %9s %9s %9s %9s\n" "TCP (sockperf ${SP_SIZE}B)" "${SP_ROW[@]}"
     printf "  %-24s %9s %9s %9s %9s %9s\n" "FIX round trip" "${FX_ROW[@]}"
     echo "================================================================"
+    if [ "$HOST_CHECK" = true ]; then
+        hc_row "Host checks" "initiator (core $INITIATOR_CPU)" \
+            "simulator ($([ "$SIM_CHECK_CORE" -ge 0 ] && echo "core $SIM_CHECK_CORE" || echo unpinned))"
+        if [ "${HC_OUCH[status]:-}" != ok ] || [ "${HC_FIX[status]:-}" != ok ]; then
+            hc_row "sampler" "${HC_OUCH[status]:-no output}" "${HC_FIX[status]:-no output}"
+        fi
+        hc_row "affinity (ran on)" "${HC_OUCH[affinity]:--} (${HC_OUCH[ran_on]:--})" \
+            "${HC_FIX[affinity]:--} (${HC_FIX[ran_on]:--})"
+        hc_row "busy-spin (CPU)" "${HC_OUCH[busy_spin]:--} (${HC_OUCH[cpu_pct]:--}%)" \
+            "${HC_FIX[busy_spin]:--} (${HC_FIX[cpu_pct]:--}%)"
+        hc_row "isolation (isolated)" "${HC_OUCH[isolation]:--} (${HC_OUCH[isolated]:-none})" \
+            "${HC_FIX[isolation]:--} (${HC_FIX[isolated]:-none})"
+        hc_row "NIC IRQs (irqbalance)" "${HC_OUCH[nic_irq_check]:--} (${HC_OUCH[irqbalance]:--})" \
+            "${HC_FIX[nic_irq_check]:--} (${HC_FIX[irqbalance]:--})"
+        hc_row "preemption (invol cs/s)" "${HC_OUCH[preemption]:--} (${HC_OUCH[invol_cs_per_s]:--})" \
+            "${HC_FIX[preemption]:--} (${HC_FIX[invol_cs_per_s]:--})"
+        hc_row "IRQs/s on core (dev/timer)" "${HC_OUCH[dev_irq_per_s]:--} / ${HC_OUCH[timer_irq_per_s]:--}" \
+            "${HC_FIX[dev_irq_per_s]:--} / ${HC_FIX[timer_irq_per_s]:--}"
+        hc_row "window" "${HC_OUCH[seconds]:--}s, ${HC_OUCH[samples]:--} samples" \
+            "${HC_FIX[seconds]:--}s, ${HC_FIX[samples]:--} samples"
+        echo "================================================================"
+    fi
     echo "  Simulator tuning: $TUNE_SIM; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
 # Machine-readable copy, one line per run in the history file, so runs can be
 # compared across commits and tuning options
-INSTANCE_TYPE=$(on_ouch 'T=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60"); curl -s -m 2 -H "X-aws-ec2-metadata-token: $T" http://169.254.169.254/latest/meta-data/instance-type' 2>/dev/null | tr -d '')
+INSTANCE_TYPE=$(on_ouch 'T=$(curl -s -m 2 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60"); curl -s -m 2 -H "X-aws-ec2-metadata-token: $T" http://169.254.169.254/latest/meta-data/instance-type' 2>/dev/null | tr -d '\r')
 COMMIT=$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
 BRANCH=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/null)" ] && echo true || echo false)
-jq -nc     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH"     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}"     --argjson tune "$TUNE_SIM" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE"     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC"     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" '
+jq -nc \
+    --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
+    --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
+    --argjson tune "$TUNE_SIM" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
+    --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
+    --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" '
     def stats: split(" ") | map(if . == "-" then null else tonumber end)
                | {min: .[0], p50: .[1], p90: .[2], p99: .[3], max: .[4]};
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
      options: {tune_simulator: $tune, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
-     fix_rtt_us: ($fx | stats), fix_exit_code: $rc}' | tr -d '' > "$OUT_DIR/summary.json"
+     fix_rtt_us: ($fx | stats), fix_exit_code: $rc}' | tr -d '\r' > "$OUT_DIR/summary.json"
+if [ "$HOST_CHECK" = true ] && [ -s "$OUT_DIR/summary.json" ]; then
+    # key<TAB>value lines -> object, numbers kept numeric
+    tsv_json() { jq -Rn '[inputs | split("\t") | {(.[0]): (.[1] | tonumber? // .)}] | add // {}' < "$1" | tr -d '\r'; }
+    jq -c --argjson i "$(tsv_json "$OUT_DIR/host-check-ouch.tsv")" --argjson s "$(tsv_json "$OUT_DIR/host-check-fix.tsv")" \
+        '. + {host_checks: {initiator: $i, simulator: $s}}' < "$OUT_DIR/summary.json" | tr -d '\r' \
+        > "$OUT_DIR/summary.json.tmp" && mv "$OUT_DIR/summary.json.tmp" "$OUT_DIR/summary.json"
+fi
 if [ -n "$HISTORY" ] && [ -s "$OUT_DIR/summary.json" ]; then
     mkdir -p "$(dirname "$HISTORY")"
     cat "$OUT_DIR/summary.json" >> "$HISTORY"
@@ -406,4 +547,20 @@ fi
 if [ "$FIX_RC" -ne 0 ] || [ "${FX_ROW[1]}" = "-" ]; then
     echo "  FIX run failed (exit $FIX_RC); see $FIX_LOG"
     exit 1
+fi
+if [ "$HOST_CHECK" = true ]; then
+    # FAIL means the pinning or busy-spin under test did not take effect
+    CHECKS=" ${HC_OUCH[affinity]:-} ${HC_OUCH[busy_spin]:-} ${HC_FIX[affinity]:-} ${HC_FIX[busy_spin]:-} "
+    if [ "${HC_OUCH[status]:-}" != ok ] || [[ "$CHECKS" == *" FAIL "* ]]; then
+        echo "  Host check failed; see $OUT_DIR/host-check-*.txt"
+        exit 1
+    fi
+    if [ "$REQUIRE_ISOLATION" = true ]; then
+        CHECKS=" ${HC_OUCH[isolation]:-} ${HC_OUCH[nic_irq_check]:-} ${HC_OUCH[preemption]:-} "
+        [ "$TUNE_SIM" = true ] && CHECKS="$CHECKS${HC_FIX[isolation]:-} ${HC_FIX[nic_irq_check]:-} ${HC_FIX[preemption]:-} "
+        if [[ "$CHECKS" == *" WARN "* ]]; then
+            echo "  Isolation required but not in place (--require-isolation)"
+            exit 1
+        fi
+    fi
 fi

@@ -22,6 +22,9 @@
 
     <!-- Network I/O logging (can be very verbose) -->
     <logger name="com.omnibridge.network" level="WARN"/>
+    <!-- Event loop lifecycle and CPU affinity: a few lines at startup -->
+    <logger name="com.omnibridge.network.NetworkEventLoop" level="INFO"/>
+    <logger name="com.omnibridge.network.affinity" level="INFO"/>
 
     <!-- Session logging -->
     <logger name="com.omnibridge.fix.engine.session" level="INFO"/>
