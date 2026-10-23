@@ -159,6 +159,7 @@ connectivity/
 │   ├── ilink3-samples/              # CME iLink 3 acceptor/initiator
 │   ├── optiq-samples/               # Euronext Optiq acceptor/initiator
 │   └── pillar-samples/              # NYSE Pillar acceptor/initiator
+├── benchmarks/                      # JMH micro-benchmarks (-Pbenchmarks only)
 └── run-*.bat/.sh                    # Test scripts
 ```
 
@@ -2376,54 +2377,142 @@ java $JVM_OPTS -cp "$UBER_JAR" com.example.initiator.SampleInitiator \
 kill $ACCEPTOR_PID 2>/dev/null
 ```
 
-### 8.3 Latency Tracker
+### 8.3 Latency Measurement
+
+`LatencyTestRunner` (FIX, `apps/fix-samples`) sends orders on a fixed-rate schedule and times
+each round trip to the first ExecutionReport. The rules a new protocol's runner should follow:
+
+- **Pace by spinning, on a schedule that never drifts.** Order `i` is due at
+  `start + i * interval` (`RatePacer`); the sender spins (`Thread.onSpinWait()`) until then.
+  `Thread.sleep` overshoots by tens of microseconds to milliseconds and is not used.
+- **Measure from the intended send time.** A response's latency from its *scheduled* send time
+  includes any wait a slow earlier order caused, so a stall cannot hide its effect on the orders
+  queued behind it (coordinated omission). The latency from the *actual* send time is kept as a
+  second column, and the gap between the two (send slip) is reported separately.
+- **Record into HdrHistogram** (1 ns to 60 s, 3 significant digits), so 100,000+ samples give
+  meaningful p99.9/p99.99 and recording allocates nothing.
+- **No per-order allocation or map.** The ClOrdID carries the order index as a numeric suffix
+  (`TEST123`); send times live in arrays indexed by it (`ArrayLatencyTracker`), and the response
+  path parses the suffix straight from the incoming `CharSequence`. Responses with another run's
+  prefix (late warmup acks), unknown or repeated indices are ignored.
 
 ```java
-public class LatencyTracker {
-    private final long[] sendTimes;
-    private final long[] latencies;
-    private final AtomicInteger sentCount = new AtomicInteger(0);
-    private final AtomicInteger receivedCount = new AtomicInteger(0);
+RatePacer pacer = new RatePacer(System.nanoTime() + leadNanos, ordersPerSecond);
+for (int i = 0; i < testOrders; i++) {
+    long intended = pacer.awaitSendTime(i);        // spin until due
+    tracker.recordSend(i, intended, System.nanoTime());
+    sendOrder("TEST", i);                          // ClOrdID = TEST<i>, built in a reused StringBuilder
+}
+// event loop, on ExecutionReport (New):
+tracker.recordResponse(execReport.getCharSequence(FixTags.ClOrdID), System.nanoTime());
+```
 
-    public LatencyTracker(int capacity) {
-        this.sendTimes = new long[capacity];
-        this.latencies = new long[capacity];
-    }
+**Output contract.** The original summary (`  Sent: N orders, Received: N acks in T ms` and the
+`| p50         |       183.45 |` table under `Latency Statistics`) is printed unchanged: the AWS
+latency script (`scripts/deploy/run-aws-latency-test.sh`) parses it by taking the *last* line whose
+first column is `|`, and its host check marks the measured window with `Phase 2` and
+`Latency Statistics`. Everything new is printed afterwards as `key=value` lines that cannot be
+mistaken for table rows:
 
-    public int recordSend() {
-        int idx = sentCount.getAndIncrement();
-        if (idx < sendTimes.length) {
-            sendTimes[idx] = System.nanoTime();
-        }
-        return idx;
-    }
+```
+  RTT from intended send (CO-corrected), us: count=100000 min=… p50=… p90=… p99=… p99.9=… p99.99=… max=… mean=…
+  RTT from actual send, us: count=100000 min=… p50=… …
+  Send slip (actual - intended), us: count=100000 …
+```
 
-    public void recordReceive(int index) {
-        if (index < latencies.length) {
-            latencies[index] = System.nanoTime() - sendTimes[index];
-            receivedCount.incrementAndGet();
-        }
-    }
+`apps/common` `LatencyTracker` (used by the OUCH initiators) also records both histograms
+(`recordSend(long intendedSendNanos)`) and prints the same two `RTT …` lines after its existing
+output.
 
-    public void printStatistics() {
-        int count = receivedCount.get();
-        long[] sorted = Arrays.copyOf(latencies, count);
-        Arrays.sort(sorted);
+**Local runs:**
 
-        System.out.println("Latency Statistics (microseconds):");
-        System.out.println("  Min:    " + sorted[0] / 1000);
-        System.out.println("  Max:    " + sorted[count-1] / 1000);
-        System.out.println("  Avg:    " + average(sorted) / 1000);
-        System.out.println("  P50:    " + sorted[count * 50 / 100] / 1000);
-        System.out.println("  P90:    " + sorted[count * 90 / 100] / 1000);
-        System.out.println("  P95:    " + sorted[count * 95 / 100] / 1000);
-        System.out.println("  P99:    " + sorted[count * 99 / 100] / 1000);
-        System.out.println("  P99.9:  " + sorted[count * 999 / 1000] / 1000);
-    }
+```bash
+scripts\test\run-latency-test.bat 20000 100000 1000 --busy-spin --stages [--persistence]
+./scripts/test/run-latency-test.sh 20000 100000 1000 --busy-spin --stages [--persistence]
+```
+
+| Flag | Effect (both JVMs) |
+|------|--------------------|
+| `--busy-spin` | `-Dnetwork.busy-spin-mode=true` |
+| `--stages` | `-Dfix-engine.stage-timing.enabled=true`; the acceptor's stage report is printed from `acceptor.log` after the run |
+| `--persistence` | adds `latency-{acceptor,initiator}-persistence.conf`: `log-messages = true`, `trace-messages = false` (as the AWS test's `--persistence`) |
+| `--gc` | jstat heap monitoring of the acceptor |
+
+Baseline numbers for this machine and the AWS runs they compare with are kept in
+`docs/latency-baseline.md`; AWS runs are appended to `docs/latency-history.jsonl`.
+
+### 8.4 Engine Stage Timing
+
+Per-message stage timestamps inside `FixSession` show which part of the engine owns how much of
+a round trip. Off by default; enabled engine-wide:
+
+```hocon
+fix-engine {
+  stage-timing {
+    enabled = true       # or -Dfix-engine.stage-timing.enabled=true
+    capacity = 131072    # rows kept per session and direction (power of two)
+  }
 }
 ```
 
-### 8.4 Session Test Framework
+When off, each hook costs one `null` check (and `FixReader` one boolean). When on, every hook is a
+`System.nanoTime()` into preallocated rings (`StageTimingRecorder`); nothing allocates.
+
+| Row | Stamp | Where |
+|-----|-------|-------|
+| send | claim | `tryClaimMessage`, sending thread |
+| send | commit | `commitMessage` entry (application has encoded its fields) |
+| send | prepared | after `prepareForSend` (SendingTime, BodyLength, CheckSum), before the ring commit |
+| send | drain | `onOutgoingFrame` on the event loop |
+| send | before write | after MsgSeqNum stamping, tracing and the outbound `LogStore` write |
+| send | written | `TcpChannel.FrameWrittenListener`: last byte accepted by the socket |
+| receive | read | `onDataReceived` entry, after the socket read |
+| receive | framed | `FixReader` found a complete message with a valid checksum (before `parseFields`) |
+| receive | parsed | field index built |
+| receive | dispatch | inbound persistence, CompID and sequence checks done; listeners about to run |
+| receive | done | listeners returned |
+
+The three stamps taken on the sending thread travel in 24 extra bytes at the end of the claimed
+ring record, past the message's own `max-message-length` (the claim is enlarged only when timing
+is on), so each message carries its own stamps whatever thread sent it; they are never written
+to the socket. The event loop writes each completed row. The time the sending thread spends in
+the ring commit itself (commit + `selector.wakeup()`) is recorded separately as
+`send.commit_call`.
+
+**Report** (`StageTimingReport`): deltas between consecutive stamps go into HdrHistograms, one
+line per stage, `stage <name> mean=… p50=… p90=… p99=… p99.9=… max=…` (µs). Means add up along
+each chain to `send.total` / `recv.total`; percentiles do not.
+
+**Scoping a run.** `FixSession.requestStageTimingReset()` clears the local rings and sends a
+TestRequest with TestReqID `OMNI-STAGE-RESET`; a counterparty with stage timing on clears its own
+rings when it receives it (one without just answers with a Heartbeat). `LatencyTestRunner` does
+this just before `Phase 2`, prints the initiator's report after the RTT lines, and the far side —
+`SampleAcceptor` locally, the exchange simulator on AWS — logs its report to the
+`com.omnibridge.fix.engine.timing` logger (INFO, whitelisted in the `logback.xml` files) when the
+initiator's Logout arrives.
+
+### 8.5 JMH Micro-Benchmarks
+
+`benchmarks/` holds JMH benchmarks of the FIX hot path. It is a module only under the
+`benchmarks` profile, so default builds and `mvn verify` skip it:
+
+```bash
+mvn -Pbenchmarks -pl benchmarks -am package -DskipTests
+java -jar benchmarks/target/benchmarks.jar -prof gc            # all, with allocation rates
+java -jar benchmarks/target/benchmarks.jar FixReader -prof gc  # one class
+```
+
+| Benchmark | Measures |
+|-----------|----------|
+| `OutgoingEncodeBenchmark` | `RingBufferOutgoingMessage` wrap (header template) and a full NewOrderSingle encode + `prepareForSend`, MsgType `D` and `AE` (1- and 2-character template paths) |
+| `FixReaderBenchmark` | framing, checksum and field indexing of ExecutionReports, one per read and ten per read (per message) |
+| `IncomingFieldAccessBenchmark` | numeric getters on a parsed message; wrap alone; wrap + the fields a listener reads |
+| `SendingTimeBenchmark` | SendingTime encoding alone (private method through a constant `MethodHandle`) |
+
+`-prof gc` reports `gc.alloc.rate.norm` (bytes per operation); anything above 0 on these paths
+is per-message garbage.
+
+### 8.6 Session Test Framework
 
 ```java
 public abstract class SessionTest {
@@ -2465,7 +2554,7 @@ public class HeartbeatTest extends SessionTest {
 }
 ```
 
-### 8.5 Reference Testing (QuickFIX/J)
+### 8.7 Reference Testing (QuickFIX/J)
 
 For FIX protocol, test against QuickFIX/J:
 
@@ -3077,7 +3166,7 @@ private void handleHandshakeAck(HandshakeAckMessage msg) {
 | Module | Class | Purpose |
 |--------|-------|---------|
 | Network | NetworkEventLoop | NIO event loop |
-| Network | TcpChannel | Per-connection ring buffer |
+| Network | TcpChannel | Per-connection ring buffer (FrameWrittenListener for stage timing) |
 | Network | NetworkHandler | I/O callbacks |
 
 ### Protocol Engines
@@ -3089,6 +3178,8 @@ private void handleHandshakeAck(HandshakeAckMessage msg) {
 | FIX Engine | FixSession | Session state machine |
 | FIX Engine | FixSessionAdapter | ManagedSession wrapper for FIX |
 | FIX Engine | FixEngine | Multi-session manager |
+| FIX Engine | StageTimingRecorder | Per-message stage timestamp rings (stage timing) |
+| FIX Engine | StageTimingReport | Per-stage HdrHistograms and report text |
 | OUCH Message | OuchMessage | Base flyweight |
 | OUCH Message | V42*/V50* | Version-specific messages |
 | OUCH Engine | OuchSession | Session state machine |
@@ -3120,7 +3211,11 @@ private void handleHandshakeAck(HandshakeAckMessage msg) {
 | Module | Class | Purpose |
 |--------|-------|---------|
 | Apps Common | ApplicationBase | Base class with lifecycle hooks |
-| Apps Common | LatencyTracker | Latency measurement utility |
+| Apps Common | LatencyTracker | Latency measurement utility (HdrHistogram, intended-send column) |
+| FIX Samples | LatencyTestRunner | FIX latency run: paced orders, summary, stage report |
+| FIX Samples | ArrayLatencyTracker | Index-keyed send times, CO-corrected HdrHistograms |
+| FIX Samples | RatePacer | Fixed-rate, spin-wait send schedule |
+| Benchmarks | *Benchmark | JMH micro-benchmarks of encode, parse, field access, SendingTime |
 | Metrics | MetricsComponent | PrometheusMeterRegistry wrapper component |
 | Metrics | MetricsConfig | HOCON config parsing for metrics |
 | Metrics | MetricsFactory | ComponentFactory for MetricsComponent |
@@ -3191,6 +3286,7 @@ private void handleHandshakeAck(HandshakeAckMessage msg) {
     FixEngine.java
     session/FixSession.java
     session/FixSessionAdapter.java
+    timing/StageTimingRecorder.java, timing/StageTimingReport.java
 
 /protocols/fix/engine/src/main/java/com/omnibridge/fix/engine/factory/
     FixEngineFactory.java
@@ -3237,15 +3333,28 @@ private void handleHandshakeAck(HandshakeAckMessage msg) {
     ApplicationBase.java        # Application lifecycle hooks
     LatencyTracker.java
 
+/apps/fix-samples/src/main/java/com/omnibridge/apps/fix/initiator/
+    LatencyTestRunner.java, ArrayLatencyTracker.java, RatePacer.java
+
+/apps/fix-samples/src/main/resources/
+    latency-acceptor.conf, latency-initiator.conf
+    latency-acceptor-persistence.conf, latency-initiator-persistence.conf
+
+/benchmarks/src/main/java/com/omnibridge/benchmarks/
+    OutgoingEncodeBenchmark.java, FixReaderBenchmark.java,
+    IncomingFieldAccessBenchmark.java, SendingTimeBenchmark.java
+
 /apps/common/src/main/resources/
     components.conf             # Base component definitions for all apps
 ```
 
 ---
 
-*Document Version: 1.8*
-*Last Updated: February 2026*
+*Document Version: 1.9*
+*Last Updated: October 2026*
 *Changes:
+- Section 8: latency measurement rules (spin pacing, coordinated-omission-corrected HdrHistograms,
+  index-keyed tracker, output contract), engine stage timing (8.4), JMH benchmarks module (8.5)
 - Added Section 12: Metrics and Monitoring with Micrometer bindMetrics() pattern
 - Documented hot-path instrumentation rules for zero-allocation metrics
 - Added protocol-specific metrics catalog (FIX, iLink 3, Optiq, Pillar)
