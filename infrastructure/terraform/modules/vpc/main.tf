@@ -295,6 +295,16 @@ resource "aws_vpc_security_group_ingress_rule" "trading_metrics_from_monitoring"
   referenced_security_group_id = aws_security_group.monitoring.id
 }
 
+# sockperf (11111) between trading hosts - network floor for run-aws-latency-test.sh
+resource "aws_vpc_security_group_ingress_rule" "trading_sockperf_from_trading" {
+  security_group_id            = aws_security_group.trading.id
+  description                  = "sockperf latency baseline between trading hosts"
+  from_port                    = 11111
+  to_port                      = 11111
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.trading.id
+}
+
 # SSH access from bastion/management CIDRs
 resource "aws_vpc_security_group_ingress_rule" "trading_ssh" {
   for_each = toset(var.ssh_cidrs)

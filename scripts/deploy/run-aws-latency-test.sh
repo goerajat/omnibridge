@@ -8,9 +8,10 @@
 #
 # Steps:
 #   1. Stop the fix-initiator service (an EXIT trap always restores it).
-#   2. Baseline: stop the simulator to free its port, run sockperf sr on the
-#      FIX host and sockperf pp from the OUCH host. Only 9876 and 9200 are open
-#      between the trading hosts, so sockperf uses the simulator's FIX port.
+#   2. Baseline: run sockperf sr on the FIX host and sockperf pp from the OUCH
+#      host, on port 11111 (opened between the trading hosts by Terraform).
+#      On a stack without that rule, --sockperf-port 9876 borrows the FIX port
+#      and stops the simulator for the duration.
 #   3. Start the simulator again, optionally with busy-spin, cpu-affinity and
 #      log-messages = false on FIX-SIM-1 (its exchange-simulator.conf is backed
 #      up and restored afterwards).
@@ -35,6 +36,7 @@
 #   --skip-baseline       Skip the sockperf measurement
 #   --sockperf-time       sockperf duration in seconds (default: 30)
 #   --sockperf-size       sockperf message size in bytes (default: 200)
+#   --sockperf-port       sockperf TCP port (default: 11111)
 #   --outgoing-seq        Simulator outgoing seq set after the run (default: 1000000)
 #   -o, --output-dir      Local results directory (default: logs/aws-latency/<time>)
 #
@@ -62,6 +64,7 @@ SIM_CPU=3
 BASELINE=true
 SP_TIME=30
 SP_SIZE=200
+SP_PORT=11111
 OUT_SEQ=1000000
 OUT_DIR=""
 
@@ -80,9 +83,10 @@ while [[ $# -gt 0 ]]; do
         --skip-baseline)  BASELINE=false;     shift ;;
         --sockperf-time)  SP_TIME="$2";       shift 2 ;;
         --sockperf-size)  SP_SIZE="$2";       shift 2 ;;
+        --sockperf-port)  SP_PORT="$2";       shift 2 ;;
         --outgoing-seq)   OUT_SEQ="$2";       shift 2 ;;
         -o|--output-dir)  OUT_DIR="$2";       shift 2 ;;
-        -h|--help)        sed -n '2,44p' "$0"; exit 0 ;;
+        -h|--help)        sed -n '2,46p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -138,7 +142,6 @@ SIM_CONF=$SIM_DIR/exchange-simulator.conf
 SIM_BACKUP=$SIM_CONF.latency-backup
 OVERRIDE=$INIT_DIR/conf/initiator-latency.conf
 SESSION_URL='http://localhost:8080/api/sessions/EXCH1-%3ECLIENT1'
-SP_PORT=9876
 
 echo "================================================================"
 echo "  AWS latency test"
@@ -148,7 +151,7 @@ echo "  OUCH host (initiator):  $OUCH_IP"
 echo "  Orders:                 warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
 echo "  Initiator core:         $INITIATOR_CPU"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
-echo "  Baseline (sockperf):    $([ "$BASELINE" = true ] && echo "${SP_SIZE}B for ${SP_TIME}s" || echo skipped)"
+echo "  Baseline (sockperf):    $([ "$BASELINE" = true ] && echo "${SP_SIZE}B for ${SP_TIME}s on port $SP_PORT" || echo skipped)"
 echo "  Results:                $OUT_DIR"
 echo ""
 
@@ -234,8 +237,11 @@ if [ "$BASELINE" = true ]; then
     if ! on_fix "$INSTALL" || ! on_ouch "$INSTALL"; then
         echo "  WARN: sockperf could not be installed; skipping baseline"
     else
-        SIM_STOPPED=true
-        on_fix "sudo systemctl stop exchange-simulator"
+        # The simulator's own ports are the only others open between the hosts
+        if [ "$SP_PORT" = 9876 ] || [ "$SP_PORT" = 9200 ]; then
+            SIM_STOPPED=true
+            on_fix "sudo systemctl stop exchange-simulator"
+        fi
         on_fix "nohup sockperf sr --tcp -i 0.0.0.0 -p $SP_PORT > /tmp/sockperf-sr.log 2>&1 < /dev/null & sleep 2; pgrep -x sockperf >/dev/null"
         # --full-rtt reports the round trip, comparable to the FIX numbers (default is half)
         on_ouch "sockperf pp --tcp -i $FIX_IP -p $SP_PORT -m $SP_SIZE -t $SP_TIME --full-rtt" 2>&1 | tee "$SP_LOG"
