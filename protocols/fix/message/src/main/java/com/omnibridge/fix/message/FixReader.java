@@ -64,12 +64,31 @@ public class FixReader {
     private int readPosition;
     private static final int DEFAULT_BUFFER_SIZE = 64 * 1024;
 
+    // Latency stage timing: when on, the time each message was found complete and valid
+    private boolean frameTiming;
+    private long lastFramedNanos;
+
     /**
      * Create a new FixReader.
      */
     public FixReader() {
         this.accumulationBuffer = new UnsafeBuffer(ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE));
         this.accumulationPosition = 0;
+    }
+
+    /**
+     * Record {@link System#nanoTime()} when each message has been framed and its checksum
+     * verified, just before its fields are parsed (off by default).
+     */
+    public void setFrameTiming(boolean frameTiming) {
+        this.frameTiming = frameTiming;
+    }
+
+    /**
+     * When the last message was framed; valid only with {@link #setFrameTiming} on.
+     */
+    public long getLastFramedNanos() {
+        return lastFramedNanos;
     }
 
     /**
@@ -375,6 +394,9 @@ public class FixReader {
         int messageLength = messageEnd - startPos;
 
         // Valid complete message - wrap in IncomingFixMessage
+        if (frameTiming) {
+            lastFramedNanos = System.nanoTime();
+        }
         message.wrap(buffer, startPos, messageLength);
 
         return messageLength;

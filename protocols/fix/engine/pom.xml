@@ -39,6 +39,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Per-stage latency reports (stage timing) -->
+        <dependency>
+            <groupId>org.hdrhistogram</groupId>
+            <artifactId>HdrHistogram</artifactId>
+        </dependency>
+
         <!-- Configuration -->
         <dependency>
             <groupId>com.typesafe</groupId>

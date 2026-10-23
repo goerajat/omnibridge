@@ -36,6 +36,8 @@
     <!-- Event loop lifecycle and CPU affinity: a few lines at startup -->
     <logger name="com.omnibridge.network.NetworkEventLoop" level="INFO"/>
     <logger name="com.omnibridge.network.affinity" level="INFO"/>
+    <!-- Latency stage timing reports (only when fix-engine.stage-timing.enabled) -->
+    <logger name="com.omnibridge.fix.engine.timing" level="INFO"/>
 
     <!-- Admin API -->
     <logger name="com.omnibridge.admin" level="INFO"/>

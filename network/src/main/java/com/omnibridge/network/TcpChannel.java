@@ -44,6 +44,15 @@ public class TcpChannel {
         boolean onFrame(int msgTypeId, MutableDirectBuffer buffer, int offset, int length);
     }
 
+    /**
+     * Told on the event loop thread when the last byte of a sent record has been accepted
+     * by the socket (used for latency stage timing; unset by default).
+     */
+    @FunctionalInterface
+    public interface FrameWrittenListener {
+        void onFrameWritten(int msgTypeId);
+    }
+
     /** Record type of payloads sent as-is; the default for {@link #tryClaim(int)} and {@link #writeRaw}. */
     public static final int MSG_TYPE_RAW = 1;
 
@@ -76,6 +85,7 @@ public class TcpChannel {
 
     private OutgoingMessageListener outgoingMessageListener;
     private OutgoingFrameHandler outgoingFrameHandler;
+    private FrameWrittenListener frameWrittenListener;
 
     // Progress on the message at the head of the ring: bytes written, and whether it was announced
     private int partialSent;
@@ -237,6 +247,13 @@ public class TcpChannel {
 
     public OutgoingFrameHandler getOutgoingFrameHandler() {
         return outgoingFrameHandler;
+    }
+
+    /**
+     * Set the listener told when each sent record has been fully written, or null for none.
+     */
+    public void setFrameWrittenListener(FrameWrittenListener listener) {
+        this.frameWrittenListener = listener;
     }
 
     // ==================== Ring Buffer Methods ====================
@@ -456,6 +473,9 @@ public class TcpChannel {
         }
         partialSent = 0;
         headNotified = false;
+        if (frameWrittenListener != null) {
+            frameWrittenListener.onFrameWritten(msgTypeId);
+        }
         return ControlledMessageHandler.Action.CONTINUE;
     }
 

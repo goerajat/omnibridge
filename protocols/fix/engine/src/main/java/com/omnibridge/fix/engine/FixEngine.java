@@ -423,7 +423,8 @@ public class FixEngine implements Component {
      * @return the created FixSession
      */
     public FixSession createSession(EngineSessionConfig engineSessionConfig) {
-        FixSession session = createSession(convertToSessionConfig(engineSessionConfig));
+        int stageTimingCapacity = engineConfig != null ? engineConfig.getStageTimingCapacity() : 0;
+        FixSession session = createSession(convertToSessionConfig(engineSessionConfig, stageTimingCapacity));
 
         // Associate with schedule if configured
         engineSessionConfig.getScheduleName().ifPresent(scheduleName -> {
@@ -445,7 +446,12 @@ public class FixEngine implements Component {
      * This bridges the new HOCON-based configuration with the existing session infrastructure.
      */
     static SessionConfig convertToSessionConfig(EngineSessionConfig config) {
+        return convertToSessionConfig(config, 0);
+    }
+
+    static SessionConfig convertToSessionConfig(EngineSessionConfig config, int stageTimingCapacity) {
         SessionConfig.Builder builder = SessionConfig.builder()
+                .stageTimingCapacity(stageTimingCapacity)
                 .sessionName(config.getSessionName())
                 .beginString(config.getBeginString())
                 .senderCompId(config.getSenderCompId())

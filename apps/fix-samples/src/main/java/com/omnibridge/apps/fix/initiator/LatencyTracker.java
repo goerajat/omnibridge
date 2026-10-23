@@ -1,29 +1,32 @@
 package com.omnibridge.apps.fix.initiator;
 
+import org.HdrHistogram.Histogram;
+
 import java.util.concurrent.TimeUnit;
 
 /**
  * Interface for tracking round-trip latency in FIX message exchanges.
- * Implementations record send and response times for orders identified by ClOrdID.
+ * Orders are identified by their index in the run; the ClOrdID carries the index as a
+ * numeric suffix (e.g. TEST123), so responses are matched without a map or a String.
  */
 public interface LatencyTracker {
 
     /**
-     * Record the time an order was sent.
+     * Record that order {@code index} was sent.
      *
-     * @param clOrdId the client order ID
-     * @param sendTimeNanos the send timestamp in nanoseconds (from System.nanoTime())
+     * @param index the order index (the numeric suffix of its ClOrdID)
+     * @param intendedSendNanos when the rate schedule meant the order to go (System.nanoTime())
+     * @param actualSendNanos when it was actually handed to the session (System.nanoTime())
      */
-    void recordSendTime(String clOrdId, long sendTimeNanos);
+    void recordSend(int index, long intendedSendNanos, long actualSendNanos);
 
     /**
-     * Record the time a response was received for an order.
-     * This calculates and stores the round-trip latency.
+     * Record the response to an order. Unknown or repeated ClOrdIDs are ignored.
      *
-     * @param clOrdId the client order ID
-     * @param receiveTimeNanos the receive timestamp in nanoseconds (from System.nanoTime())
+     * @param clOrdId the ClOrdID of the response
+     * @param receiveTimeNanos the receive timestamp (System.nanoTime())
      */
-    void recordResponseTime(String clOrdId, long receiveTimeNanos);
+    void recordResponse(CharSequence clOrdId, long receiveTimeNanos);
 
     /**
      * Get the current number of orders pending response.
@@ -50,16 +53,33 @@ public interface LatencyTracker {
     boolean await(long timeout, TimeUnit unit) throws InterruptedException;
 
     /**
-     * Get the recorded latencies array.
+     * Get the recorded latencies (from the actual send time) in arrival order.
      *
      * @return array of latencies in nanoseconds
      */
     long[] getLatencies();
 
     /**
+     * Round trips measured from the intended send time (corrected for coordinated omission).
+     */
+    Histogram getIntendedHistogram();
+
+    /**
+     * Round trips measured from the actual send time.
+     */
+    Histogram getActualHistogram();
+
+    /**
+     * How late each order went out relative to its intended send time.
+     */
+    Histogram getSendSlipHistogram();
+
+    /**
      * Reset the tracker for a new test run.
      *
      * @param expectedCount the expected number of orders for the new run
+     * @param clOrdIdPrefix the ClOrdID prefix of this run's orders; late responses from an
+     *                      earlier run (another prefix) are ignored
      */
-    void reset(int expectedCount);
+    void reset(int expectedCount, String clOrdIdPrefix);
 }

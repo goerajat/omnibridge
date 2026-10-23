@@ -64,6 +64,8 @@
         <picocli.version>4.7.5</picocli.version>
         <typesafe.config.version>1.4.3</typesafe.config.version>
         <aeron.version>1.44.1</aeron.version>
+        <hdrhistogram.version>2.2.2</hdrhistogram.version>
+        <jmh.version>1.37</jmh.version>
     </properties>
 
     <dependencyManagement>
@@ -240,6 +242,11 @@
                 <artifactId>agrona</artifactId>
                 <version>${agrona.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.hdrhistogram</groupId>
+                <artifactId>HdrHistogram</artifactId>
+                <version>${hdrhistogram.version}</version>
+            </dependency>
 
             <!-- Chronicle for shared memory persistence -->
             <dependency>
@@ -343,4 +350,14 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <profiles>
+        <!-- JMH micro-benchmarks: mvn -Pbenchmarks -pl benchmarks -am package -DskipTests -->
+        <profile>
+            <id>benchmarks</id>
+            <modules>
+                <module>benchmarks</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

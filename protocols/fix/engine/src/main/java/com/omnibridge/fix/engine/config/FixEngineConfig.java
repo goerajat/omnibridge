@@ -12,10 +12,15 @@ import java.util.List;
  */
 public final class FixEngineConfig {
 
+    /** Default rows of stage timestamps kept per session when stage timing is enabled. */
+    public static final int DEFAULT_STAGE_TIMING_CAPACITY = 1 << 17;
+
     private final List<EngineSessionConfig> sessions;
+    private final int stageTimingCapacity;
 
     private FixEngineConfig(Builder builder) {
         this.sessions = Collections.unmodifiableList(new ArrayList<>(builder.sessions));
+        this.stageTimingCapacity = builder.stageTimingCapacity;
     }
 
     /**
@@ -25,6 +30,13 @@ public final class FixEngineConfig {
         Config fixEngineConfig = config.getConfig("fix-engine");
 
         Builder builder = builder();
+
+        // fix-engine.stage-timing { enabled, capacity }: engine-wide, so -D can switch it on
+        if (fixEngineConfig.hasPath("stage-timing.enabled")
+                && fixEngineConfig.getBoolean("stage-timing.enabled")) {
+            builder.stageTimingCapacity(fixEngineConfig.hasPath("stage-timing.capacity")
+                    ? fixEngineConfig.getInt("stage-timing.capacity") : DEFAULT_STAGE_TIMING_CAPACITY);
+        }
 
         if (fixEngineConfig.hasPath("sessions")) {
             List<? extends Config> sessionConfigs = fixEngineConfig.getConfigList("sessions");
@@ -38,6 +50,11 @@ public final class FixEngineConfig {
 
     public List<EngineSessionConfig> getSessions() {
         return sessions;
+    }
+
+    /** Rows of stage timestamps each session keeps; 0 when stage timing is off. */
+    public int getStageTimingCapacity() {
+        return stageTimingCapacity;
     }
 
     /**
@@ -66,8 +83,14 @@ public final class FixEngineConfig {
 
     public static final class Builder {
         private final List<EngineSessionConfig> sessions = new ArrayList<>();
+        private int stageTimingCapacity;
 
         private Builder() {}
+
+        public Builder stageTimingCapacity(int capacity) {
+            this.stageTimingCapacity = capacity;
+            return this;
+        }
 
         public Builder addSession(EngineSessionConfig session) {
             this.sessions.add(session);

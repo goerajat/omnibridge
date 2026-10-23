@@ -6,10 +6,17 @@
 # Optionally monitors acceptor GC/heap usage via jstat.
 #
 # Usage: run-latency-test.sh [warmup-orders] [test-orders] [rate] [--gc]
+#                            [--busy-spin] [--stages] [--persistence]
 #
 # The --gc flag enables jstat heap monitoring of the acceptor JVM during the
 # test run. A summary is printed at the end showing heap growth, GC counts,
 # and GC pause times.
+# --busy-spin    both event loops busy-spin (network.busy-spin-mode=true)
+# --stages       per-stage engine timestamps on both sides
+#                (fix-engine.stage-timing.enabled=true); the acceptor's report
+#                is printed from acceptor.log after the run
+# --persistence  both sessions write every message to their store
+#                (latency-*-persistence.conf: log-messages on, no tracing)
 # ==========================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,18 +33,45 @@ if [ ! -f "$UBER_JAR" ]; then
 fi
 
 # Default parameters
-WARMUP_ORDERS=${1:-10000}
-TEST_ORDERS=${2:-1000}
-RATE=${3:-100}
+WARMUP_ORDERS=10000
+TEST_ORDERS=1000
+RATE=100
 GC_MONITOR=false
 GC_INTERVAL=2000  # jstat sampling interval in ms
+BUSY_SPIN=false
+STAGES=false
+PERSISTENCE=false
 
-# Parse flags from all arguments
+# Numbers are positional; flags may appear anywhere
+POS=0
 for arg in "$@"; do
     case "$arg" in
         --gc) GC_MONITOR=true ;;
+        --busy-spin) BUSY_SPIN=true ;;
+        --stages) STAGES=true ;;
+        --persistence) PERSISTENCE=true ;;
+        --*) echo "Unknown option: $arg"; exit 1 ;;
+        *)
+            POS=$((POS + 1))
+            case $POS in
+                1) WARMUP_ORDERS=$arg ;;
+                2) TEST_ORDERS=$arg ;;
+                3) RATE=$arg ;;
+            esac
+            ;;
     esac
 done
+
+# Config files and properties for both sides
+ACCEPTOR_CONFIGS="$CONFIG_DIR/latency-acceptor.conf"
+INITIATOR_CONFIGS="$CONFIG_DIR/latency-initiator.conf"
+if [ "$PERSISTENCE" = true ]; then
+    ACCEPTOR_CONFIGS="$ACCEPTOR_CONFIGS,$CONFIG_DIR/latency-acceptor-persistence.conf"
+    INITIATOR_CONFIGS="$INITIATOR_CONFIGS,$CONFIG_DIR/latency-initiator-persistence.conf"
+fi
+TEST_PROPS=""
+[ "$BUSY_SPIN" = true ] && TEST_PROPS="$TEST_PROPS -Dnetwork.busy-spin-mode=true"
+[ "$STAGES" = true ] && TEST_PROPS="$TEST_PROPS -Dfix-engine.stage-timing.enabled=true"
 
 echo "=========================================================================="
 echo "FIX Engine Latency Test"
@@ -47,6 +81,9 @@ echo "Warmup Orders: $WARMUP_ORDERS"
 echo "Test Orders: $TEST_ORDERS"
 echo "Rate: $RATE orders/sec"
 echo "GC Monitoring: $GC_MONITOR"
+echo "Busy Spin: $BUSY_SPIN"
+echo "Stage Timing: $STAGES"
+echo "Persistence: $PERSISTENCE"
 echo "=========================================================================="
 
 # JVM options for low latency
@@ -91,7 +128,7 @@ trap cleanup EXIT
 # Start acceptor in background (uber jar default main class is acceptor)
 echo ""
 echo "Starting FIX Acceptor in background..."
-java $JVM_OPTS $GC_LOG_OPTS $CHRONICLE_OPTS -jar "$UBER_JAR" -c "$CONFIG_DIR/latency-acceptor.conf" --latency > acceptor.log 2>&1 &
+java $JVM_OPTS $GC_LOG_OPTS $CHRONICLE_OPTS $TEST_PROPS -jar "$UBER_JAR" -c "$ACCEPTOR_CONFIGS" --latency > acceptor.log 2>&1 &
 ACCEPTOR_PID=$!
 
 # Wait for acceptor to start (check if port is listening)
@@ -147,7 +184,15 @@ echo "Starting FIX Initiator in latency mode..."
 echo ""
 
 TEST_EXIT_CODE=0
-java $JVM_OPTS $CHRONICLE_OPTS -cp "$UBER_JAR" com.omnibridge.apps.fix.initiator.SampleInitiator -c "$CONFIG_DIR/latency-initiator.conf" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+java $JVM_OPTS $CHRONICLE_OPTS $TEST_PROPS -cp "$UBER_JAR" com.omnibridge.apps.fix.initiator.SampleInitiator -c "$INITIATOR_CONFIGS" --latency --warmup-orders $WARMUP_ORDERS --test-orders $TEST_ORDERS --rate $RATE || TEST_EXIT_CODE=$?
+
+# The acceptor reports its stages when the initiator's Logout arrives
+if [ "$STAGES" = true ]; then
+    sleep 2
+    echo ""
+    echo "Acceptor stage timing (from acceptor.log):"
+    grep -E 'Stage timing \[|^  stage ' acceptor.log || echo "  (no report found in acceptor.log)"
+fi
 
 # Capture final heap snapshot before stopping
 if [ "$GC_MONITOR" = true ] && [ -n "$JSTAT_PID" ]; then

@@ -90,19 +90,20 @@ public class InitiatorMessageListener implements MessageListener {
     }
 
     private void handleExecutionReport(IncomingFixMessage execReport, long receiveTime) {
-        String clOrdId = asString(execReport.getCharSequence(FixTags.ClOrdID));
         char execType = execReport.getChar(FixTags.ExecType);
 
-        // Track latency for NEW acks (first response to our order)
+        // Track latency for NEW acks (first response to our order); the ClOrdID is read
+        // in place, without making a String
         if (execType == FixTags.EXEC_TYPE_NEW) {
             LatencyTracker tracker = this.latencyTracker;
-            if (tracker != null && clOrdId != null) {
-                tracker.recordResponseTime(clOrdId, receiveTime);
+            if (tracker != null) {
+                tracker.recordResponse(execReport.getCharSequence(FixTags.ClOrdID), receiveTime);
             }
         }
 
         // Log details in non-latency mode
         if (!latencyMode) {
+            String clOrdId = asString(execReport.getCharSequence(FixTags.ClOrdID));
             String orderId = asString(execReport.getCharSequence(FixTags.OrderID));
             char ordStatus = execReport.getChar(FixTags.OrdStatus);
             String symbol = asString(execReport.getCharSequence(FixTags.Symbol));

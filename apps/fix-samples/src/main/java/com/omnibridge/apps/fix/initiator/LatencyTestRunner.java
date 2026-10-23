@@ -1,8 +1,11 @@
 package com.omnibridge.apps.fix.initiator;
 
 import com.omnibridge.fix.engine.session.FixSession;
+import com.omnibridge.fix.engine.timing.StageTimingRecorder;
+import com.omnibridge.fix.engine.timing.StageTimingReport;
 import com.omnibridge.fix.message.FixTags;
 import com.omnibridge.fix.message.RingBufferOutgoingMessage;
+import org.HdrHistogram.Histogram;
 
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
@@ -10,8 +13,18 @@ import java.util.concurrent.TimeUnit;
 /**
  * Runs latency performance tests on a FIX session.
  * Sends orders at a specified rate and measures round-trip latency.
+ *
+ * <p>The summary table keeps its original lines (scripts parse them); HdrHistogram
+ * percentiles from the intended send time (coordinated-omission corrected) and from the
+ * actual send time follow as {@code key=value} lines, then the stage timing report when
+ * the session has stage timing enabled.</p>
  */
 public class LatencyTestRunner {
+
+    private static final String WARMUP_PREFIX = "WARMUP";
+    private static final String TEST_PREFIX = "TEST";
+    // Lead time before the first paced order, so it is not already late
+    private static final long PACER_LEAD_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
 
     private final FixSession session;
     private final InitiatorMessageListener messageListener;
@@ -22,6 +35,7 @@ public class LatencyTestRunner {
     private final int backpressureTimeoutSeconds;
 
     private final LatencyTracker tracker;
+    private final StringBuilder clOrdId = new StringBuilder(32);
     private volatile boolean running = true;
 
     public LatencyTestRunner(FixSession session, InitiatorMessageListener messageListener,
@@ -62,6 +76,11 @@ public class LatencyTestRunner {
         // Small pause between phases
         Thread.sleep(10000);
 
+        // Measure stages over the timed phase only, on both ends of the session
+        if (session.requestStageTimingReset()) {
+            System.out.println("Stage timing enabled: reset sent to both sides.");
+        }
+
         // Phase 2: Latency test
         System.out.println("Phase 2: Latency test (" + testOrders + " orders at " +
                           (ordersPerSecond > 0 ? ordersPerSecond + " orders/sec" : "max rate") + ")...");
@@ -79,7 +98,7 @@ public class LatencyTestRunner {
 
     private boolean runWarmup() throws InterruptedException {
         // Reset tracker for warmup phase
-        tracker.reset(warmupOrders);
+        tracker.reset(warmupOrders, WARMUP_PREFIX);
         messageListener.setLatencyTracker(tracker);
 
         long startTime = System.currentTimeMillis();
@@ -112,9 +131,9 @@ public class LatencyTestRunner {
             }
 
             try {
-                String clOrdId = "WARMUP" + i;
-                tracker.recordSendTime(clOrdId, System.nanoTime());
-                sendOrder(clOrdId);
+                long now = System.nanoTime();
+                tracker.recordSend(i, now, now);
+                sendOrder(WARMUP_PREFIX, i);
                 ordersSent++;
             } catch (Exception e) {
                 System.err.println("\nERROR: Failed to send warmup order " + i + ": " + e.getMessage());
@@ -143,20 +162,17 @@ public class LatencyTestRunner {
 
     private boolean runLatencyTest() throws InterruptedException {
         // Reset tracker for test phase
-        tracker.reset(testOrders);
+        tracker.reset(testOrders, TEST_PREFIX);
         messageListener.setLatencyTracker(tracker);
 
-        long intervalNanos = ordersPerSecond > 0 ? 1_000_000_000L / ordersPerSecond : 0;
         long startTime = System.nanoTime();
-        long nextSendTime = startTime;
+        RatePacer pacer = new RatePacer(startTime + PACER_LEAD_NANOS, ordersPerSecond);
         int ordersSent = 0;
         boolean errorOccurred = false;
         long backpressureStartTime = 0;
         long totalBackpressureTimeNanos = 0;
 
         for (int i = 0; i < testOrders && running; i++) {
-            String clOrdId = "TEST" + i;
-
             // Flow control
             while (tracker.getPendingOrderCount() >= maxPendingOrders && running) {
                 if (backpressureStartTime == 0) {
@@ -171,7 +187,7 @@ public class LatencyTestRunner {
                     errorOccurred = true;
                     break;
                 }
-                Thread.sleep(1);
+                Thread.onSpinWait();
             }
 
             if (errorOccurred) break;
@@ -181,21 +197,12 @@ public class LatencyTestRunner {
                 backpressureStartTime = 0;
             }
 
-            // Rate limiting
-            if (intervalNanos > 0) {
-                long now = System.nanoTime();
-                long sleepNanos = nextSendTime - now;
-                if (sleepNanos > 0) {
-                    long sleepMillis = sleepNanos / 1_000_000;
-                    int sleepNanosRemainder = (int) (sleepNanos % 1_000_000);
-                    Thread.sleep(sleepMillis, sleepNanosRemainder);
-                }
-                nextSendTime += intervalNanos;
-            }
+            // Rate limiting: spin until the order is due on the fixed schedule
+            long intendedSendTime = pacer.awaitSendTime(i);
 
             try {
-                tracker.recordSendTime(clOrdId, System.nanoTime());
-                sendOrder(clOrdId);
+                tracker.recordSend(i, intendedSendTime, System.nanoTime());
+                sendOrder(TEST_PREFIX, i);
                 ordersSent++;
             } catch (Exception e) {
                 System.err.println("\nERROR: Failed to send test order " + i + ": " + e.getMessage());
@@ -227,6 +234,8 @@ public class LatencyTestRunner {
         if (ordersSent > 0) {
             printLatencyTestResults(ordersSent, receivedCount, totalTimeNanos, totalBackpressureTimeNanos);
             printLatencyStats(tracker.getLatencies(), receivedCount);
+            printHistograms(pacer.isPaced());
+            printStageTiming();
         } else {
             System.out.println("  No orders were sent successfully.");
         }
@@ -235,7 +244,10 @@ public class LatencyTestRunner {
     }
 
     int counter = 1;
-    private void sendOrder(String clOrdId) throws Exception {
+    private void sendOrder(String prefix, int index) throws Exception {
+        clOrdId.setLength(0);
+        clOrdId.append(prefix).append(index);
+
         RingBufferOutgoingMessage order = session.tryClaimMessage(FixTags.MsgTypes.NewOrderSingle);
         if (order == null) {
             throw new IllegalStateException("Ring buffer full - cannot send order " + clOrdId);
@@ -317,6 +329,35 @@ public class LatencyTestRunner {
         System.out.printf("  | p99         | %,12.2f |%n", p99 / 1000.0);
         System.out.printf("  | p99.9       | %,12.2f |%n", p999 / 1000.0);
         System.out.println("  +-------------+--------------+");
+    }
+
+    /**
+     * HdrHistogram percentiles as key=value lines. They must not look like the table rows
+     * above ("| p50 | ..."), which scripts parse by taking the last match.
+     */
+    private void printHistograms(boolean paced) {
+        System.out.println();
+        System.out.println("  RTT from intended send (CO-corrected), us: "
+                + formatHistogram(tracker.getIntendedHistogram()));
+        System.out.println("  RTT from actual send, us: " + formatHistogram(tracker.getActualHistogram()));
+        if (paced) {
+            System.out.println("  Send slip (actual - intended), us: "
+                    + formatHistogram(tracker.getSendSlipHistogram()));
+        }
+    }
+
+    private static String formatHistogram(Histogram h) {
+        return com.omnibridge.apps.common.LatencyTracker.formatHistogram(h);
+    }
+
+    private void printStageTiming() {
+        StageTimingRecorder timing = session.getStageTiming();
+        if (timing == null) {
+            return;
+        }
+        System.out.println();
+        System.out.print(StageTimingReport.format(timing, session.getConfig().getSessionId()));
+        timing.markReported();
     }
 
     public void stop() {

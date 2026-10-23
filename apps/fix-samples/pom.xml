@@ -26,6 +26,18 @@
             <artifactId>engine</artifactId>
         </dependency>
 
+        <!-- Latency percentiles -->
+        <dependency>
+            <groupId>org.hdrhistogram</groupId>
+            <artifactId>HdrHistogram</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>ch.qos.logback</groupId>

@@ -61,6 +61,9 @@ public class SessionConfig {
     private boolean logMessages = true;
     private Boolean traceMessages;
 
+    // Stage timing: rows of per-message stage timestamps kept (0 = off)
+    private int stageTimingCapacity = 0;
+
     // Message encoding
     private int maxMessageLength = 4096;
     private int maxTagNumber = 1000;
@@ -195,6 +198,11 @@ public class SessionConfig {
 
         public Builder traceMessages(boolean trace) {
             config.traceMessages = trace;
+            return this;
+        }
+
+        public Builder stageTimingCapacity(int capacity) {
+            config.stageTimingCapacity = capacity;
             return this;
         }
 
@@ -432,6 +440,11 @@ public class SessionConfig {
 
     public boolean isLogMessages() {
         return logMessages;
+    }
+
+    /** Rows of per-message stage timestamps to keep; 0 when stage timing is off. */
+    public int getStageTimingCapacity() {
+        return stageTimingCapacity;
     }
 
     public boolean isTraceMessages() {

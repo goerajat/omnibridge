@@ -1,16 +1,21 @@
 package com.omnibridge.apps.common;
 
+import org.HdrHistogram.Histogram;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tracks latencies for performance testing.
  *
  * <p>Thread-safe latency tracking with efficient percentile calculations.
- * Stores nanosecond timestamps and calculates statistics.</p>
+ * Stores nanosecond timestamps and calculates statistics. Round trips are also recorded
+ * into HdrHistograms, measured both from the actual send and from the intended send time
+ * of a rate schedule ({@link #recordSend(long)}), which corrects for coordinated omission.</p>
  *
  * <p>Usage:</p>
  * <pre>{@code
@@ -34,6 +39,9 @@ public class LatencyTracker {
     private final int capacity;
     private final long[] sendTimes;
     private final long[] latencies;
+    private final long[] intendedSendTimes;
+    private final Histogram actualHistogram = newHistogram();
+    private final Histogram intendedHistogram = newHistogram();
     private final AtomicInteger sentCount = new AtomicInteger(0);
     private final AtomicInteger receivedCount = new AtomicInteger(0);
     private long testStartTime;
@@ -48,6 +56,11 @@ public class LatencyTracker {
         this.capacity = capacity;
         this.sendTimes = new long[capacity];
         this.latencies = new long[capacity];
+        this.intendedSendTimes = new long[capacity];
+    }
+
+    private static Histogram newHistogram() {
+        return new Histogram(TimeUnit.MINUTES.toNanos(1), 3);
     }
 
     /**
@@ -56,6 +69,8 @@ public class LatencyTracker {
     public void reset() {
         sentCount.set(0);
         receivedCount.set(0);
+        actualHistogram.reset();
+        intendedHistogram.reset();
         testStartTime = System.nanoTime();
         testEndTime = 0;
     }
@@ -66,9 +81,21 @@ public class LatencyTracker {
      * @return the index to use when recording the receive
      */
     public int recordSend() {
+        return recordSend(0);
+    }
+
+    /**
+     * Record a send event that the rate schedule meant to happen at {@code intendedSendNanos}.
+     *
+     * @param intendedSendNanos the scheduled send time (System.nanoTime()), or 0 for "now"
+     * @return the index to use when recording the receive
+     */
+    public int recordSend(long intendedSendNanos) {
         int idx = sentCount.getAndIncrement();
         if (idx < capacity) {
-            sendTimes[idx] = System.nanoTime();
+            long now = System.nanoTime();
+            sendTimes[idx] = now;
+            intendedSendTimes[idx] = intendedSendNanos != 0 ? intendedSendNanos : now;
         }
         return idx;
     }
@@ -82,8 +109,43 @@ public class LatencyTracker {
         if (index < capacity) {
             long receiveTime = System.nanoTime();
             latencies[index] = receiveTime - sendTimes[index];
+            actualHistogram.recordValue(clamp(latencies[index]));
+            intendedHistogram.recordValue(clamp(receiveTime - intendedSendTimes[index]));
             receivedCount.incrementAndGet();
         }
+    }
+
+    private static long clamp(long nanos) {
+        return Math.max(0, Math.min(nanos, TimeUnit.MINUTES.toNanos(1)));
+    }
+
+    /**
+     * Round trips from the intended send time (coordinated-omission corrected).
+     */
+    public Histogram getIntendedHistogram() {
+        return intendedHistogram;
+    }
+
+    /**
+     * Round trips from the actual send time.
+     */
+    public Histogram getActualHistogram() {
+        return actualHistogram;
+    }
+
+    /**
+     * HdrHistogram percentiles as {@code key=value} text (microseconds).
+     */
+    public static String formatHistogram(Histogram h) {
+        if (h.getTotalCount() == 0) {
+            return "count=0";
+        }
+        return String.format(Locale.ROOT,
+                "count=%d min=%.2f p50=%.2f p90=%.2f p99=%.2f p99.9=%.2f p99.99=%.2f max=%.2f mean=%.2f",
+                h.getTotalCount(), h.getMinValue() / 1000.0,
+                h.getValueAtPercentile(50) / 1000.0, h.getValueAtPercentile(90) / 1000.0,
+                h.getValueAtPercentile(99) / 1000.0, h.getValueAtPercentile(99.9) / 1000.0,
+                h.getValueAtPercentile(99.99) / 1000.0, h.getMaxValue() / 1000.0, h.getMean() / 1000.0);
     }
 
     /**
@@ -188,6 +250,8 @@ public class LatencyTracker {
             log.info("  P99.9:  {}", stats.p999Micros());
         }
         log.info("=".repeat(60));
+        log.info("RTT from intended send (CO-corrected), us: {}", formatHistogram(intendedHistogram));
+        log.info("RTT from actual send, us: {}", formatHistogram(actualHistogram));
     }
 
     /**
@@ -221,6 +285,8 @@ public class LatencyTracker {
             System.out.println("  P99.9:  " + stats.p999Micros());
         }
         System.out.println("=".repeat(60));
+        System.out.println("RTT from intended send (CO-corrected), us: " + formatHistogram(intendedHistogram));
+        System.out.println("RTT from actual send, us: " + formatHistogram(actualHistogram));
     }
 
     /**

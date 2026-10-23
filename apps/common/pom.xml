@@ -53,6 +53,12 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Latency percentiles -->
+        <dependency>
+            <groupId>org.hdrhistogram</groupId>
+            <artifactId>HdrHistogram</artifactId>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>ch.qos.logback</groupId>

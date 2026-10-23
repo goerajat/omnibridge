@@ -7,10 +7,17 @@ REM Runs acceptor in background, then initiator in latency mode.
 REM Optionally monitors acceptor GC/heap usage via jstat.
 REM
 REM Usage: run-latency-test.bat [warmup-orders] [test-orders] [rate] [--gc]
+REM                              [--busy-spin] [--stages] [--persistence]
 REM
 REM The --gc flag enables jstat heap monitoring of the acceptor JVM during the
 REM test run. A summary is printed at the end showing heap growth, GC counts,
 REM and GC pause times.
+REM --busy-spin    both event loops busy-spin (network.busy-spin-mode=true)
+REM --stages       per-stage engine timestamps on both sides
+REM                (fix-engine.stage-timing.enabled=true); the acceptor's
+REM                report is printed from acceptor.log after the run
+REM --persistence  both sessions write every message to their store
+REM                (latency-*-persistence.conf: log-messages on, no tracing)
 REM ==========================================================================
 
 set SCRIPT_DIR=%~dp0
@@ -33,16 +40,37 @@ set TEST_ORDERS=1000
 set RATE=100
 set GC_MONITOR=0
 set GC_INTERVAL=2000
+set BUSY_SPIN=0
+set STAGES=0
+set PERSISTENCE=0
 
-REM Parse command line arguments
-if not "%~1"=="" if not "%~1"=="--gc" set WARMUP_ORDERS=%~1
-if not "%~2"=="" if not "%~2"=="--gc" set TEST_ORDERS=%~2
-if not "%~3"=="" if not "%~3"=="--gc" set RATE=%~3
-
-REM Check for --gc flag in any position
+REM Parse command line arguments: numbers are positional, flags may appear anywhere
+set POS=0
 for %%a in (%*) do (
-    if "%%a"=="--gc" set GC_MONITOR=1
+    set "ARG=%%~a"
+    if "!ARG:~0,2!"=="--" (
+        if /i "!ARG!"=="--gc" set GC_MONITOR=1
+        if /i "!ARG!"=="--busy-spin" set BUSY_SPIN=1
+        if /i "!ARG!"=="--stages" set STAGES=1
+        if /i "!ARG!"=="--persistence" set PERSISTENCE=1
+    ) else (
+        set /a POS+=1
+        if !POS!==1 set WARMUP_ORDERS=!ARG!
+        if !POS!==2 set TEST_ORDERS=!ARG!
+        if !POS!==3 set RATE=!ARG!
+    )
 )
+
+REM Config files and properties for both sides
+set ACCEPTOR_CONFIGS=%CONFIG_DIR%\latency-acceptor.conf
+set INITIATOR_CONFIGS=%CONFIG_DIR%\latency-initiator.conf
+if !PERSISTENCE!==1 (
+    set ACCEPTOR_CONFIGS=!ACCEPTOR_CONFIGS!,%CONFIG_DIR%\latency-acceptor-persistence.conf
+    set INITIATOR_CONFIGS=!INITIATOR_CONFIGS!,%CONFIG_DIR%\latency-initiator-persistence.conf
+)
+set TEST_PROPS=
+if !BUSY_SPIN!==1 set TEST_PROPS=!TEST_PROPS! -Dnetwork.busy-spin-mode=true
+if !STAGES!==1 set TEST_PROPS=!TEST_PROPS! -Dfix-engine.stage-timing.enabled=true
 
 echo ==========================================================================
 echo FIX Engine Latency Test
@@ -52,6 +80,9 @@ echo Warmup Orders: %WARMUP_ORDERS%
 echo Test Orders: %TEST_ORDERS%
 echo Rate: %RATE% orders/sec
 if !GC_MONITOR!==1 (echo GC Monitoring: true) else (echo GC Monitoring: false)
+if !BUSY_SPIN!==1 (echo Busy Spin: true) else (echo Busy Spin: false)
+if !STAGES!==1 (echo Stage Timing: true) else (echo Stage Timing: false)
+if !PERSISTENCE!==1 (echo Persistence: true) else (echo Persistence: false)
 echo ==========================================================================
 
 REM JVM options for low latency
@@ -70,7 +101,7 @@ set CHRONICLE_OPTS=--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.
 REM Start acceptor in background (uber jar default main class is acceptor)
 echo.
 echo Starting FIX Acceptor in background...
-start "" /b java %JVM_OPTS% %GC_LOG_OPTS% %CHRONICLE_OPTS% -jar "%UBER_JAR%" -c "%CONFIG_DIR%\latency-acceptor.conf" --latency > acceptor.log 2>&1
+start "" /b java %JVM_OPTS% %GC_LOG_OPTS% %CHRONICLE_OPTS% !TEST_PROPS! -jar "%UBER_JAR%" -c "!ACCEPTOR_CONFIGS!" --latency > acceptor.log 2>&1
 
 REM Wait for acceptor to start
 echo Waiting for acceptor to start...
@@ -121,9 +152,17 @@ REM Run initiator in latency mode (use -cp to specify different main class)
 echo.
 echo Starting FIX Initiator in latency mode...
 echo.
-java %JVM_OPTS% %CHRONICLE_OPTS% -cp "%UBER_JAR%" com.omnibridge.apps.fix.initiator.SampleInitiator -c "%CONFIG_DIR%\latency-initiator.conf" --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
+java %JVM_OPTS% %CHRONICLE_OPTS% !TEST_PROPS! -cp "%UBER_JAR%" com.omnibridge.apps.fix.initiator.SampleInitiator -c "!INITIATOR_CONFIGS!" --latency --warmup-orders %WARMUP_ORDERS% --test-orders %TEST_ORDERS% --rate %RATE%
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
+
+REM The acceptor reports its stages when the initiator's Logout arrives
+if !STAGES!==1 (
+    powershell -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
+    echo.
+    echo Acceptor stage timing ^(from acceptor.log^):
+    findstr /C:"Stage timing [" /C:"  stage " acceptor.log
+)
 
 REM Capture final heap snapshot before cleanup
 if !GC_MONITOR!==1 (

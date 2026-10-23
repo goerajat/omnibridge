@@ -248,7 +248,7 @@ public class SampleOuchInitiator extends ApplicationBase {
         long testStart = System.nanoTime();
 
         for (int i = 0; i < testOrders; i++) {
-            int idx = tracker.recordSend();
+            int idx = tracker.recordSend(testStart + (long) i * intervalNanos);
 
             // Send order using high-level API
             String token = session.sendEnterOrder(Side.BUY, "AAPL", 100, 150.00);

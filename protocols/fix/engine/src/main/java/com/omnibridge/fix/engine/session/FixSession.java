@@ -2,6 +2,8 @@ package com.omnibridge.fix.engine.session;
 
 import com.omnibridge.config.ClockProvider;
 import com.omnibridge.fix.engine.config.SessionConfig;
+import com.omnibridge.fix.engine.timing.StageTimingRecorder;
+import com.omnibridge.fix.engine.timing.StageTimingReport;
 import com.omnibridge.fix.message.ApplVerID;
 import com.omnibridge.fix.message.FixReader;
 import com.omnibridge.fix.message.FixTags;
@@ -82,6 +84,23 @@ public class FixSession implements NetworkHandler {
     // Configuration for ring buffer messages
     private final MessagePoolConfig poolConfig;
 
+    // Latency stage timing (null when off). Stamps taken on the sending thread (claim, commit,
+    // prepared) travel in the last TIMING_TAIL_BYTES of the claimed ring record, past the
+    // message's own space; the event loop keeps the rest in the fields below.
+    private static final int TIMING_TAIL_BYTES = 3 * Long.BYTES;
+    private static final Logger timingLog = LoggerFactory.getLogger("com.omnibridge.fix.engine.timing");
+    private final StageTimingRecorder stageTiming;
+    private final int claimTailBytes;
+    private boolean headTimed;
+    private long headClaim;
+    private long headCommit;
+    private long headPrepared;
+    private long headDrain;
+    private long headBeforeWrite;
+    private long recvRead;
+    private long recvFramed;
+    private long recvParsed;
+
     // ==================== Metrics (pre-resolved for hot path) ====================
     private Counter messagesReceivedCounter;
     private Counter messagesSentCounter;
@@ -146,6 +165,17 @@ public class FixSession implements NetworkHandler {
                 .build();
         this.incomingMessagePool = new IncomingMessagePool(incomingConfig);
         log.info("[{}] Incoming message pool initialized: size={}", config.getSessionId(), 64);
+
+        if (config.getStageTimingCapacity() > 0) {
+            this.stageTiming = new StageTimingRecorder(config.getStageTimingCapacity());
+            this.claimTailBytes = TIMING_TAIL_BYTES;
+            reader.setFrameTiming(true);
+            log.info("[{}] Stage timing enabled: {} rows per direction", config.getSessionId(),
+                    stageTiming.getCapacity());
+        } else {
+            this.stageTiming = null;
+            this.claimTailBytes = 0;
+        }
 
         // Recover sequence numbers from persistence store
         recoverSequenceNumbers();
@@ -315,6 +345,7 @@ public class FixSession implements NetworkHandler {
         if (channel != null) {
             channel.setOutgoingFrameHandler(this::onOutgoingFrame);
             registerOutgoingMessageListener(channel);
+            registerFrameWrittenListener(channel);
         }
     }
 
@@ -422,6 +453,7 @@ public class FixSession implements NetworkHandler {
         this.ioThread = Thread.currentThread();
         channel.setOutgoingFrameHandler(this::onOutgoingFrame);
         registerOutgoingMessageListener(channel);
+        registerFrameWrittenListener(channel);
         setState(SessionState.CONNECTED);
         lastReceivedTime = clockProvider.currentTimeMillis();
 
@@ -439,6 +471,9 @@ public class FixSession implements NetworkHandler {
 
     @Override
     public int onDataReceived(TcpChannel channel, DirectBuffer buffer, int offset, int length) {
+        if (stageTiming != null) {
+            recvRead = System.nanoTime();
+        }
         lastReceivedTime = clockProvider.currentTimeMillis();
 
         // Feed data to reader
@@ -473,6 +508,10 @@ public class FixSession implements NetworkHandler {
             if (!hasMessage) {
                 message.release();
                 return;
+            }
+            if (stageTiming != null) {
+                recvFramed = reader.getLastFramedNanos();
+                recvParsed = System.nanoTime();
             }
 
             try {
@@ -623,12 +662,16 @@ public class FixSession implements NetworkHandler {
 
         // Notify message listeners for ALL messages (admin and application)
         // This allows listeners to observe admin messages like Heartbeat, TestRequest, etc.
+        long dispatchNanos = stageTiming != null ? System.nanoTime() : 0;
         for (MessageListener listener : messageListeners) {
             try {
                 listener.onMessage(this, message);
             } catch (Exception e) {
                 log.error("[{}] Error notifying message listener", config.getSessionId(), e);
             }
+        }
+        if (stageTiming != null) {
+            stageTiming.recordReceive(recvRead, recvFramed, recvParsed, dispatchNanos, System.nanoTime());
         }
 
         // Update expected sequence number
@@ -708,6 +751,7 @@ public class FixSession implements NetworkHandler {
      */
     private boolean onOutgoingFrame(int msgTypeId, MutableDirectBuffer buffer, int offset, int length) {
         if (msgTypeId == FRAME_STAMP_SEQ_NUM) {
+            long drainNanos = stageTiming != null ? System.nanoTime() : 0;
             int seqNum = outgoingSeqNum.get();
             stampSeqNum(buffer, offset, length, seqNum);
             outgoingSeqNum.lazySet(seqNum + 1);
@@ -715,8 +759,19 @@ public class FixSession implements NetworkHandler {
                 log.info("[{}] OUT <<< {}", config.getSessionId(),
                         buffer.getStringWithoutLengthAscii(offset, length).replace('\u0001', '|'));
             }
+            if (stageTiming != null) {
+                int tail = offset - RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + timingTailOffset();
+                headClaim = buffer.getLong(tail);
+                headCommit = buffer.getLong(tail + Long.BYTES);
+                headPrepared = buffer.getLong(tail + 2 * Long.BYTES);
+                headDrain = drainNanos;
+                // Replaced after outbound persistence when a log store listener is registered
+                headBeforeWrite = System.nanoTime();
+                headTimed = true;
+            }
             return true;
         }
+        headTimed = false;
         if (msgTypeId == FRAME_SET_NEXT_SEQ_NUM) {
             outgoingSeqNum.set(buffer.getInt(offset));
             seqNumControlsApplied.incrementAndGet();
@@ -818,7 +873,65 @@ public class FixSession implements NetworkHandler {
                     .rawMessage(logCopy)
                     .build();
                 logStore.write(entry);
+                if (headTimed) {
+                    headBeforeWrite = System.nanoTime();
+                }
             });
+        }
+    }
+
+    /**
+     * With stage timing on, record each timed message's send row once its last byte is written.
+     */
+    private void registerFrameWrittenListener(TcpChannel channel) {
+        if (stageTiming != null) {
+            channel.setFrameWrittenListener(this::onFrameWritten);
+        }
+    }
+
+    private void onFrameWritten(int msgTypeId) {
+        if (headTimed) {
+            headTimed = false;
+            stageTiming.recordSend(headClaim, headCommit, headPrepared, headDrain, headBeforeWrite,
+                    System.nanoTime());
+        }
+    }
+
+    /** Offset of the stage timing stamps from the start of a claimed record. */
+    private int timingTailOffset() {
+        return RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
+    }
+
+    /**
+     * The stage timing of this session, or null when stage timing is off.
+     */
+    public StageTimingRecorder getStageTiming() {
+        return stageTiming;
+    }
+
+    /**
+     * Discard the stage timing recorded so far, here and on the other side: a TestRequest
+     * with TestReqID {@link StageTimingRecorder#RESET_TEST_REQ_ID} resets a counterparty
+     * that has stage timing on (others just answer it with a Heartbeat).
+     *
+     * @return false if stage timing is off (nothing is sent)
+     */
+    public boolean requestStageTimingReset() {
+        if (stageTiming == null) {
+            return false;
+        }
+        stageTiming.requestReset();
+        sendAdminMessage(FixTags.MSG_TYPE_TEST_REQUEST, msg ->
+                msg.setField(FixTags.TEST_REQ_ID, StageTimingRecorder.RESET_TEST_REQ_ID));
+        return true;
+    }
+
+    private void reportStageTimingOnLogout() {
+        if (stageTiming != null && !stageTiming.isReported()
+                && (stageTiming.getSendCount() > 0 || stageTiming.getReceiveCount() > 0)) {
+            timingLog.info("{}{}", System.lineSeparator(),
+                    StageTimingReport.format(stageTiming, config.getSessionId()));
+            stageTiming.markReported();
         }
     }
 
@@ -895,6 +1008,7 @@ public class FixSession implements NetworkHandler {
         CharSequence textCs = message.getCharSequence(FixTags.TEXT);
         String text = textCs != null ? textCs.toString() : null;
         log.info("[{}] Logout received: {}", config.getSessionId(), text);
+        reportStageTimingOnLogout();
 
         SessionState currentState = state.get();
 
@@ -942,6 +1056,11 @@ public class FixSession implements NetworkHandler {
 
         if (testRequestReceivedCounter != null) {
             testRequestReceivedCounter.increment();
+        }
+
+        if (stageTiming != null && StageTimingRecorder.RESET_TEST_REQ_ID.equals(testReqId)) {
+            stageTiming.requestReset();
+            timingLog.info("[{}] Stage timing reset by counterparty", config.getSessionId());
         }
 
         sendHeartbeat(testReqId);
@@ -1109,8 +1228,11 @@ public class FixSession implements NetworkHandler {
             return null;
         }
 
-        // Calculate claim size: length prefix + max message length
-        int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
+        long claimNanos = stageTiming != null ? System.nanoTime() : 0;
+
+        // Calculate claim size: length prefix + max message length (+ stage timing stamps)
+        int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength()
+                + claimTailBytes;
 
         // Try to claim space in the ring buffer. MsgSeqNum is left as zeros and stamped by
         // onOutgoingFrame on the event loop, so wire order and number order always agree.
@@ -1126,9 +1248,12 @@ public class FixSession implements NetworkHandler {
         // Get the buffer and wrap the thread-local message
         MutableDirectBuffer buffer = ch.buffer();
         RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
-        message.wrap(buffer, claimIndex, claimSize, 0, claimIndex,
+        message.wrap(buffer, claimIndex, claimSize - claimTailBytes, 0, claimIndex,
                 config.getBeginString(), config.getSenderCompId(), config.getTargetCompId(), msgType);
         message.setClaimOwner(ch);
+        if (stageTiming != null) {
+            buffer.putLong(claimIndex + timingTailOffset(), claimNanos);
+        }
 
         return message;
     }
@@ -1143,6 +1268,8 @@ public class FixSession implements NetworkHandler {
      * @param msg the ring buffer message to commit
      */
     public void commitMessage(RingBufferOutgoingMessage msg) {
+        long commitNanos = stageTiming != null ? System.nanoTime() : 0;
+
         // Prepare the message
         long sendingTime = clockProvider.currentTimeMillis();
         int messageLength = msg.prepareForSend(sendingTime);
@@ -1154,7 +1281,17 @@ public class FixSession implements NetworkHandler {
         // Commit to the ring buffer the message was claimed from
         TcpChannel ch = claimedChannel(msg);
         if (ch != null) {
-            ch.commit(msg.getClaimIndex());
+            if (stageTiming != null) {
+                // The stamps must be in the record before the commit makes it visible
+                int tail = msg.getClaimIndex() + timingTailOffset();
+                msg.getBuffer().putLong(tail + Long.BYTES, commitNanos);
+                long preparedNanos = System.nanoTime();
+                msg.getBuffer().putLong(tail + 2 * Long.BYTES, preparedNanos);
+                ch.commit(msg.getClaimIndex());
+                stageTiming.recordCommitCall(System.nanoTime() - preparedNanos);
+            } else {
+                ch.commit(msg.getClaimIndex());
+            }
             lastSentTime = clockProvider.currentTimeMillis();
 
             localMessagesSentCount++;
@@ -1214,8 +1351,9 @@ public class FixSession implements NetworkHandler {
             return null;
         }
 
-        // Calculate claim size: length prefix + max message length
-        int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength();
+        // Calculate claim size: length prefix + max message length (+ room commitMessage stamps into)
+        int claimSize = RingBufferOutgoingMessage.LENGTH_PREFIX_SIZE + config.getMaxMessageLength()
+                + claimTailBytes;
 
         // Try to claim space in the ring buffer (raw: the explicit number is not re-stamped)
         int claimIndex = ch.tryClaim(TcpChannel.MSG_TYPE_RAW, claimSize);
@@ -1227,7 +1365,7 @@ public class FixSession implements NetworkHandler {
         // Get the buffer and wrap the thread-local message
         MutableDirectBuffer buffer = ch.buffer();
         RingBufferOutgoingMessage message = ringBufferMessageThreadLocal.get();
-        message.wrap(buffer, claimIndex, claimSize, seqNum, claimIndex,
+        message.wrap(buffer, claimIndex, claimSize - claimTailBytes, seqNum, claimIndex,
                 config.getBeginString(), config.getSenderCompId(), config.getTargetCompId(), msgType);
         message.setClaimOwner(ch);
 
