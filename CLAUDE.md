@@ -376,6 +376,22 @@ mvn install -DskipTests
 ./scripts/deploy/manage-services.sh -f tf-outputs.json -i omnibridge-key.pem status
 ```
 
+### AWS Latency Test
+
+Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX host) next to the raw TCP round trip from `sockperf pp --full-rtt` between the same hosts:
+
+```bash
+./scripts/deploy/run-aws-latency-test.sh                       # warmup 10000, test 1000 at 100/s
+./scripts/deploy/run-aws-latency-test.sh -w 20000 -n 5000 -r 500 --tune-simulator
+./scripts/deploy/run-aws-latency-test.sh --skip-baseline       # FIX run only
+```
+
+- Stops `fix-initiator` and runs `SampleInitiator --latency` with an override conf (busy-spin, `--initiator-cpu`, `log-messages = false`, `reset-on-logon = true`, separate persistence path). The service is always restarted on exit.
+- The sockperf baseline stops `exchange-simulator` briefly and uses port 9876, the only port open between the trading hosts besides 9200.
+- `--tune-simulator` appends busy-spin, `--simulator-cpu` and FIX-SIM-1 `log-messages = false` to `/opt/exchange-simulator/exchange-simulator.conf`; the file is backed up and restored afterwards.
+- Before the demo initiator restarts, FIX-SIM-1's sequence numbers are reset through the simulator admin API (incoming 1, outgoing `--outgoing-seq`, default 1000000), so the demo initiator doesn't disconnect.
+- Logs and `summary.txt` go to `logs/aws-latency/<time>/`.
+
 ### SSH Access & Log Checking
 
 ```bash
