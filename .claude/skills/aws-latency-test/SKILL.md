@@ -1,7 +1,7 @@
 ---
 name: aws-latency-test
 description: Provision the AWS stack with Terraform, deploy the current code, run the FIX latency test with its sockperf network baseline, summarize the results against earlier runs, and destroy the stack.
-argument-hint: "[warmup test-orders rate] [--tune-simulator] [--skip-baseline] [--keep]"
+argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--skip-baseline] [--keep]"
 disable-model-invocation: true
 allowed-tools:
   - Bash(./scripts/deploy/terraform-deploy.sh:*)
@@ -34,7 +34,9 @@ Arguments: `$ARGUMENTS`
 
 - Up to three numbers: warmup orders, test orders, rate (defaults 10000 1000 100).
   Keep the defaults unless the user gives others, so runs stay comparable.
-- `--tune-simulator`, `--skip-baseline`: passed through to the test script.
+- `--no-tune-simulator`, `--skip-baseline`: passed through to the test script.
+  The simulator is busy-spun and pinned like the initiator unless
+  `--no-tune-simulator` is given.
 - `--keep`: skip the destroy step and say so in the report. Only when passed.
 
 Long steps (Terraform, the pipeline, the test) take minutes: run them with
@@ -79,7 +81,7 @@ otherwise go to step 6 with the diagnosis.
 
 ## 4. Test
 
-`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> [--tune-simulator] [--skip-baseline]`
+`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> [--no-tune-simulator] [--skip-baseline]`
 
 It prints the results directory (`logs/aws-latency/<time>/`) and appends the
 run to `docs/latency-history.jsonl`. On failure, read `fix-latency.log` and

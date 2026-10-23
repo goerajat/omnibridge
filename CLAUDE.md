@@ -382,18 +382,19 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 
 ```bash
 ./scripts/deploy/run-aws-latency-test.sh                       # warmup 10000, test 1000 at 100/s
-./scripts/deploy/run-aws-latency-test.sh -w 20000 -n 5000 -r 500 --tune-simulator
+./scripts/deploy/run-aws-latency-test.sh -w 20000 -n 100000 -r 1000
+./scripts/deploy/run-aws-latency-test.sh --no-tune-simulator   # simulator as deployed
 ./scripts/deploy/run-aws-latency-test.sh --skip-baseline       # FIX run only
 ```
 
 - Stops `fix-initiator` and runs `SampleInitiator --latency` with an override conf (busy-spin, `--initiator-cpu`, `log-messages = false`, `reset-on-logon = true`, separate persistence path). The service is always restarted on exit.
 - The sockperf baseline uses port 11111, which Terraform opens between the trading hosts (`trading_sockperf_from_trading`). On a stack without that rule, `--sockperf-port 9876` borrows the FIX port and stops `exchange-simulator` while sockperf runs.
-- `--tune-simulator` appends busy-spin, `--simulator-cpu` and FIX-SIM-1 `log-messages = false` to `/opt/exchange-simulator/exchange-simulator.conf`; the file is backed up and restored afterwards.
+- By default the simulator is tuned like the initiator: busy-spin, `--simulator-cpu` and FIX-SIM-1 `log-messages = false` are appended to `/opt/exchange-simulator/exchange-simulator.conf`, which is backed up and restored afterwards. `--no-tune-simulator` leaves it as deployed.
 - Before the demo initiator restarts, FIX-SIM-1's sequence numbers are reset through the simulator admin API (incoming 1, outgoing `--outgoing-seq`, default 1000000), so the demo initiator doesn't disconnect.
 - Host checks: `latency-host-check.sh` samples each engine's `NetworkIO-*` event-loop thread during the measured phase and the summary reports affinity (thread stayed on its core), busy-spin CPU %, isolation of the core and its hyperthread sibling, NIC IRQ placement/irqbalance, preemptions and IRQs/s on the core. Affinity or busy-spin FAIL fails the run; isolation problems only warn unless `--require-isolation`. `--no-host-check` skips it.
 - Logs, `summary.txt` and `summary.json` go to `logs/aws-latency/<time>/`; each run is also appended to `docs/latency-history.jsonl` (commit, instance type, options, percentiles) for comparison across commits.
 
-End to end (provision → build → deploy → test → report → destroy): run the `/aws-latency-test [warmup test rate] [--tune-simulator] [--keep]` skill in `.claude/skills/aws-latency-test/`. It is pre-approved for `terraform apply`/`destroy` and always destroys the stack after the run unless `--keep` is passed; it stops and asks if a stack already exists.
+End to end (provision → build → deploy → test → report → destroy): run the `/aws-latency-test [warmup test rate] [--no-tune-simulator] [--keep]` skill in `.claude/skills/aws-latency-test/`. It is pre-approved for `terraform apply`/`destroy` and always destroys the stack after the run unless `--keep` is passed; it stops and asks if a stack already exists.
 
 ### SSH Access & Log Checking
 

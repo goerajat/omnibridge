@@ -12,9 +12,9 @@
 #      host, on port 11111 (opened between the trading hosts by Terraform).
 #      On a stack without that rule, --sockperf-port 9876 borrows the FIX port
 #      and stops the simulator for the duration.
-#   3. Start the simulator again, optionally with busy-spin, cpu-affinity and
-#      log-messages = false on FIX-SIM-1 (its exchange-simulator.conf is backed
-#      up and restored afterwards).
+#   3. Restart the simulator with busy-spin, cpu-affinity and log-messages =
+#      false on FIX-SIM-1, like the initiator (its exchange-simulator.conf is
+#      backed up and restored afterwards; --no-tune-simulator leaves it as deployed).
 #   4. Run SampleInitiator --latency with a tuned override conf (busy-spin,
 #      cpu-affinity, log-messages = false, reset-on-logon = true).
 #   5. Realign FIX-SIM-1's sequence numbers through the simulator admin API so
@@ -36,7 +36,8 @@
 #   -n, --test-orders     Measured orders (default: 1000)
 #   -r, --rate            Orders per second (default: 100)
 #   --initiator-cpu       Initiator event loop core (default: 3)
-#   --tune-simulator      Also busy-spin/pin the simulator, no FIX-SIM-1 logging
+#   --no-tune-simulator   Leave the simulator as deployed (default: busy-spin,
+#                         pinned to --simulator-cpu, no FIX-SIM-1 message logging)
 #   --simulator-cpu       Simulator event loop core (default: 3)
 #   --skip-baseline       Skip the sockperf measurement
 #   --sockperf-time       sockperf duration in seconds (default: 30)
@@ -52,7 +53,8 @@
 #
 # Examples:
 #   ./run-aws-latency-test.sh
-#   ./run-aws-latency-test.sh -w 20000 -n 5000 -r 500 --tune-simulator
+#   ./run-aws-latency-test.sh -w 20000 -n 100000 -r 1000
+#   ./run-aws-latency-test.sh --no-tune-simulator          # simulator as deployed
 # =============================================================================
 
 set -uo pipefail
@@ -69,7 +71,7 @@ WARMUP=10000
 TEST_ORDERS=1000
 RATE=100
 INITIATOR_CPU=3
-TUNE_SIM=false
+TUNE_SIM=true
 SIM_CPU=3
 BASELINE=true
 SP_TIME=30
@@ -91,7 +93,8 @@ while [[ $# -gt 0 ]]; do
         -n|--test-orders) TEST_ORDERS="$2";   shift 2 ;;
         -r|--rate)        RATE="$2";          shift 2 ;;
         --initiator-cpu)  INITIATOR_CPU="$2"; shift 2 ;;
-        --tune-simulator) TUNE_SIM=true;      shift ;;
+        --tune-simulator) TUNE_SIM=true;      shift ;;  # the default; kept for old invocations
+        --no-tune-simulator) TUNE_SIM=false;  shift ;;
         --simulator-cpu)  SIM_CPU="$2";       shift 2 ;;
         --skip-baseline)  BASELINE=false;     shift ;;
         --sockperf-time)  SP_TIME="$2";       shift 2 ;;
@@ -102,7 +105,7 @@ while [[ $# -gt 0 ]]; do
         --history)        HISTORY="$2";       shift 2 ;;
         --no-host-check)  HOST_CHECK=false;   shift ;;
         --require-isolation) REQUIRE_ISOLATION=true; shift ;;
-        -h|--help)        sed -n '2,56p' "$0"; exit 0 ;;
+        -h|--help)        sed -n '2,58p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done

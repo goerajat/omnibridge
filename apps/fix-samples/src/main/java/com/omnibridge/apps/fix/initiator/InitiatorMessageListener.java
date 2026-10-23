@@ -68,7 +68,7 @@ public class InitiatorMessageListener implements MessageListener {
     @Override
     public void onMessage(FixSession session, IncomingFixMessage message) {
         long count = messagesReceived.incrementAndGet();
-        if (count % 100 == 0) {
+        if (count % 1000 == 0) {
             log.error("Received {} messages", count);
         }
 
