@@ -414,6 +414,8 @@ sends two ExecutionReports per order, the ack and a fill, so both writes move in
 - The tails do not agree: p99.99 626 vs 332 µs in the stages pair (worse with it on), 325 vs 334
   in the headline pair; max 1,937 vs 1,256 µs in the headline pair. Single runs, so within
   run-to-run variation as far as this shows.
+- From the next commit on, latency orders use `Symbol=NOFILL` and the simulator sends only the
+  ack (no fill), so its `recv.callback` holds one write; runs before that sent ack + fill.
 - Kept on by default: the mechanism is confirmed by the stages, p50 to p99 moved the right way
   in both pairs, and a burst benefits too (each ack goes out behind its own order, not after
   the whole read).

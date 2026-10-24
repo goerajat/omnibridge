@@ -291,11 +291,14 @@ public class ExchangeSimulator extends ApplicationBase {
         while (running) {
             Thread.sleep(5000);
 
-            // Log periodic statistics
-            log.debug("Orders: received={}, filled={}, active={}",
-                    fixHandler.getOrdersReceived() + ouchHandler.getOrdersReceived(),
-                    fixHandler.getOrdersFilled() + ouchHandler.getOrdersFilled(),
-                    orderBook.getActiveOrderCount());
+            // Log periodic statistics; the active count scans every order in the book, so only
+            // when it is logged
+            if (log.isDebugEnabled()) {
+                log.debug("Orders: received={}, filled={}, active={}",
+                        fixHandler.getOrdersReceived() + ouchHandler.getOrdersReceived(),
+                        fixHandler.getOrdersFilled() + ouchHandler.getOrdersFilled(),
+                        orderBook.getActiveOrderCount());
+            }
         }
     }
 

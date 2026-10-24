@@ -2477,6 +2477,9 @@ each round trip to the first ExecutionReport. The rules a new protocol's runner 
   (`TEST123`); send times live in arrays indexed by it (`ArrayLatencyTracker`), and the response
   path parses the suffix straight from the incoming `CharSequence`. Responses with another run's
   prefix (late warmup acks), unknown or repeated indices are ignored.
+- **Only the ack comes back.** Orders carry `Symbol=NOFILL`; the exchange simulator's `NOFILL*`
+  fill rule (fill probability 0) acks them without a fill, and the sample acceptor sends no fills
+  in latency mode. Orders stay in the simulator's order book either way (it never removes them).
 
 ```java
 RatePacer pacer = new RatePacer(System.nanoTime() + leadNanos, ordersPerSecond);

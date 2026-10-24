@@ -23,6 +23,9 @@ public class LatencyTestRunner {
 
     private static final String WARMUP_PREFIX = "WARMUP";
     private static final String TEST_PREFIX = "TEST";
+    // The exchange simulator acks NOFILL* orders and never fills them (its fill-engine rules),
+    // so only the ack this test measures comes back
+    private static final String SYMBOL = "NOFILL";
     // Lead time before the first paced order, so it is not already late
     private static final long PACER_LEAD_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
 
@@ -275,7 +278,7 @@ public class LatencyTestRunner {
         }
 
         order.setField(FixTags.ClOrdID, clOrdId);
-        order.setField(FixTags.Symbol, "TEST");
+        order.setField(FixTags.Symbol, SYMBOL);
         order.setField(FixTags.Side, FixTags.SIDE_BUY);
         order.setField(FixTags.OrderQty, 100 + (counter++));
         order.setField(FixTags.OrdType, FixTags.ORD_TYPE_LIMIT);

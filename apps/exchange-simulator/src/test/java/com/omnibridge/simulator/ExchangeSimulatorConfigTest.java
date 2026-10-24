@@ -1,6 +1,9 @@
 package com.omnibridge.simulator;
 
 import com.omnibridge.config.ConfigLoader;
+import com.omnibridge.simulator.core.fill.FillConfig;
+import com.omnibridge.simulator.core.fill.RuleBasedFillEngine;
+import com.omnibridge.simulator.core.order.Order;
 import com.typesafe.config.Config;
 import org.junit.jupiter.api.Test;
 
@@ -37,5 +40,20 @@ class ExchangeSimulatorConfigTest {
                 config.getString("components.network.factory"));
         assertTrue(config.getBoolean("components.pillar-engine.enabled"));
         assertEquals(5, config.getList("fix-engine.sessions").size());
+    }
+
+    /** The latency test sends NOFILL orders: acked, never filled. TEST orders still always fill. */
+    @Test
+    void nofillSymbolsAreNeverFilled() {
+        RuleBasedFillEngine engine = new RuleBasedFillEngine();
+        FillConfig.fromConfig(config.getConfig("fill-engine")).getRules().forEach(engine::addRule);
+        for (int i = 0; i < 1000; i++) {
+            assertFalse(engine.evaluate(order("NOFILL")).shouldFill(), "NOFILL filled");
+            assertTrue(engine.evaluate(order("TEST")).isFullFill(), "TEST not fully filled");
+        }
+    }
+
+    private static Order order(String symbol) {
+        return Order.builder().orderId(1).clientOrderId("C1").symbol(symbol).qty(100).price(100.0).build();
     }
 }
