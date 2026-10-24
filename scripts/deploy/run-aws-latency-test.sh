@@ -50,6 +50,11 @@
 #   --no-host-check       Skip the affinity/isolation sampling
 #   --require-isolation   Fail unless the pinned cores are isolated, clear of
 #                         NIC IRQs and not preempted (default: only warn)
+#   --stages              Per-stage engine timestamps on both sides
+#                         (fix-engine.stage-timing.enabled); the initiator prints its
+#                         report, the simulator's is taken from its journal into
+#                         simulator-stages.txt. Needs the simulator tuning. Costs a
+#                         few us per message: keep it off for headline numbers.
 #   --no-persistence      Measured sessions persist nothing (log-messages = false).
 #                         By default both sides persist every message to the
 #                         session store (log-messages = true) without tracing
@@ -88,6 +93,7 @@ HISTORY="$PROJECT_DIR/docs/latency-history.jsonl"
 HOST_CHECK=true
 REQUIRE_ISOLATION=false
 PERSIST=true
+STAGES=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -113,7 +119,8 @@ while [[ $# -gt 0 ]]; do
         --require-isolation) REQUIRE_ISOLATION=true; shift ;;
         --persistence)    PERSIST=true;       shift ;;  # the default; kept for old invocations
         --no-persistence) PERSIST=false;      shift ;;
-        -h|--help)        sed -n '2,63p' "$0"; exit 0 ;;
+        --stages)         STAGES=true;        shift ;;
+        -h|--help)        sed -n '2,68p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -121,6 +128,11 @@ done
 # -----------------------------------------------------------------------------
 # Prerequisites
 # -----------------------------------------------------------------------------
+
+if [ "$STAGES" = true ] && [ "$TUNE_SIM" = false ]; then
+    echo "Error: --stages needs the simulator tuning (drop --no-tune-simulator)"
+    exit 1
+fi
 
 if [ ! -f "$TF_OUTPUTS" ]; then
     echo "Error: Terraform output file not found: $TF_OUTPUTS"
@@ -185,6 +197,7 @@ echo "  Orders:                 warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
 echo "  Initiator core:         $INITIATOR_CPU"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
 echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off)"
+echo "  Stage timing:           $STAGES"
 echo "  Baseline (sockperf):    $([ "$BASELINE" = true ] && echo "${SP_SIZE}B for ${SP_TIME}s on port $SP_PORT" || echo skipped)"
 echo "  Results:                $OUT_DIR"
 echo ""
@@ -306,6 +319,7 @@ network {
 }
 
 fix-engine {
+    stage-timing { enabled = $STAGES }
     sessions = [
         { session-id = "FIX-SIM-1", port = 9876, sender-comp-id = "EXCH1", target-comp-id = "CLIENT1", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30, $MSG_CFG },
         { session-id = "FIX-SIM-2", port = 9876, sender-comp-id = "EXCH2", target-comp-id = "CLIENT2", initiator = false, begin-string = "FIX.4.4", heartbeat-interval = 30 },
@@ -383,6 +397,7 @@ fi
 # JVM flags match the fix-initiator systemd unit in setup-remote.sh
 on_ouch "set -o pipefail; cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
     -Domnibridge.latency-test=true \
+    -Dfix-engine.stage-timing.enabled=$STAGES \
     -Xms512m -Xmx1g \
     -XX:+UseZGC \
     --add-opens java.base/java.lang=ALL-UNNAMED \
@@ -406,6 +421,12 @@ FIX_RC=${PIPESTATUS[0]}
 # "[EXCH1->CLIENT1] read cap reached N times, cap 2048", logged when the initiator's Logout arrives
 SIM_READ_CAP_LOG="$OUT_DIR/simulator-read-cap.txt"
 on_fix "journalctl -u exchange-simulator --since '$SIM_RUN_START' --no-pager -o cat 2>/dev/null | grep 'read cap reached'" > "$SIM_READ_CAP_LOG" 2>/dev/null || true
+
+# The simulator logs its stage report (one block per session) at the initiator's Logout
+if [ "$STAGES" = true ]; then
+    on_fix "journalctl -u exchange-simulator --since '$SIM_RUN_START' --no-pager -o cat 2>/dev/null \
+        | grep -E 'Stage timing \\[|  stage '" > "$OUT_DIR/simulator-stages.txt" 2>/dev/null || true
+fi
 
 if [ "$HOST_CHECK" = true ]; then
     for h in ouch fix; do
@@ -553,7 +574,12 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
             "${HC_FIX[seconds]:--}s, ${HC_FIX[samples]:--} samples"
         echo "================================================================"
     fi
-    echo "  Simulator tuning: $TUNE_SIM; persistence: $PERSIST; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    if [ "$STAGES" = true ]; then
+        echo "  Simulator stage timing ($OUT_DIR/simulator-stages.txt):"
+        tr -d '\r' < "$OUT_DIR/simulator-stages.txt" 2>/dev/null | sed 's/^/  /'
+        echo "================================================================"
+    fi
+    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
@@ -566,7 +592,7 @@ DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/nu
 jq -nc \
     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
-    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
+    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
     --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" \
@@ -577,7 +603,7 @@ jq -nc \
     def hist: if . == "" then null
               else split(" ") | map(select(contains("=")) | split("=") | {(.[0]): (.[1] | tonumber? // .)}) | add end;
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
-     options: {tune_simulator: $tune, persistence: $persist, warmup: $warmup, test_orders: $orders, rate: $rate,
+     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),
