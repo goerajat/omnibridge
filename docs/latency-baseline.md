@@ -450,4 +450,28 @@ The exchange simulator's `handleNewOrder` + ack, measured like the sample accept
 The 312 B are the retained order: `Order` 112, ClOrdID `String` 24 + 32 + the 32 B copy
 `String`'s constructor makes from the off-heap bytes, `Long` key 16, two `ConcurrentHashMap`
 nodes 64. At 1,000 orders/s that is 0.3 MB/s, against 1 MB/s before; the garbage per order is now
-the one 32 B copy. Not yet measured on AWS.
+the one 32 B copy.
+
+**AWS** (`6558e62`, new stack, persistence on, isolated, 20k + 100k at 1,000/s; RTT from intended send):
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP |
+|-----|----:|----:|----:|----:|------:|-------:|----:|--------:|----:|
+| ack only (`96d7d71`) | 57.0 | 65.5 | 74.0 | 115.4 | 159 | 1,583 | 6,066 | 54.5 | 10.9 |
+| + no allocation (`6558e62`) | 60.1 | 68.2 | 76.7 | 125.5 | 307 | 2,896 | 6,259 | 58.2* | 9.8 |
+
+\* The run's own sockperf baseline was bimodal (p25 58.6, p50 62.5, p75 255 µs: half the samples
+in a second mode ~200 µs up, the same shape the two bimodal FIX runs had, so that mode is the
+host or network, not the engine); two clean sockperf runs right after on the same stack gave p50
+59.5 and 57.0, and their mean is used here. FIX − TCP from the actual-send p50 (68.0).
+
+- This stack's network was 3–4 µs slower (sockperf min 48.4 vs 45.1), and the FIX round trip
+  moved with it: p50 +2.7, FIX − TCP 10.9 → 9.8 µs, within run-to-run noise, as expected for a
+  change that removes garbage rather than work.
+- The tails did not improve in this run (p99.9 307 vs 159, p99.99 2,896 vs 1,583 µs from the
+  intended send; from the actual send p99.99 324 vs 234 and max 998 vs 1,540). Both engines run
+  ZGC, whose cycles are concurrent, so fewer cycles were never going to remove stop-the-world
+  pauses; the intended-send tail is the sending thread's slip (send slip p99.99 2.6 ms here, 1.4
+  before), which allocation does not touch. GC counts during the run were not captured (the
+  simulator is restarted after the run, so its counters were gone); the script should record
+  `jcmd PerfCounter.print` from both JVMs before the restart.
+
