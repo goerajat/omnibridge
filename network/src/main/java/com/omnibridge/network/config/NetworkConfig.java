@@ -13,6 +13,7 @@ public final class NetworkConfig {
     private final int writeBufferSize;
     private final int selectTimeoutMs;
     private final boolean busySpinMode;
+    private final boolean writeOnLoopCommit;
 
     private NetworkConfig(Builder builder) {
         this.name = builder.name;
@@ -21,6 +22,7 @@ public final class NetworkConfig {
         this.writeBufferSize = builder.writeBufferSize;
         this.selectTimeoutMs = builder.selectTimeoutMs;
         this.busySpinMode = builder.busySpinMode;
+        this.writeOnLoopCommit = builder.writeOnLoopCommit;
     }
 
     /**
@@ -34,6 +36,7 @@ public final class NetworkConfig {
                 .writeBufferSize(config.getInt("write-buffer-size"))
                 .selectTimeoutMs(config.getInt("select-timeout-ms"))
                 .busySpinMode(config.getBoolean("busy-spin-mode"))
+                .writeOnLoopCommit(!config.hasPath("write-on-loop-commit") || config.getBoolean("write-on-loop-commit"))
                 .build();
     }
 
@@ -61,6 +64,13 @@ public final class NetworkConfig {
         return busySpinMode;
     }
 
+    /**
+     * Whether a message committed on the event-loop thread is written before commit() returns.
+     */
+    public boolean isWriteOnLoopCommit() {
+        return writeOnLoopCommit;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -72,6 +82,7 @@ public final class NetworkConfig {
         private int writeBufferSize = 65536;
         private int selectTimeoutMs = 100;
         private boolean busySpinMode = false;
+        private boolean writeOnLoopCommit = true;
 
         private Builder() {}
 
@@ -105,6 +116,11 @@ public final class NetworkConfig {
             return this;
         }
 
+        public Builder writeOnLoopCommit(boolean writeOnLoopCommit) {
+            this.writeOnLoopCommit = writeOnLoopCommit;
+            return this;
+        }
+
         public NetworkConfig build() {
             return new NetworkConfig(this);
         }
@@ -118,6 +134,8 @@ public final class NetworkConfig {
                 ", readBufferSize=" + readBufferSize +
                 ", writeBufferSize=" + writeBufferSize +
                 ", selectTimeoutMs=" + selectTimeoutMs +
+                ", busySpinMode=" + busySpinMode +
+                ", writeOnLoopCommit=" + writeOnLoopCommit +
                 '}';
     }
 }

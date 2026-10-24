@@ -491,9 +491,14 @@ public class TcpChannel {
      */
     public void commit(int index) {
         ringBuffer.commit(index);
-        // Wake the selector only if the loop may be blocked in select()
-        // (not busy-spinning, and not called on the loop thread)
-        eventLoop.wakeup();
+        if (eventLoop.writesOnCommit()) {
+            // On the loop thread: drain now (this message and any committed ahead of it)
+            writeOnCommit();
+        } else {
+            // Wake the selector only if the loop may be blocked in select()
+            // (not busy-spinning, and not called on the loop thread)
+            eventLoop.wakeup();
+        }
     }
 
     /**
@@ -632,8 +637,8 @@ learns its loop at registration). `Selector.wakeup()` is a system call (a pipe o
 under a lock), and it makes the next select return once more just to consume it, so it is skipped:
 
 - when the loop busy-spins: `selectNow()` never blocks, and the next spin drains the ring;
-- on the loop thread: the loop drains every ring after processing ready keys and after running
-  queued tasks, so anything a callback commits goes out in the same iteration.
+- on the loop thread: the commit writes the ring itself (below), and the loop drains every ring
+  after processing ready keys and after running queued tasks.
 
 Otherwise (normal mode, another thread) the selector is woken as before, so a commit or task
 reaches a loop blocked in `select(timeout)` at once. Code that commits from inside the drain
@@ -641,6 +646,20 @@ itself (a frame handler or outgoing listener) is not covered by the post-drain p
 wait for the next event or the select timeout; none does today. A channel without a loop (the
 SSL wrapper, channels built by hand in tests) keeps the unconditional wakeup.
 `NetworkEventLoopWakeupTest` counts the wakeups.
+
+**Commits on the loop thread are written at once** (`network.write-on-loop-commit`, default true).
+A reply built in a read callback (an ExecutionReport committed in the simulator's order handler,
+a Heartbeat answering a TestRequest) used to wait in the ring until the callback, the rest of the
+read and the loop iteration finished: 4.2 µs p50 for the simulator's acks on AWS. Now
+`TcpChannel.commit()` on the loop thread drains the ring before it returns, through the same
+`controlledRead` as the loop, so the message goes out in ring order behind anything committed
+ahead of it (a claim still open on another thread holds it back; MsgSeqNum is stamped at drain, so
+a write that bypassed the ring would reorder). It does nothing inside a drain (a commit from a
+frame handler or written-frame listener is picked up by the running drain, which re-reads the
+ring), nor while a partly written message waits for OP_WRITE, and a write error is left for the
+loop's next drain to report and close the channel. Channels without a loop (the SSL wrappers)
+are not affected. `NetworkEventLoopLoopCommitTest` covers the immediate write, ring order,
+nesting, a full socket and the switch.
 
 **Read sizing.** Before each read the loop asks the handler `getNumBytesToRead(channel)` and
 limits the read to `min(that, free space in the channel's read buffer)`. FIX sessions return

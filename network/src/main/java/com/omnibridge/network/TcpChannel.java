@@ -90,6 +90,8 @@ public class TcpChannel {
     // Progress on the message at the head of the ring: bytes written, and whether it was announced
     private int partialSent;
     private boolean headNotified;
+    // Set while the ring is being drained, so a commit from a drain callback does not drain again
+    private boolean draining;
     private IOException drainFailure;
     private final ControlledMessageHandler drainHandler = this::drainRecord;
 
@@ -218,7 +220,8 @@ public class TcpChannel {
     }
 
     /**
-     * Set the event loop that drains this channel's ring buffer.
+     * Set the event loop that drains this channel's ring buffer. Channels without one (the SSL
+     * wrappers, hand-built test channels) never write on commit and always wake the selector.
      */
     void setEventLoop(NetworkEventLoop eventLoop) {
         this.eventLoop = eventLoop;
@@ -333,19 +336,45 @@ public class TcpChannel {
     /**
      * Commit a claimed message, making it available for consumption.
      *
-     * <p>After calling this method, the message will be sent to the socket when
-     * {@link #flush()} is called. The selector is woken up to ensure prompt delivery.</p>
+     * <p>On the event loop's own thread (a reply built in a read callback) the ring is drained
+     * before this returns, so the message, and anything committed ahead of it, is on the socket
+     * at once rather than after the callback and the rest of the loop iteration. From other
+     * threads the loop drains it; the selector is woken if the loop may be blocked.</p>
      *
      * @param index the claim index returned by {@link #tryClaim(int)}
      */
     public void commit(int index) {
         ringBuffer.commit(index);
-        // Wake up the selector so the event loop can drain the ring buffer immediately
         NetworkEventLoop loop = eventLoop;
         if (loop != null) {
-            loop.wakeup();
+            if (loop.writesOnCommit()) {
+                writeOnCommit();
+            } else {
+                loop.wakeup();
+            }
         } else if (selectionKey != null && selectionKey.selector() != null) {
             selectionKey.selector().wakeup();
+        }
+    }
+
+    /**
+     * Drain on the loop thread from commit(). Skipped inside a drain (the running drain or the
+     * loop's next one picks the message up) and while a partly written message waits for
+     * OP_WRITE (a write now would only return 0). A write error is not thrown here: it stays
+     * pending and the loop's next drain reports it and closes the channel.
+     */
+    private void writeOnCommit() {
+        if (draining || headNotified || closed) {
+            return;
+        }
+        draining = true;
+        try {
+            ringBuffer.controlledRead(drainHandler);
+        } finally {
+            draining = false;
+        }
+        if (drainFailure == null) {
+            setWriteInterest(headNotified);
         }
     }
 
@@ -442,7 +471,15 @@ public class TcpChannel {
      * @throws IOException if writing to the socket fails; the message being written stays in the ring
      */
     private void drainRingBuffer() throws IOException {
-        ringBuffer.controlledRead(drainHandler);
+        if (draining) {
+            return;
+        }
+        draining = true;
+        try {
+            ringBuffer.controlledRead(drainHandler);
+        } finally {
+            draining = false;
+        }
 
         IOException failure = drainFailure;
         if (failure != null) {

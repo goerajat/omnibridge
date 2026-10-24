@@ -51,6 +51,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     private final int writeBufferSize;
     private final long selectTimeoutMs;
     private final boolean busySpinMode;
+    private volatile boolean writeOnLoopCommit = true;
 
     private final Selector selector;
     private final Queue<Runnable> taskQueue;
@@ -130,6 +131,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
              config.getWriteBufferSize(),
              config.getSelectTimeoutMs(),
              config.isBusySpinMode());
+        this.writeOnLoopCommit = config.isWriteOnLoopCommit();
         this.componentProvider = provider;
     }
 
@@ -285,6 +287,21 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         }
         selectorWakeups.increment();
         selector.wakeup();
+    }
+
+    /**
+     * Whether a commit made now should write the ring at once: only on the loop thread, which
+     * otherwise drains it only after the current callback and the rest of the iteration.
+     */
+    boolean writesOnCommit() {
+        return writeOnLoopCommit && Thread.currentThread() == eventLoopThread;
+    }
+
+    /**
+     * Write messages committed on the loop thread before commit() returns (default on).
+     */
+    public void setWriteOnLoopCommit(boolean enabled) {
+        this.writeOnLoopCommit = enabled;
     }
 
     /**
