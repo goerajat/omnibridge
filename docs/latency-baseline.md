@@ -370,3 +370,50 @@ Stage timing, p50 µs (means are close; `--stages` adds a few µs to the round t
 - **Simulator `recv.callback` 3.1 µs:** the exchange simulator's order handler (order book, fill
   rules, building the ack).
 - Persistence: 0.7–0.9 µs per message per side on send, and part of `recv.session` (0.6–0.7).
+
+## Write on loop-thread commit (`87e2c1b`, `network.write-on-loop-commit`), µs
+
+A message committed on the event-loop thread is written before `commit()` returns instead of
+after the callback and the rest of the loop iteration. On the measured path that is the
+simulator's ExecutionReports (the initiator's orders are committed on its sending thread).
+
+**Local** (old jar `316316e` B, new A, alternately; RTT from intended send):
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max |
+|-----|----:|----:|----:|----:|------:|-------:|----:|
+| busy-spin, pair 1, before | 21.0 | 32.7 | 64.6 | 124.9 | 254 | 1,521 | 3,301 |
+| busy-spin, pair 1, after | 19.7 | 32.1 | 63.1 | 124.5 | 240 | 739 | 2,374 |
+| busy-spin, pair 2, before | 20.3 | 33.0 | 66.1 | 130.6 | 302 | 2,173 | 5,497 |
+| busy-spin, pair 2, after | 21.8 | 34.5 | 71.1 | 134.0 | 236 | 842 | 1,887 |
+| no busy-spin, after | 47.8 | 71.4 | 145.2 | 228.4 | 354 | 549 | 2,173 |
+| no busy-spin, before | 48.4 | 72.1 | 146.3 | 232.3 | 356 | 553 | 2,605 |
+| stages, before | 20.9 | 33.5 | 65.4 | 131.0 | 293 | 1,667 | 3,281 |
+| stages, after | 20.7 | 33.0 | 65.1 | 127.4 | 217 | 706 | 2,804 |
+
+The sample acceptor's `send.queue` fell from 0.90 to 0.10 µs p50 (its listener is light, so the
+wait was short); p50 within noise, p99.99 lower in all three busy-spin pairs.
+
+**AWS** (one stack, persistence on, isolated; the switch set to false in the simulator's conf for
+the "off" runs; RTT from actual send):
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP |
+|-----|----:|----:|----:|----:|------:|-------:|----:|--------:|----:|
+| stages, on | 62.1 | 76.2 | 90.2 | 133.4 | 218 | 626 | 1,706 | 48.2 | 28.1 |
+| stages, off | 61.4 | 77.1 | 92.0 | 134.5 | 215 | 332 | 1,748 | 48.7 | 28.4 |
+| on | 59.1 | 72.8 | 86.5 | 127.2 | 205 | 325 | 1,937 | 45.3 | 27.5 |
+| off | 61.7 | 74.6 | 88.3 | 134.1 | 210 | 334 | 1,256 | 47.7 | 26.9 |
+
+Simulator stages, p50: `send.queue` **4.35 → 0.04**, `send.total` (claim → written) 9.24 → 5.40;
+`recv.callback` 4.14 → 13.29, because the order handler now contains the writes (the simulator
+sends two ExecutionReports per order, the ack and a fill, so both writes move into it).
+
+- **The ack leaves the simulator 3.8 µs sooner** (claim → written), as planned.
+- **End to end the gain is 0.9–1.7 µs at p50**, and FIX − TCP does not move (28.1 vs 28.4, 27.5 vs
+  26.9): the sockperf baseline itself moved 0.5–2.4 µs between runs, which is as large as the
+  gain. p90 −1.8 to −1.9 µs and p99 −1 to −7 µs, both in the same direction in both pairs.
+- The tails do not agree: p99.99 626 vs 332 µs in the stages pair (worse with it on), 325 vs 334
+  in the headline pair; max 1,937 vs 1,256 µs in the headline pair. Single runs, so within
+  run-to-run variation as far as this shows.
+- Kept on by default: the mechanism is confirmed by the stages, p50 to p99 moved the right way
+  in both pairs, and a burst benefits too (each ack goes out behind its own order, not after
+  the whole read).
