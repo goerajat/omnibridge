@@ -84,7 +84,10 @@ otherwise go to step 6 with the diagnosis.
 
 ## 4. Test
 
-`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> [--no-tune-simulator] [--no-persistence] [--skip-baseline]`
+`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> --require-isolation [--no-tune-simulator] [--no-persistence] [--skip-baseline]`
+
+The trading hosts isolate the event-loop cpu at boot, so `--require-isolation` fails
+the run if that did not take effect.
 
 It prints the results directory (`logs/aws-latency/<time>/`) and appends the
 run to `docs/latency-history.jsonl`. On failure, read `fix-latency.log` and

@@ -259,3 +259,34 @@ Those runs used the old sleep-based pacer and are measured from the actual send 
 them with the "actual" column above. The next AWS runs should record the intended-send column and,
 with stage timing, both sides' stage tables. The hand-over note in the shared session notes lists
 the lines to parse.
+
+## Phase 1, items 3 and 4 on AWS (`ec21814`, c5.xlarge, persistence on, 20k warmup + 100k at 1,000/s), µs
+
+Item 4 isolates the event-loop cpu (3) and its hyperthread sibling (1) on both trading hosts at
+boot (`isolcpus`, `nohz_full`, `rcu_nocbs`, IRQs to cpus 0 and 2, irqbalance off;
+`scripts/deploy/latency-host-tuning.sh`). Both runs on the same stack: first as provisioned
+(isolated), then after `latency-host-tuning.sh remove` and a reboot. RTT from intended send,
+except the "actual" rows:
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP p50 (actual) |
+|-----|----:|----:|----:|----:|------:|-------:|----:|--------:|------:|
+| isolated | 65.0 | 75.8 | 86.9 | 137.2 | 252 | 2,331 | 4,207 | 60.2 | 15.3 |
+| isolated, actual | 64.9 | 75.5 | 86.5 | 136.7 | 241 | 368 | 1,415 | | |
+| not isolated | 65.0 | 77.4 | 87.9 | 132.7 | 249 | 2,718 | 6,672 | 58.9 | 18.2 |
+| not isolated, actual | 64.8 | 77.2 | 87.5 | 132.1 | 233 | 297 | 995 | | |
+| `b1e881e` (before item 3), other stack | 66.9 | 82.3 | 96.6 | 135.4 | 205 | 409 | 1,873 | 57.9 | 24.2 |
+
+- **Isolation did what it should on the cores**: device IRQs on cpu 3 2.1 → 0/s (initiator), timer
+  ticks ~995 → 1/s (nohz_full), involuntary context switches 4.0 → 1.0/s (initiator) and 2.6 → 0
+  (simulator); every host check PASS, so `--require-isolation` holds.
+- **Latency: p50 −1.7 µs, the rest within run-to-run noise.** With nothing else left on the cores
+  at 1,000 msg/s, a timer tick per ms and a few preemptions per second barely reach p99.9.
+- **The p99.99 and max from intended send are the sender, not the event loops:** send slip
+  p99.99 is 2.1 ms (isolated) and 2.5 ms (not); from the actual send p99.99 is 0.3–0.4 ms. The
+  pacer thread is unpinned, and with isolation it shares cpus 0 and 2 with everything else on the
+  initiator host (GC, Chronicle, the host check). Pinning the pacer to its own core is the next
+  step for the intended-send tail.
+- **Item 3 (no allocation) on AWS:** engine time (FIX − TCP p50, actual) 24.2 µs at `b1e881e`,
+  18.2 µs not isolated and 15.3 µs isolated at `ec21814`. Different stacks for `b1e881e`, so
+  roughly −6 µs from item 3. The exchange simulator's own order handler was not measured for allocation (only
+  the engine paths and the sample acceptor were changed).
