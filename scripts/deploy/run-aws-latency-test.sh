@@ -36,9 +36,16 @@
 #   -n, --test-orders     Measured orders (default: 1000)
 #   -r, --rate            Orders per second (default: 100)
 #   --initiator-cpu       Initiator event loop core (default: 3)
+#   --sender-cpu          Pin the initiator's sending (pacer) thread to this cpu
+#                         (default: unpinned). Isolate it first on the OUCH host:
+#                         latency-host-tuning.sh apply <event-loop cpu> <sender cpu>
 #   --no-tune-simulator   Leave the simulator as deployed (default: busy-spin,
 #                         pinned to --simulator-cpu, demo order tracking off)
 #   --simulator-cpu       Simulator event loop core (default: 3)
+#   --simulator-store     chronicle: the simulator stores to its local Chronicle
+#                         queue only (same path), without publishing each message
+#                         to the Aeron remote store. Default: as deployed (aeron).
+#                         Needs the simulator tuning.
 #   --skip-baseline       Skip the sockperf measurement
 #   --sockperf-time       sockperf duration in seconds (default: 30)
 #   --sockperf-size       sockperf message size in bytes (default: 200)
@@ -81,6 +88,8 @@ WARMUP=10000
 TEST_ORDERS=1000
 RATE=100
 INITIATOR_CPU=3
+SENDER_CPU=-1
+SIM_STORE=""
 TUNE_SIM=true
 SIM_CPU=3
 BASELINE=true
@@ -105,6 +114,8 @@ while [[ $# -gt 0 ]]; do
         -n|--test-orders) TEST_ORDERS="$2";   shift 2 ;;
         -r|--rate)        RATE="$2";          shift 2 ;;
         --initiator-cpu)  INITIATOR_CPU="$2"; shift 2 ;;
+        --sender-cpu)     SENDER_CPU="$2";    shift 2 ;;
+        --simulator-store) SIM_STORE="$2";    shift 2 ;;
         --tune-simulator) TUNE_SIM=true;      shift ;;  # the default; kept for old invocations
         --no-tune-simulator) TUNE_SIM=false;  shift ;;
         --simulator-cpu)  SIM_CPU="$2";       shift 2 ;;
@@ -120,7 +131,7 @@ while [[ $# -gt 0 ]]; do
         --persistence)    PERSIST=true;       shift ;;  # the default; kept for old invocations
         --no-persistence) PERSIST=false;      shift ;;
         --stages)         STAGES=true;        shift ;;
-        -h|--help)        sed -n '2,68p' "$0"; exit 0 ;;
+        -h|--help)        sed -n '2,75p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -188,15 +199,25 @@ else
     MSG_CFG='log-messages = false'
 fi
 
+# The deployed simulator uses store-type aeron: a local Chronicle queue plus a publish of
+# every message to the remote store. "chronicle" keeps the same local queue and path only.
+SIM_STORE_CFG=""
+case "$SIM_STORE" in
+    "") ;;
+    chronicle|aeron)
+        [ "$TUNE_SIM" = true ] || { echo "Error: --simulator-store needs the simulator tuning"; exit 1; }
+        SIM_STORE_CFG="persistence { store-type = \"$SIM_STORE\" }" ;;
+    *) echo "Error: --simulator-store must be chronicle or aeron"; exit 1 ;;
+esac
 echo "================================================================"
 echo "  AWS latency test"
 echo "================================================================"
 echo "  FIX host (simulator):   $FIX_IP"
 echo "  OUCH host (initiator):  $OUCH_IP"
 echo "  Orders:                 warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
-echo "  Initiator core:         $INITIATOR_CPU"
+echo "  Initiator core:         $INITIATOR_CPU (sender thread: $([ "$SENDER_CPU" -ge 0 ] && echo "cpu $SENDER_CPU" || echo unpinned))"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
-echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off)"
+echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off), simulator store: ${SIM_STORE:-as deployed}"
 echo "  Stage timing:           $STAGES"
 echo "  Baseline (sockperf):    $([ "$BASELINE" = true ] && echo "${SP_SIZE}B for ${SP_TIME}s on port $SP_PORT" || echo skipped)"
 echo "  Results:                $OUT_DIR"
@@ -303,7 +324,7 @@ fi
 # -----------------------------------------------------------------------------
 
 if [ "$TUNE_SIM" = true ]; then
-    echo "[3/4] Tuning simulator (busy-spin, core $SIM_CPU, demo off, FIX-SIM-1 $MSG_CFG)"
+    echo "[3/4] Tuning simulator (busy-spin, core $SIM_CPU, demo off, FIX-SIM-1 $MSG_CFG${SIM_STORE:+, store $SIM_STORE})"
     # The simulator loads only exchange-simulator.conf, so the tuning is appended
     # there. HOCON replaces arrays, so all five FIX sessions from the classpath
     # exchange-simulator.conf are restated. The deployed file is CRLF; HOCON
@@ -324,6 +345,7 @@ demo {
     enabled = false
 }
 
+$SIM_STORE_CFG
 fix-engine {
     stage-timing { enabled = $STAGES }
     sessions = [
@@ -420,7 +442,7 @@ on_ouch "set -o pipefail; cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
     -cp '$INIT_DIR/conf:$INIT_DIR/lib/*' \
     com.omnibridge.apps.fix.initiator.SampleInitiator \
     -c $INIT_DIR/conf/initiator-aws.conf,$OVERRIDE \
-    --latency --warmup-orders $WARMUP --test-orders $TEST_ORDERS --rate $RATE 2>&1 \
+    --latency --warmup-orders $WARMUP --test-orders $TEST_ORDERS --rate $RATE --sender-cpu $SENDER_CPU 2>&1 \
     | tee /tmp/fix-latency-run.log" 2>&1 | tee "$FIX_LOG"
 FIX_RC=${PIPESTATUS[0]}
 
@@ -585,7 +607,9 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
         tr -d '\r' < "$OUT_DIR/simulator-stages.txt" 2>/dev/null | sed 's/^/  /'
         echo "================================================================"
     fi
-    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; simulator store: ${SIM_STORE:-as deployed}; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    SENDER_LINE=$(tr -d '' < "$FIX_LOG" | grep -m1 '^  Sender thread:' | sed 's/^  //')
+    echo "  ${SENDER_LINE:-Sender thread: unpinned}"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
@@ -599,7 +623,7 @@ jq -nc \
     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
     --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
-    --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
+    --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson sndcpu "$SENDER_CPU" --arg sstore "$SIM_STORE" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
     --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" \
     --arg rci "${READ_CAP_INITIATOR:-}" --arg rcs "${READ_CAP_SIMULATOR:-}" '
@@ -610,7 +634,9 @@ jq -nc \
               else split(" ") | map(select(contains("=")) | split("=") | {(.[0]): (.[1] | tonumber? // .)}) | add end;
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
      options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, warmup: $warmup, test_orders: $orders, rate: $rate,
-               initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
+               initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end),
+               sender_cpu: (if $sndcpu >= 0 then $sndcpu else null end),
+               simulator_store: (if $sstore == "" then null else $sstore end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),
      send_slip_us: ($hs | hist),
