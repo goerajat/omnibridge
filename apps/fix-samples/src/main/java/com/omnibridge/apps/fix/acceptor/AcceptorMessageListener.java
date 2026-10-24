@@ -51,7 +51,7 @@ public class AcceptorMessageListener implements MessageListener {
     @Override
     public void onMessage(FixSession session, IncomingFixMessage message) {
         long count = messagesReceived.incrementAndGet();
-        if (count % 100 == 0) {
+        if (!latencyMode && count % 100 == 0) {
             log.error("Received {} messages", count);
         }
 

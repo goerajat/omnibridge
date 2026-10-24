@@ -15,7 +15,9 @@ import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.util.Arrays;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -57,6 +59,14 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
 
     // Reusable consumer to avoid garbage in busy spin mode
     private final Consumer<SelectionKey> keyProcessor;
+
+    // Snapshot of selector.keys() for the drain loop, which runs twice per busy-spin iteration:
+    // iterating the key set allocates two iterators per pass. Rebuilt after a registration or
+    // when the key set's size changes (cancelled keys leave it on the next select).
+    // Event loop thread only.
+    private SelectionKey[] drainKeys = new SelectionKey[16];
+    private int drainKeyCount;
+    private boolean drainKeysStale = true;
 
     private Thread eventLoopThread;
     private NetworkHandler defaultHandler;
@@ -281,6 +291,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         execute(() -> {
             try {
                 SelectionKey key = serverChannel.register(selector, SelectionKey.OP_ACCEPT, acceptor);
+                drainKeysStale = true;
                 acceptor.setSelectionKey(key);
                 log.info("TcpAcceptor listening on {}", address);
             } catch (ClosedChannelException e) {
@@ -361,6 +372,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                         TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
                         SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ,
                                 new ChannelContext(channel, effectiveHandler));
+                        drainKeysStale = true;
                         channel.setSelectionKey(key);
                         channel.markConnected();
                         effectiveHandler.onConnected(channel);
@@ -369,6 +381,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                     // Connection in progress
                     ConnectContext ctx = new ConnectContext(socketChannel, address.toString(), effectiveHandler, host, sslConfig);
                     socketChannel.register(selector, SelectionKey.OP_CONNECT, ctx);
+                    drainKeysStale = true;
                 }
             } catch (Exception e) {
                 try {
@@ -395,6 +408,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         // Register for both read and write during handshake
         SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE,
                 new SslChannelContext(sslChannel, handler, true));
+        drainKeysStale = true;
         sslChannel.setSelectionKey(key);
 
         log.debug("SSL connection initiated to {}", sslChannel.getRemoteAddress());
@@ -492,7 +506,10 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
      * any pending messages from their ring buffers to the sockets.</p>
      */
     private void drainAllChannelRingBuffers() {
-        for (SelectionKey key : selector.keys()) {
+        refreshDrainKeys();
+        final SelectionKey[] keys = drainKeys;
+        for (int i = 0, n = drainKeyCount; i < n; i++) {
+            SelectionKey key = keys[i];
             if (!key.isValid()) {
                 continue;
             }
@@ -521,6 +538,23 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                 }
             }
         }
+    }
+
+    private void refreshDrainKeys() {
+        Set<SelectionKey> keys = selector.keys();
+        if (!drainKeysStale && keys.size() == drainKeyCount) {
+            return;
+        }
+        int count = 0;
+        for (SelectionKey key : keys) {
+            if (count == drainKeys.length) {
+                drainKeys = Arrays.copyOf(drainKeys, count * 2);
+            }
+            drainKeys[count++] = key;
+        }
+        Arrays.fill(drainKeys, count, Math.max(drainKeyCount, count), null);
+        drainKeyCount = count;
+        drainKeysStale = false;
     }
 
     /**
@@ -712,6 +746,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
             SelectionKey channelKey = socketChannel.register(selector, SelectionKey.OP_READ,
                     new ChannelContext(channel, acceptor.getHandler()));
+            drainKeysStale = true;
             channel.setSelectionKey(channelKey);
             channel.markConnected();
 

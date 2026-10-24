@@ -595,8 +595,10 @@ public class FixSession implements NetworkHandler {
             messagesReceivedCounter.increment();
         }
 
-        log.debug("[{}] Received: {} SeqNum={}", config.getSessionId(), msgType, seqNum);
-        log.debug("[{}] IN  >>> {}", config.getSessionId(), formatRawMessage(message.getRawMessage()));
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Received: {} SeqNum={}", config.getSessionId(), msgType, seqNum);
+            log.debug("[{}] IN  >>> {}", config.getSessionId(), formatRawMessage(message.getRawMessage()));
+        }
 
         // Log incoming message
         logIncomingMessage(message, LogEntry.Direction.INBOUND);

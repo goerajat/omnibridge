@@ -23,7 +23,57 @@ scripts\test\run-latency-test.bat 20000 100000 100 --busy-spin                  
 mvn -Pbenchmarks -pl benchmarks -am package -DskipTests && java -jar benchmarks\target\benchmarks.jar -prof gc
 ```
 
-## Round trip, µs
+## Current baseline: after the event-loop allocation fix, µs
+
+The first baseline (below, at `7be58cc`) had two problems in the measuring setup itself, found
+with JFR, GC logs and the stage report:
+
+- **The busy-spin loop allocated about 180 MB/s.** `NetworkEventLoop.drainAllChannelRingBuffers`
+  iterated `selector.keys()`, twice per spin, and each pass created two iterator objects (99% of
+  the event-loop thread's allocation). That caused a young GC about every 0.85 s on both sides,
+  each about 1 ms. Now it walks a cached key array.
+- **The sample listeners logged on the event loop.** In latency mode the acceptor still logged
+  every 100th message and the initiator every 1,000th, synchronously to the console and a file.
+  This was the acceptor's `recv.callback` p99 of ~118 µs. Now they don't log in latency mode, and
+  `FixSession` no longer formats the raw message for a disabled `log.debug` on every message.
+
+Same setup and commands as below.
+
+| Run | Column | min | p50 | p90 | p99 | p99.9 | p99.99 | max | mean |
+|-----|--------|----:|----:|----:|----:|------:|-------:|----:|-----:|
+| base, run 1 | intended | 30.2 | 47.9 | 82.3 | 158.9 | 304 | 2,570 | 5,333 | 55.8 |
+| | actual | 30.2 | 47.8 | 81.5 | 157.3 | 296 | 2,157 | 5,333 | 55.2 |
+| base, run 2 | intended | 30.0 | 49.0 | 88.7 | 166.8 | 344 | 2,673 | 4,702 | 59.1 |
+| | actual | 29.8 | 48.8 | 87.7 | 164.0 | 321 | 2,245 | 4,702 | 58.5 |
+| persistence | intended | 33.2 | 54.7 | 95.9 | 180.6 | 387 | 1,825 | 3,795 | 64.1 |
+| stages | intended | 31.4 | 49.5 | 89.0 | 173.1 | 368 | 3,135 | 10,207 | 59.7 |
+
+Against the first baseline (base runs, intended column):
+
+| | before | after |
+|---|---:|---:|
+| p50 | 57.7–60.5 | 47.9–49.0 |
+| p99 | 227–246 | 159–167 |
+| p99.9 | 780–845 | 304–344 |
+| p99.99 | 2,320–2,472 | 2,570–2,673 |
+| young GCs during the measured 100 s (acceptor) | 87 | 0–1 |
+| event-loop thread allocation (JFR estimate, acceptor, whole run) | 17.6 GB | 84 MB |
+
+- **p99.99 did not move.** With GC gone, the stalls of 1–3 ms that remain are elsewhere, most
+  likely the OS descheduling one of the unpinned threads on this laptop (the pacer's send slip
+  shows stalls of the same size on the sending thread). Pinning cores or an AWS run is needed to
+  see further into that tail.
+- **The acceptor listener is no longer an outlier:** `recv.callback` p99 is 20.9 µs (was 118.5).
+  Its mean (5.9 µs) is still the ring commit + `selector.wakeup()` plus the sample app's own
+  allocation (`getDouble`, `getMsgType`, `"ORD"+n`, `"EXEC"+n`).
+- **Socket writes got shorter too** (`send.write` mean 19.6 µs initiator / 15.8 µs acceptor,
+  was 26.2 / 18.2), and `recv.session` fell from 2.2 to 0.8 µs. Less garbage streaming through
+  the caches is the likely reason; not separately confirmed.
+- The remaining allocation per message (about 700 B on the acceptor's event loop) comes from
+  `getMsgType()`, `getDouble()`, `encodeSendingTime` (`ZonedDateTime`) and the sample
+  listener's string concatenation: the Phase 1 allocation items.
+
+## First baseline (at `7be58cc`, before the fix): round trip, µs
 
 "Intended" is measured from each order's scheduled send time, so it is corrected for coordinated
 omission. "Actual" is measured from the moment the order was handed to the session, the same as
@@ -59,7 +109,7 @@ the old summary table.
   the laptop's power management slow the cores; the cause is not confirmed. The ~65 µs quoted
   before Phase 0 matches the 1,000/s numbers.
 
-## Where the time goes (stage timing, mean µs, stages run 1)
+## Where the time went in the first baseline (stage timing, mean µs, stages run 1)
 
 Means add up along each chain; percentiles do not.
 
@@ -92,9 +142,8 @@ What this means for Phase 1 on this machine:
    plus about 6 µs of sending-thread time on the initiator. With both loops busy-spinning it is
    pure overhead. This is the clearest engine-side win (Phase 1 item 1).
 3. **Acceptor listener tail.** `recv.callback` p99 is about 118 µs on the acceptor against 3.4 µs
-   on the initiator, in every run, while the commit inside it is only 12.9 µs at p99. Something in
-   `AcceptorMessageListener` / `sendExecutionReport` (String building, allocation, GC) causes it;
-   worth finding before reading the tails further.
+   on the initiator, in every run, while the commit inside it is only 12.9 µs at p99. *Found and
+   fixed since:* a log line on every 100th message (see the current baseline above).
 4. **Parsing in situ is 1.9–2.1 µs per message**, against 0.27 µs for `wrap` in JMH, so caches are
    cold between messages at 1,000/s. The receive-side session work (2.2 µs, rising to 3.5–4.7 µs
    with persistence) is about the same size as the parse.

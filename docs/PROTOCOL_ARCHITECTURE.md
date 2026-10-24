@@ -608,6 +608,23 @@ public class NetworkEventLoop implements Runnable, Component {
 }
 ```
 
+**The busy-spin loop must not allocate.** It runs millions of times a second, so even a small
+iterator per pass becomes a young GC every second or so (each pause about 1 ms, on the critical
+path of whatever order is in flight). Two rules follow from what JFR found:
+
+- Ready keys are processed with `selector.selectNow(Consumer)`, which has no selected-key set or
+  iterator to allocate.
+- The drain loop does not iterate `selector.keys()` (in JDK 17 an unmodifiable view of a
+  `ConcurrentHashMap` key set: two iterator objects per pass, twice per spin). It walks a
+  `SelectionKey[]` snapshot instead, rebuilt only after this loop registers a channel or when the
+  key set's size changes (cancelled keys leave it on the next select). Keys that became invalid
+  in the meantime are skipped with `isValid()`, and attachments are read from the key on every
+  pass, so `key.attach(...)` after connect needs no rebuild.
+
+Check new event-loop code with JFR (`-XX:StartFlightRecording=settings=profile`, then
+`jfr print --events jdk.ObjectAllocationSample`): the `NetworkIO-*` thread should show only
+per-message allocation, not allocation per spin.
+
 ### 4.4 Message Sending Pattern
 
 The session layer uses this pattern to send messages:
@@ -3350,9 +3367,11 @@ private void handleHandshakeAck(HandshakeAckMessage msg) {
 
 ---
 
-*Document Version: 1.9*
+*Document Version: 1.10*
 *Last Updated: October 2026*
 *Changes:
+- Section 4.3: the busy-spin loop must not allocate; drain loop walks a key snapshot instead of
+  iterating `selector.keys()`
 - Section 8: latency measurement rules (spin pacing, coordinated-omission-corrected HdrHistograms,
   index-keyed tracker, output contract), engine stage timing (8.4), JMH benchmarks module (8.5)
 - Added Section 12: Metrics and Monitoring with Micrometer bindMetrics() pattern
