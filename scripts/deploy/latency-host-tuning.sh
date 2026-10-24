@@ -13,9 +13,8 @@
 # run-aws-latency-test.sh's host checks report the result (--require-isolation
 # fails the run without it). "remove" undoes it, for a before/after on one host.
 #
-# Usage: latency-host-tuning.sh apply <cpu> [extra-cpus] | remove | status
-#   apply   isolate <cpu> and its siblings, plus extra-cpus (e.g. "2" for the
-#           latency initiator's pinned sending thread); takes effect after a reboot
+# Usage: latency-host-tuning.sh apply <cpu> | remove | status
+#   apply   isolate <cpu> and its siblings; takes effect after a reboot
 #   remove  restore the default kernel command line and irqbalance; reboot after
 #   status  print the configured and the running state
 # =============================================================================
@@ -34,23 +33,15 @@ expand_list() {
 
 case "${1:-}" in
     apply)
-        CPU="${2:?usage: $0 apply <cpu> [extra-cpus]}"
-        EXTRA="${3:-}"
+        CPU="${2:?usage: $0 apply <cpu>}"
         NCPU=$(nproc --all)
         if [ "$CPU" -le 0 ] || [ "$CPU" -ge "$NCPU" ]; then
             echo "ERROR: cpu $CPU outside 1..$((NCPU - 1)) (cpu 0 stays for housekeeping)"
             exit 1
         fi
-        for c in $(expand_list "$EXTRA"); do
-            if [ "$c" -le 0 ] || [ "$c" -ge "$NCPU" ]; then
-                echo "ERROR: extra cpu $c outside 1..$((NCPU - 1))"
-                exit 1
-            fi
-        done
         SIBLINGS=$(cat "/sys/devices/system/cpu/cpu$CPU/topology/thread_siblings_list")
-        ISOLATED=$( (expand_list "$SIBLINGS"; expand_list "$EXTRA") | sort -nu | paste -sd, -)
-        HOUSEKEEPING=$(seq 0 $((NCPU - 1)) | grep -vxF -f <(tr ',' '
-' <<< "$ISOLATED") | paste -sd, -)
+        ISOLATED=$(expand_list "$SIBLINGS" | sort -n | paste -sd, -)
+        HOUSEKEEPING=$(seq 0 $((NCPU - 1)) | grep -vxF -f <(expand_list "$SIBLINGS") | paste -sd, -)
         if [ -z "$HOUSEKEEPING" ]; then
             echo "ERROR: isolating $ISOLATED would leave no housekeeping cpu"
             exit 1
@@ -58,7 +49,7 @@ case "${1:-}" in
 
         # Ubuntu cloud images read /etc/default/grub.d/*.cfg in order; this one appends
         cat > "$GRUB_CFG" << EOF
-# Written by latency-host-tuning.sh: event-loop cpu $CPU, its siblings and ${EXTRA:-no} extra cpus isolated ($ISOLATED)
+# Written by latency-host-tuning.sh: event-loop cpu $CPU and its siblings ($ISOLATED) isolated
 GRUB_CMDLINE_LINUX_DEFAULT="\$GRUB_CMDLINE_LINUX_DEFAULT isolcpus=managed_irq,domain,$ISOLATED nohz_full=$ISOLATED rcu_nocbs=$ISOLATED irqaffinity=$HOUSEKEEPING"
 EOF
         update-grub 2>&1 | tail -1

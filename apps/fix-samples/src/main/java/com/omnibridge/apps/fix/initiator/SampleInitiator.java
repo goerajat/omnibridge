@@ -6,7 +6,6 @@ import com.omnibridge.apps.common.demo.DemoOrderTracker;
 import com.omnibridge.apps.fix.initiator.routes.InitiatorOrderRoutes;
 import com.omnibridge.fix.engine.FixEngine;
 import com.omnibridge.fix.engine.session.FixSession;
-import com.omnibridge.network.affinity.CpuAffinity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -60,10 +59,6 @@ public class SampleInitiator extends ApplicationBase {
 
     @Option(names = {"--demo"}, description = "Enable demo mode (order tracking UI, no auto-exit)", defaultValue = "false")
     private boolean demoMode;
-
-    @Option(names = {"--sender-cpu"}, description = "Pin the latency test's sending thread to this cpu (-1: unpinned)",
-            defaultValue = "-1")
-    private int senderCpu;
 
     private CountDownLatch logonLatch;
     private InitiatorMessageListener messageListener;
@@ -190,12 +185,6 @@ public class SampleInitiator extends ApplicationBase {
 
         // Run the selected mode
         if (latencyMode) {
-            // The sending thread paces on a busy spin: unpinned, it is preempted and sends late
-            if (senderCpu >= 0) {
-                boolean pinned = CpuAffinity.setAffinity(senderCpu);
-                System.out.println("  Sender thread: " + (pinned ? "pinned to cpu " + senderCpu
-                        : "NOT pinned (cpu " + senderCpu + " requested)"));
-            }
             LatencyTestRunner runner = new LatencyTestRunner(session, messageListener,
                     warmupOrders, testOrders, ordersPerSecond, maxPendingOrders, backpressureTimeoutSeconds);
             runner.run();

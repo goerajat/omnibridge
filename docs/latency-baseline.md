@@ -293,7 +293,9 @@ except the "actual" rows:
 
 ## AWS: simulator without Aeron, pinned sender (`028bdef`, one stack, persistence on, 20k + 100k at 1,000/s), µs
 
-All three runs on one stack, event-loop cpus isolated as provisioned. "Chronicle only": the
+Both options were removed again after these runs (no latency gain at p50; the scripts no
+longer have `--sender-cpu` or `--simulator-store`, `028bdef` has them). All three runs on one
+stack, event-loop cpus isolated as provisioned. "Chronicle only": the
 simulator stores to its local Chronicle queue (same path) without publishing each message to the
 Aeron remote store (`--simulator-store chronicle`). "Pinned sender": the initiator's sending
 (pacer) thread pinned to cpu 2, isolated too (`latency-host-tuning.sh apply 3 2`, housekeeping on
