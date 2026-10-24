@@ -398,19 +398,21 @@ the "off" runs; RTT from actual send):
 
 | Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP |
 |-----|----:|----:|----:|----:|------:|-------:|----:|--------:|----:|
-| stages, on | 62.1 | 76.2 | 90.2 | 133.4 | 218 | 626 | 1,706 | 48.2 | 28.1 |
-| stages, off | 61.4 | 77.1 | 92.0 | 134.5 | 215 | 332 | 1,748 | 48.7 | 28.4 |
-| on | 59.1 | 72.8 | 86.5 | 127.2 | 205 | 325 | 1,937 | 45.3 | 27.5 |
-| off | 61.7 | 74.6 | 88.3 | 134.1 | 210 | 334 | 1,256 | 47.7 | 26.9 |
+| stages, on | 62.1 | 76.2 | 90.2 | 133.4 | 218 | 626 | 1,706 | 61.7 | 14.5 |
+| stages, off | 61.4 | 77.1 | 92.0 | 134.5 | 215 | 332 | 1,748 | 62.0 | 15.1 |
+| on | 59.1 | 72.8 | 86.5 | 127.2 | 205 | 325 | 1,937 | 59.9 | 12.9 |
+| off | 61.7 | 74.6 | 88.3 | 134.1 | 210 | 334 | 1,256 | 58.5 | 16.0 |
 
 Simulator stages, p50: `send.queue` **4.35 → 0.04**, `send.total` (claim → written) 9.24 → 5.40;
 `recv.callback` 4.14 → 13.29, because the order handler now contains the writes (the simulator
 sends two ExecutionReports per order, the ack and a fill, so both writes move into it).
 
 - **The ack leaves the simulator 3.8 µs sooner** (claim → written), as planned.
-- **End to end the gain is 0.9–1.7 µs at p50**, and FIX − TCP does not move (28.1 vs 28.4, 27.5 vs
-  26.9): the sockperf baseline itself moved 0.5–2.4 µs between runs, which is as large as the
-  gain. p90 −1.8 to −1.9 µs and p99 −1 to −7 µs, both in the same direction in both pairs.
+- **End to end the gain is 0.9–1.7 µs at p50**, and FIX − TCP p50 is 0.6 µs lower in the stages
+  pair (14.5 vs 15.1) and 3.1 µs in the headline pair (12.9 vs 16.0); the sockperf p50 itself
+  moved 0.3–1.4 µs between runs, so only the direction is firm. (This table first listed the
+  sockperf minimum as TCP p50, which gave FIX − TCP of 27–28 µs; corrected.)
+  p90 −1.8 to −1.9 µs and p99 −1 to −7 µs, both in the same direction in both pairs.
 - The tails do not agree: p99.99 626 vs 332 µs in the stages pair (worse with it on), 325 vs 334
   in the headline pair; max 1,937 vs 1,256 µs in the headline pair. Single runs, so within
   run-to-run variation as far as this shows.
@@ -419,3 +421,18 @@ sends two ExecutionReports per order, the ack and a fill, so both writes move in
 - Kept on by default: the mechanism is confirmed by the stages, p50 to p99 moved the right way
   in both pairs, and a burst benefits too (each ack goes out behind its own order, not after
   the whole read).
+
+## Ack only, no fill (`96d7d71`, `Symbol=NOFILL`, new stack, persistence on, isolated), µs
+
+The latency orders now match the simulator's `NOFILL*` rule, so it sends the ack and no fill.
+Against the last headline run with ack + fill (`87e2c1b`, write-on-loop-commit on, another stack):
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP |
+|-----|----:|----:|----:|----:|------:|-------:|----:|--------:|----:|
+| ack + fill (`87e2c1b`), intended | 59.5 | 73.0 | 86.7 | 127.6 | 217 | 3,129 | 5,976 | 59.9 | 12.9 |
+| ack only (`96d7d71`), intended | 57.0 | 65.5 | 74.0 | 115.4 | 159 | 1,583 | 6,066 | 54.5 | 10.9 |
+
+FIX − TCP from the actual-send p50 (72.8 and 65.3). This stack's network was 5.5 µs faster, so most
+of the 7.5 µs p50 drop is the network; the engines' share fell about 2 µs, and p90/p99/p99.9 fell
+12.7/12.2/58 µs. Without the fill the simulator's loop is free sooner after each ack, which fits the
+lower p90 to p99.9; one run, so the size of that gain is not firm.
