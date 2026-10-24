@@ -60,6 +60,12 @@ public class RingBufferOutgoingMessage {
     private int seqNumValuePos;
     private int seqNumDigits;
     private int sendingTimeValuePos;
+
+    // SendingTime date of the last encoded day (written by the thread that holds this message)
+    private long cachedEpochDay = Long.MIN_VALUE;
+    private int cachedYear;
+    private int cachedMonth;
+    private int cachedDay;
     private int bodyStartPos;
 
     // Dynamic state
@@ -365,6 +371,28 @@ public class RingBufferOutgoingMessage {
         ensureCapacity(writePos + 25);
 
         writePos = writeTag(writePos, tag);
+        writePos = encodeLong(value, writePos);
+        buffer.putByte(writePos++, SOH);
+    }
+
+    /**
+     * Set a field to a prefix followed by a number, such as "ORD" and 42 for ORD42, without
+     * building the String.
+     *
+     * @param tag the FIX tag number
+     * @param prefix the text before the number
+     * @param value the number
+     * @throws DuplicateTagException if the tag has already been set
+     */
+    public void setField(int tag, CharSequence prefix, long value) {
+        checkDuplicate(tag);
+        int prefixLength = prefix.length();
+        ensureCapacity(writePos + 30 + prefixLength);
+
+        writePos = writeTag(writePos, tag);
+        for (int i = 0; i < prefixLength; i++) {
+            buffer.putByte(writePos++, (byte) prefix.charAt(i));
+        }
         writePos = encodeLong(value, writePos);
         buffer.putByte(writePos++, SOH);
     }
@@ -782,6 +810,25 @@ public class RingBufferOutgoingMessage {
     }
 
     /**
+     * Year, month and day of an epoch day (days since 1970-01-01), from H. Hinnant's
+     * civil_from_days.
+     */
+    private void cacheDate(long epochDay) {
+        long z = epochDay + 719_468;
+        long era = Math.floorDiv(z, 146_097);
+        long doe = z - era * 146_097;                                    // [0, 146096]
+        long yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+        long doy = doe - (365 * yoe + yoe / 4 - yoe / 100);             // [0, 365]
+        long mp = (5 * doy + 2) / 153;                                   // [0, 11], March first
+        int d = (int) (doy - (153 * mp + 2) / 5 + 1);
+        int m = (int) (mp < 10 ? mp + 3 : mp - 9);
+        cachedYear = (int) (yoe + era * 400 + (m <= 2 ? 1 : 0));
+        cachedMonth = m;
+        cachedDay = d;
+        cachedEpochDay = epochDay;
+    }
+
+    /**
      * Encode an integer with fixed width, zero-padded.
      */
     private void encodeIntFixedWidth(int value, int pos, int width) {
@@ -826,20 +873,19 @@ public class RingBufferOutgoingMessage {
     }
 
     /**
-     * Encode sending time into the pre-allocated slot.
+     * Encode sending time into the pre-allocated slot, without allocating: the date comes from
+     * the epoch day by integer arithmetic (proleptic Gregorian, as java.time), cached per day.
      */
     private void encodeSendingTime(long epochMillis) {
-        // Use FastTimestampEncoder logic but write directly to our buffer
-        // Calculate day boundary
         long millisPerDay = 24L * 60 * 60 * 1000;
-        long dayMillis = (epochMillis / millisPerDay) * millisPerDay;
-
-        // Get date components using Instant (thread-safe)
-        java.time.Instant instant = java.time.Instant.ofEpochMilli(epochMillis);
-        java.time.ZonedDateTime zdt = instant.atZone(java.time.ZoneOffset.UTC);
-        int year = zdt.getYear();
-        int month = zdt.getMonthValue();
-        int day = zdt.getDayOfMonth();
+        long epochDay = Math.floorDiv(epochMillis, millisPerDay);
+        long dayMillis = epochDay * millisPerDay;
+        if (epochDay != cachedEpochDay) {
+            cacheDate(epochDay);
+        }
+        int year = cachedYear;
+        int month = cachedMonth;
+        int day = cachedDay;
 
         int pos = sendingTimeValuePos;
 
@@ -859,11 +905,8 @@ public class RingBufferOutgoingMessage {
 
         buffer.putByte(pos++, (byte) '-');
 
-        // Calculate time within day
+        // Time within the day (floorDiv above: never negative)
         long millisInDay = epochMillis - dayMillis;
-        if (millisInDay < 0) {
-            millisInDay += millisPerDay;
-        }
 
         long millisPerHour = 60L * 60 * 1000;
         long millisPerMinute = 60L * 1000;

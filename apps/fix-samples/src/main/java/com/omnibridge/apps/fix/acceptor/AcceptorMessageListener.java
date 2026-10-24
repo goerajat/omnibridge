@@ -94,7 +94,7 @@ public class AcceptorMessageListener implements MessageListener {
                     clOrdId, symbol, side, orderQty, ordType, price);
         }
 
-        String orderId = "ORD" + orderIdCounter.getAndIncrement();
+        long orderId = orderIdCounter.getAndIncrement();
 
         // Send acknowledgment (New)
         sendExecutionReport(session, clOrdId, orderId, symbol, side,
@@ -122,7 +122,7 @@ public class AcceptorMessageListener implements MessageListener {
             log.info("Cancel Request: ClOrdID={}, OrigClOrdID={}", clOrdId, origClOrdId);
         }
 
-        String orderId = "ORD" + orderIdCounter.getAndIncrement();
+        long orderId = orderIdCounter.getAndIncrement();
         sendExecutionReport(session, clOrdId, orderId, symbol, side,
                 FixTags.EXEC_TYPE_CANCELED, FixTags.ORD_STATUS_CANCELED,
                 orderQty, 0, 0, 0, 0, "Order canceled");
@@ -142,26 +142,27 @@ public class AcceptorMessageListener implements MessageListener {
                     clOrdId, origClOrdId, orderQty, price);
         }
 
-        String orderId = "ORD" + orderIdCounter.getAndIncrement();
+        long orderId = orderIdCounter.getAndIncrement();
         sendExecutionReport(session, clOrdId, orderId, symbol, side,
                 FixTags.EXEC_TYPE_REPLACED, FixTags.ORD_STATUS_REPLACED,
                 orderQty, 0, orderQty, price, 0, "Order replaced");
     }
 
-    private void sendExecutionReport(FixSession session, CharSequence clOrdId, String orderId,
+    /** OrderID is ORD + orderId and ExecID is EXEC + a counter, written without a String. */
+    private void sendExecutionReport(FixSession session, CharSequence clOrdId, long orderId,
                                      CharSequence symbol, char side, char execType, char ordStatus,
                                      double orderQty, double cumQty, double leavesQty,
                                      double price, double avgPx, String text) {
         try {
             RingBufferOutgoingMessage execReport = session.tryClaimMessage(FixTags.MsgTypes.ExecutionReport);
             if (execReport == null) {
-                log.error("Ring buffer full - could not send execution report for order {}", orderId);
+                log.error("Ring buffer full - could not send execution report for order ORD{}", orderId);
                 return;
             }
 
-            execReport.setField(FixTags.OrderID, orderId);
+            execReport.setField(FixTags.OrderID, "ORD", orderId);
             execReport.setField(FixTags.ClOrdID, clOrdId);
-            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC", execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }
@@ -190,7 +191,7 @@ public class AcceptorMessageListener implements MessageListener {
             session.commitMessage(execReport);
             executionReportsSent.incrementAndGet();
             if (!latencyMode) {
-                log.info("Sent ExecutionReport: OrdID={}, ExecType={}, OrdStatus={}",
+                log.info("Sent ExecutionReport: OrdID=ORD{}, ExecType={}, OrdStatus={}",
                         orderId, execType, ordStatus);
             }
         } catch (Exception e) {

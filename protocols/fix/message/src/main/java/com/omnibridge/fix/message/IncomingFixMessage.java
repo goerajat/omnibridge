@@ -46,6 +46,23 @@ public final class IncomingFixMessage {
     private static final int CHAR_SEQ_POOL_SIZE = 32;
     private static final int MISSING_VALUE = -1;
 
+    /** Interned one- and two-character MsgTypes (printable ASCII), so getMsgType() does not allocate. */
+    private static final String[] ONE_CHAR_MSG_TYPES = new String[128];
+    private static final String[][] TWO_CHAR_MSG_TYPES = new String[128][];
+
+    static {
+        for (char c = 0x21; c < 0x7F; c++) {
+            ONE_CHAR_MSG_TYPES[c] = String.valueOf(c).intern();
+        }
+    }
+
+    /** Powers of ten that are exact doubles: a decimal with up to 15 digits divides exactly once. */
+    private static final double[] POWERS_OF_TEN = {
+            1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10,
+            1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22
+    };
+    private static final long MAX_EXACT_MANTISSA = 1L << 53;
+
     // Message buffer - direct reference to the provided DirectBuffer
     private DirectBuffer buffer;
     private int startOffset;  // Starting offset in the buffer
@@ -292,15 +309,67 @@ public final class IncomingFixMessage {
      * @return the field value, or 0.0 if not present or not a valid double
      */
     public double getDouble(int tag) {
-        CharSequence cs = getCharSequence(tag);
-        if (cs == null || cs.length() == 0) {
+        int fieldIdx = fieldIndex.get(tag);
+        if (fieldIdx == MISSING_VALUE) {
             return 0.0;
         }
+        int start = fieldPositions[fieldIdx][0];
+        int end = fieldPositions[fieldIdx][1];
+        if (start >= end) {
+            return 0.0;
+        }
+        double value = parseDecimal(start, end);
+        if (!Double.isNaN(value)) {
+            return value;
+        }
+        // Not a plain decimal of up to 15 digits: let the JDK parse it
         try {
-            return Double.parseDouble(cs.toString());
+            return Double.parseDouble(acquireCharSequence(start, end - start).toString());
         } catch (NumberFormatException e) {
             return 0.0;
         }
+    }
+
+    /**
+     * Parse a FIX decimal ([-]digits[.digits]) without allocating. The result is the same as
+     * Double.parseDouble: an integer mantissa below 2^53 and a power of ten up to 10^22 are both
+     * exact doubles, so the single division is correctly rounded.
+     *
+     * @return the value, or NaN when the field is not such a decimal
+     */
+    private double parseDecimal(int start, int end) {
+        int i = start;
+        boolean negative = false;
+        byte b = buffer.getByte(i);
+        if (b == '-' || b == '+') {
+            negative = b == '-';
+            i++;
+        }
+        long mantissa = 0;
+        int scale = -1;
+        int digits = 0;
+        for (; i < end; i++) {
+            b = buffer.getByte(i);
+            if (b >= '0' && b <= '9') {
+                mantissa = mantissa * 10 + (b - '0');
+                if (mantissa >= MAX_EXACT_MANTISSA) {
+                    return Double.NaN;
+                }
+                digits++;
+                if (scale >= 0) {
+                    scale++;
+                }
+            } else if (b == '.' && scale < 0) {
+                scale = 0;
+            } else {
+                return Double.NaN;
+            }
+        }
+        if (digits == 0 || scale >= POWERS_OF_TEN.length) {
+            return Double.NaN;
+        }
+        double value = scale > 0 ? mantissa / POWERS_OF_TEN[scale] : (double) mantissa;
+        return negative ? -value : value;
     }
 
     /**
@@ -350,7 +419,41 @@ public final class IncomingFixMessage {
      * @return the message type
      */
     public String getMsgType() {
-        return cachedMsgType.isValid() ? cachedMsgType.toString() : null;
+        if (!cachedMsgType.isValid()) {
+            return null;
+        }
+        int len = cachedMsgType.length();
+        if (len == 1) {
+            char c = cachedMsgType.charAt(0);
+            if (c < 128 && ONE_CHAR_MSG_TYPES[c] != null) {
+                return ONE_CHAR_MSG_TYPES[c];
+            }
+        } else if (len == 2) {
+            char c1 = cachedMsgType.charAt(0);
+            char c2 = cachedMsgType.charAt(1);
+            if (c1 < 128 && c2 < 128 && ONE_CHAR_MSG_TYPES[c1] != null && ONE_CHAR_MSG_TYPES[c2] != null) {
+                return twoCharMsgType(c1, c2);
+            }
+        }
+        return cachedMsgType.toString();
+    }
+
+    /**
+     * First use of a two-character MsgType makes its String; later ones return the same instance.
+     * Threads may race to fill a slot: each stores an interned String, so they agree.
+     */
+    private static String twoCharMsgType(char c1, char c2) {
+        String[] row = TWO_CHAR_MSG_TYPES[c1];
+        if (row == null) {
+            row = new String[128];
+            TWO_CHAR_MSG_TYPES[c1] = row;
+        }
+        String type = row[c2];
+        if (type == null) {
+            type = new String(new char[] {c1, c2}).intern();
+            row[c2] = type;
+        }
+        return type;
     }
 
     /**

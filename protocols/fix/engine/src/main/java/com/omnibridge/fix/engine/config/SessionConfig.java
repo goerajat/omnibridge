@@ -27,6 +27,8 @@ public class SessionConfig {
     private String beginString = "FIX.4.4";
     private String senderCompId;
     private String targetCompId;
+    /** SENDER->TARGET, built once: it is a log argument on every message. */
+    private String sessionId;
     private Role role;
 
     // FIX version support
@@ -105,11 +107,13 @@ public class SessionConfig {
 
         public Builder senderCompId(String senderCompId) {
             config.senderCompId = senderCompId;
+            config.sessionId = null;
             return this;
         }
 
         public Builder targetCompId(String targetCompId) {
             config.targetCompId = targetCompId;
+            config.sessionId = null;
             return this;
         }
 
@@ -519,7 +523,12 @@ public class SessionConfig {
      * Get the session ID string (SenderCompID->TargetCompID).
      */
     public String getSessionId() {
-        return senderCompId + "->" + targetCompId;
+        String id = sessionId;
+        if (id == null) {
+            id = senderCompId + "->" + targetCompId;
+            sessionId = id;
+        }
+        return id;
     }
 
     @Override

@@ -2954,7 +2954,9 @@ public class NewProtocolSession implements NetworkHandler {
 1. **ManyToOneRingBuffer**: Multi-producer, single-consumer
 2. **AtomicReference**: State machine transitions
 3. **AtomicInteger/Long**: Sequence numbers, counters
-4. **CopyOnWriteArrayList**: Listener lists
+4. **Copy-on-write listeners**: `FixSession` keeps its message listeners in a volatile array
+   replaced on add/remove (iterating a `CopyOnWriteArrayList` allocates an iterator per
+   message); state listeners, called only on state changes, stay in a `CopyOnWriteArrayList`
 
 ### 11.3 Memory Layout
 
@@ -2963,7 +2965,29 @@ public class NewProtocolSession implements NetworkHandler {
 3. **Cache Alignment**: Consider field ordering
 4. **Minimize Allocations**: Object pools, ThreadLocal
 
-### 11.4 JVM Tuning
+### 11.4 No Allocation Per Message
+
+The event loop's work for one order (frame, parse, listener, encode the reply, write it) allocates
+nothing, so a long run causes no young GCs from message traffic. The places that used to allocate,
+and what they do now:
+
+| Path | Was | Now |
+|------|-----|-----|
+| `IncomingFixMessage.getMsgType()` | `new String` per call | interned constant for 1- and 2-character MsgTypes; `toString()` only for longer ones |
+| `IncomingFixMessage.getDouble()` | `toString()` + `Double.parseDouble` | parsed from the buffer: mantissa < 2^53 divided by an exact power of ten (up to 10^22), the same result as `Double.parseDouble`; anything else (exponent, more digits) falls back to it |
+| `RingBufferOutgoingMessage.encodeSendingTime()` | `Instant` + `ZonedDateTime` per message | year/month/day from the epoch day by integer arithmetic (civil-from-days), cached per message instance until the day changes |
+| `SessionConfig.getSessionId()` | `sender + "->" + target` per call (a log argument on every message) | built once |
+| `FixSession` message listeners | `CopyOnWriteArrayList` iterator per message | volatile array |
+| `AcceptorMessageListener` | `"ORD" + n`, `"EXEC" + n` | `setField(tag, prefix, number)` writes prefix and digits into the message |
+
+`AcceptorAllocationTest` (`apps/fix-samples`) guards this in `mvn test`: it feeds NewOrderSingles
+to a `FixSession` with the acceptor's listener in latency mode, drains the ExecutionReports to a
+socket, and asserts at most 8 bytes per order on the thread
+(`ThreadMXBean.getCurrentThreadAllocatedBytes`, after a JIT warm-up; it measures 0). A listener
+that needs a String for a field still pays for it; read fields as `CharSequence`, `int`, `long`,
+`char` or `double` to stay allocation-free.
+
+### 11.5 JVM Tuning
 
 ```bash
 JVM_OPTS="-Xms256m -Xmx512m \
@@ -2973,7 +2997,7 @@ JVM_OPTS="-Xms256m -Xmx512m \
           -Dagrona.disable.bounds.checks=true"
 ```
 
-### 11.5 Latency Targets
+### 11.6 Latency Targets
 
 | Percentile | Target |
 |------------|--------|

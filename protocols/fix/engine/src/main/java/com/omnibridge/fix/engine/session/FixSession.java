@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,7 +59,8 @@ public class FixSession implements NetworkHandler {
     private final AtomicInteger expectedIncomingSeqNum = new AtomicInteger(1);
 
     private final List<SessionStateListener> stateListeners = new CopyOnWriteArrayList<>();
-    private final List<MessageListener> messageListeners = new CopyOnWriteArrayList<>();
+    // Copy-on-write array: iterating a CopyOnWriteArrayList allocates an iterator per message
+    private volatile MessageListener[] messageListeners = new MessageListener[0];
 
     private TcpChannel channel;
     private long lastSentTime;
@@ -419,15 +421,27 @@ public class FixSession implements NetworkHandler {
     /**
      * Add a message listener.
      */
-    public void addMessageListener(MessageListener listener) {
-        messageListeners.add(listener);
+    public synchronized void addMessageListener(MessageListener listener) {
+        MessageListener[] current = messageListeners;
+        MessageListener[] updated = Arrays.copyOf(current, current.length + 1);
+        updated[current.length] = listener;
+        messageListeners = updated;
     }
 
     /**
      * Remove a message listener.
      */
-    public void removeMessageListener(MessageListener listener) {
-        messageListeners.remove(listener);
+    public synchronized void removeMessageListener(MessageListener listener) {
+        MessageListener[] current = messageListeners;
+        for (int i = 0; i < current.length; i++) {
+            if (current[i].equals(listener)) {
+                MessageListener[] updated = new MessageListener[current.length - 1];
+                System.arraycopy(current, 0, updated, 0, i);
+                System.arraycopy(current, i + 1, updated, i, current.length - i - 1);
+                messageListeners = updated;
+                return;
+            }
+        }
     }
 
     // ==================== State Transitions ====================

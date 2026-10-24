@@ -23,6 +23,33 @@ scripts\test\run-latency-test.bat 20000 100000 100 --busy-spin                  
 mvn -Pbenchmarks -pl benchmarks -am package -DskipTests && java -jar benchmarks\target\benchmarks.jar -prof gc
 ```
 
+## Phase 1, item 3: no allocation per message, µs
+
+`getMsgType()` returns interned MsgTypes, `getDouble()` parses from the buffer, SendingTime is
+encoded without `java.time`, `SessionConfig.getSessionId()` is built once, `FixSession`'s message
+listeners are an array (no iterator per message), and the acceptor writes `ORD<n>`/`EXEC<n>` without
+a String. `AcceptorAllocationTest` measures the event loop's allocation per order: **559 B before,
+0 after**.
+
+Old jar (`b1e881e`, B) and new (A) alternately, same commands as below (100k at 1,000/s after a
+20k warmup, `--gc`). RTT from intended send:
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | mean | young GCs in the test (acceptor) |
+|-----|----:|----:|----:|----:|------:|-------:|----:|-----:|---:|
+| busy-spin, pair 1, before | 18.9 | 30.0 | 75.7 | 147.1 | 246 | 958 | 3,697 | 42.0 | 3 |
+| busy-spin, pair 1, after | 17.7 | 34.0 | 84.5 | 163.3 | 309 | 2,031 | 3,453 | 45.7 | 1 |
+| busy-spin, pair 2, before | 17.5 | 29.6 | 76.0 | 153.1 | 276 | 3,570 | 10,543 | 42.5 | 3 |
+| busy-spin, pair 2, after | 16.5 | 21.8 | 44.3 | 92.4 | 160 | 1,090 | 5,140 | 28.0 | 1 |
+| no busy-spin, after | 38.1 | 74.6 | 131.3 | 207.0 | 278 | 474 | 2,460 | 86.3 | 1 |
+| no busy-spin, before | 41.3 | 85.3 | 151.4 | 227.7 | 304 | 612 | 2,447 | 98.7 | 3 |
+
+- **Young GCs during the 100 s test: 3 → 1 on the acceptor in every pair** (the one left comes
+  from other threads: admin, metrics, the JIT). Whole-run young pauses 16 → 12.
+- **Latency on this laptop is within noise:** the two busy-spin pairs disagree (+4 and −8 µs at
+  p50), min is 1–3 µs lower in all three pairs, no busy-spin −11 µs at p50. The gain expected was
+  small at p50 (a few hundred ns of allocation and cache traffic per message) and in the tail
+  only through fewer GCs; AWS (pinned cores) is the better place to see it.
+
 ## Phase 1, items 1 and 2: no selector wakeup, FIX read cap (`e688195`, `d76566a`), µs
 
 Item 1: a commit no longer wakes the selector when the loop busy-spins or when it runs on the
