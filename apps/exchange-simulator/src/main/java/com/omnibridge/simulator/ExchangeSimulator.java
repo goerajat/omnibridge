@@ -67,14 +67,19 @@ public class ExchangeSimulator extends ApplicationBase {
     protected void preInitialize() throws Exception {
         log.info("Initializing Exchange Simulator...");
 
-        // Create shared order management components
-        orderBook = new DefaultOrderBook();
-        orderIdGenerator = new OrderIdGenerator(1000000);
-        fillEngine = createFillEngine(provider.getConfig());
-
-        // Check for demo mode
         Config config = provider.getConfig();
         boolean demoEnabled = config.hasPath("demo.enabled") && config.getBoolean("demo.enabled");
+
+        // Create shared order management components. The book's maps are sized up front
+        // (growing one stalls the event loop); the ClOrdID-only index serves the demo routes.
+        int expectedOrders = config.hasPath("order-book.expected-orders")
+                ? config.getInt("order-book.expected-orders") : DefaultOrderBook.DEFAULT_EXPECTED_ORDERS;
+        orderBook = new DefaultOrderBook(expectedOrders, demoEnabled);
+        log.info("Order book sized for {} orders (ClOrdID-only index: {})", expectedOrders, demoEnabled);
+        orderIdGenerator = new OrderIdGenerator(1000000);
+        fillEngine = createFillEngine(config);
+
+        // Check for demo mode
         if (demoEnabled) {
             int maxOrders = config.hasPath("demo.max-orders") ? config.getInt("demo.max-orders") : 500;
             demoTracker = new DemoOrderTracker(true, maxOrders);

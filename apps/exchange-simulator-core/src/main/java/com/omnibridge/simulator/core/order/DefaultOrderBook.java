@@ -8,17 +8,57 @@ import java.util.stream.Collectors;
 
 /**
  * Thread-safe default implementation of OrderBook using ConcurrentHashMap.
+ *
+ * <p>Orders are added on the event loop and stay in the book after they fill. A
+ * ConcurrentHashMap that grows copies all its entries inside the put that crosses the
+ * threshold (tens of ms at 100k orders), so the maps are allocated for the expected number
+ * of orders when the book is created.</p>
  */
 public class DefaultOrderBook implements OrderBook {
 
+    /** Orders the book holds before any of its maps has to grow. */
+    public static final int DEFAULT_EXPECTED_ORDERS = 1_000_000;
+
     // Primary index by order ID
-    private final Map<Long, Order> ordersByOrderId = new ConcurrentHashMap<>();
+    private final Map<Long, Order> ordersByOrderId;
 
-    // Secondary index by client order ID (may have duplicates across sessions)
-    private final Map<String, Order> ordersByClientId = new ConcurrentHashMap<>();
+    // Index by client order ID alone, for the demo REST routes (which have no session);
+    // null unless enabled. The last order wins when sessions reuse a ClOrdID.
+    private final Map<String, Order> ordersByClientId;
 
-    // Composite key index for client order ID + session ID
-    private final Map<String, Order> ordersByClientIdAndSession = new ConcurrentHashMap<>();
+    // Composite key index for client order ID + session ID (cancel/replace lookups)
+    private final Map<String, Order> ordersByClientIdAndSession;
+
+    /**
+     * A book for {@link #DEFAULT_EXPECTED_ORDERS} orders, with the ClOrdID-only index.
+     */
+    public DefaultOrderBook() {
+        this(DEFAULT_EXPECTED_ORDERS, true);
+    }
+
+    /**
+     * @param expectedOrders orders the book holds before a map has to grow
+     * @param indexByClientIdAlone keep the ClOrdID-only index used by
+     *        {@link #getOrderByClientId(String)}; without it that lookup scans the book
+     */
+    public DefaultOrderBook(int expectedOrders, boolean indexByClientIdAlone) {
+        this.ordersByOrderId = allocated(expectedOrders, -1L);
+        this.ordersByClientId = indexByClientIdAlone ? allocated(expectedOrders, "") : null;
+        this.ordersByClientIdAndSession = allocated(expectedOrders, "");
+    }
+
+    /**
+     * A map sized for the given entries whose table already exists: ConcurrentHashMap
+     * allocates it on the first put, which would be the first order, on the event loop.
+     */
+    private static <K> Map<K, Order> allocated(int entries, K probe) {
+        ConcurrentHashMap<K, Order> map = new ConcurrentHashMap<>(entries);
+        map.put(probe, PROBE);
+        map.remove(probe);
+        return map;
+    }
+
+    private static final Order PROBE = Order.builder().orderId(-1L).clientOrderId("").build();
 
     @Override
     public boolean addOrder(Order order) {
@@ -27,7 +67,9 @@ public class DefaultOrderBook implements OrderBook {
         }
 
         ordersByOrderId.put(order.getOrderId(), order);
-        ordersByClientId.put(order.getClientOrderId(), order);
+        if (ordersByClientId != null) {
+            ordersByClientId.put(order.getClientOrderId(), order);
+        }
 
         String compositeKey = makeCompositeKey(order.getClientOrderId(), order.getSessionId());
         ordersByClientIdAndSession.put(compositeKey, order);
@@ -42,7 +84,17 @@ public class DefaultOrderBook implements OrderBook {
 
     @Override
     public Optional<Order> getOrderByClientId(String clientOrderId) {
-        return Optional.ofNullable(ordersByClientId.get(clientOrderId));
+        if (ordersByClientId != null) {
+            return Optional.ofNullable(ordersByClientId.get(clientOrderId));
+        }
+        // No index outside demo mode: scan (admin use only, never on the order path)
+        Order found = null;
+        for (Order o : ordersByOrderId.values()) {
+            if (clientOrderId.equals(o.getClientOrderId())) {
+                found = o;
+            }
+        }
+        return Optional.ofNullable(found);
     }
 
     @Override
@@ -55,7 +107,9 @@ public class DefaultOrderBook implements OrderBook {
     public Optional<Order> removeOrder(long orderId) {
         Order order = ordersByOrderId.remove(orderId);
         if (order != null) {
-            ordersByClientId.remove(order.getClientOrderId());
+            if (ordersByClientId != null) {
+                ordersByClientId.remove(order.getClientOrderId(), order);
+            }
             String compositeKey = makeCompositeKey(order.getClientOrderId(), order.getSessionId());
             ordersByClientIdAndSession.remove(compositeKey);
         }
@@ -96,7 +150,9 @@ public class DefaultOrderBook implements OrderBook {
     @Override
     public void clear() {
         ordersByOrderId.clear();
-        ordersByClientId.clear();
+        if (ordersByClientId != null) {
+            ordersByClientId.clear();
+        }
         ordersByClientIdAndSession.clear();
     }
 
