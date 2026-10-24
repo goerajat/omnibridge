@@ -50,10 +50,11 @@
 #   --no-host-check       Skip the affinity/isolation sampling
 #   --require-isolation   Fail unless the pinned cores are isolated, clear of
 #                         NIC IRQs and not preempted (default: only warn)
-#   --persistence         Persist every message to the session store on both
-#                         sides (log-messages = true) without tracing them to
-#                         the application log (trace-messages = false); by
-#                         default the measured sessions persist nothing
+#   --no-persistence      Measured sessions persist nothing (log-messages = false).
+#                         By default both sides persist every message to the
+#                         session store (log-messages = true) without tracing
+#                         it to the application log (trace-messages = false).
+#                         --persistence is accepted for older commands.
 #
 # Examples:
 #   ./run-aws-latency-test.sh
@@ -86,7 +87,7 @@ OUT_DIR=""
 HISTORY="$PROJECT_DIR/docs/latency-history.jsonl"
 HOST_CHECK=true
 REQUIRE_ISOLATION=false
-PERSIST=false
+PERSIST=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -110,8 +111,9 @@ while [[ $# -gt 0 ]]; do
         --history)        HISTORY="$2";       shift 2 ;;
         --no-host-check)  HOST_CHECK=false;   shift ;;
         --require-isolation) REQUIRE_ISOLATION=true; shift ;;
-        --persistence)    PERSIST=true;       shift ;;
-        -h|--help)        sed -n '2,62p' "$0"; exit 0 ;;
+        --persistence)    PERSIST=true;       shift ;;  # the default; kept for old invocations
+        --no-persistence) PERSIST=false;      shift ;;
+        -h|--help)        sed -n '2,63p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -422,6 +424,14 @@ else
     SP_ROW=(- - - - -)
 fi
 FX_ROW=("$(fx Min)" "$(fx p50)" "$(fx p90)" "$(fx p99)" "$(fx Max)")
+# HdrHistogram lines after the table: "  RTT from intended send (CO-corrected), us: count=… min=… p50=… …"
+hist() { tr -d '\r' < "$FIX_LOG" | awk -v k="$1" 'index($0, k) == 1 { sub(/^[^:]*: /, ""); v = $0 } END { print v }'; }
+HIST_INTENDED=$(hist '  RTT from intended send')
+HIST_ACTUAL=$(hist '  RTT from actual send')
+HIST_SLIP=$(hist '  Send slip')
+hist_val() { sed -n "s/.*\(^\| \)$2=\([^ ]*\).*/\2/p" <<< "$1" | grep . || echo -; }
+FI_ROW=("$(hist_val "$HIST_INTENDED" min)" "$(hist_val "$HIST_INTENDED" p50)" "$(hist_val "$HIST_INTENDED" p90)" \
+        "$(hist_val "$HIST_INTENDED" p99)" "$(hist_val "$HIST_INTENDED" max)")
 
 # Reduces latency-host-check.sh output to "key<TAB>value" lines over the
 # measured phase [start, end] (all samples when the marks are missing)
@@ -502,6 +512,10 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
     printf "  %-24s %9s %9s %9s %9s %9s\n" "" min p50 p90 p99 max
     printf "  %-24s %9s %9s %9s %9s %9s\n" "TCP (sockperf ${SP_SIZE}B)" "${SP_ROW[@]}"
     printf "  %-24s %9s %9s %9s %9s %9s\n" "FIX round trip" "${FX_ROW[@]}"
+    if [ -n "$HIST_INTENDED" ]; then
+        printf "  %-24s %9s %9s %9s %9s %9s\n" "FIX from intended send" "${FI_ROW[@]}"
+        echo "  (intended send corrects for coordinated omission; send slip p50/p99: $(hist_val "$HIST_SLIP" p50)/$(hist_val "$HIST_SLIP" p99))"
+    fi
     echo "================================================================"
     if [ "$HOST_CHECK" = true ]; then
         hc_row "Host checks" "initiator (core $INITIATOR_CPU)" \
@@ -540,14 +554,19 @@ jq -nc \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
     --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
-    --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" '
+    --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
+    --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" '
     def stats: split(" ") | map(if . == "-" then null else tonumber end)
                | {min: .[0], p50: .[1], p90: .[2], p99: .[3], max: .[4]};
+    # "count=… min=… p50=… …" -> object; null when the initiator did not print it
+    def hist: if . == "" then null
+              else split(" ") | map(select(contains("=")) | split("=") | {(.[0]): (.[1] | tonumber? // .)}) | add end;
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
      options: {tune_simulator: $tune, persistence: $persist, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
-     fix_rtt_us: ($fx | stats), fix_exit_code: $rc}' | tr -d '\r' > "$OUT_DIR/summary.json"
+     fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),
+     send_slip_us: ($hs | hist), fix_exit_code: $rc}' | tr -d '\r' > "$OUT_DIR/summary.json"
 if [ "$HOST_CHECK" = true ] && [ -s "$OUT_DIR/summary.json" ]; then
     # key<TAB>value lines -> object, numbers kept numeric
     tsv_json() { jq -Rn '[inputs | split("\t") | {(.[0]): (.[1] | tonumber? // .)}] | add // {}' < "$1" | tr -d '\r'; }
