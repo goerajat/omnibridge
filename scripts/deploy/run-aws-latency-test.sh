@@ -358,6 +358,9 @@ then
     exit 1
 fi
 
+# The simulator logs its read-cap count at the initiator's Logout; its journal is read from here
+SIM_RUN_START=$(on_fix "date '+%Y-%m-%d %H:%M:%S'" | tr -d '\r')
+
 # Warmup and test at the given rate, plus time for logon and JIT
 RUN_TIMEOUT=$(( (WARMUP + TEST_ORDERS) / (RATE > 0 ? RATE : 1000) + 300 ))
 FIX_LOG="$OUT_DIR/fix-latency.log"
@@ -400,6 +403,10 @@ on_ouch "set -o pipefail; cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
     | tee /tmp/fix-latency-run.log" 2>&1 | tee "$FIX_LOG"
 FIX_RC=${PIPESTATUS[0]}
 
+# "[EXCH1->CLIENT1] read cap reached N times, cap 2048", logged when the initiator's Logout arrives
+SIM_READ_CAP_LOG="$OUT_DIR/simulator-read-cap.txt"
+on_fix "journalctl -u exchange-simulator --since '$SIM_RUN_START' --no-pager -o cat 2>/dev/null | grep 'read cap reached'" > "$SIM_READ_CAP_LOG" 2>/dev/null || true
+
 if [ "$HOST_CHECK" = true ]; then
     for h in ouch fix; do
         on_$h "touch /tmp/host-check.stop
@@ -430,6 +437,12 @@ HIST_INTENDED=$(hist '  RTT from intended send')
 HIST_ACTUAL=$(hist '  RTT from actual send')
 HIST_SLIP=$(hist '  Send slip')
 hist_val() { sed -n "s/.*\(^\| \)$2=\([^ ]*\).*/\2/p" <<< "$1" | grep . || echo -; }
+# Reads that returned the full read cap: initiator "  Read cap hits: initiator=N" (timed phase),
+# simulator "[EXCH1->CLIENT1] read cap reached N times, cap 2048" (whole connection); "" when absent
+READ_CAP_INITIATOR=$(tr -d '\r' < "$FIX_LOG" | sed -n 's/^  Read cap hits: initiator=\([0-9]*\).*/\1/p' | tail -1)
+READ_CAP_SIM_LINE=$(tr -d '\r' < "$SIM_READ_CAP_LOG" 2>/dev/null | grep 'EXCH1->CLIENT1' | tail -1)
+READ_CAP_SIMULATOR=$(sed -n 's/.*read cap reached \([0-9]*\) times, cap \([0-9]*\).*/\1/p' <<< "$READ_CAP_SIM_LINE")
+READ_CAP_BYTES=$(sed -n 's/.*read cap reached \([0-9]*\) times, cap \([0-9]*\).*/\2/p' <<< "$READ_CAP_SIM_LINE")
 FI_ROW=("$(hist_val "$HIST_INTENDED" min)" "$(hist_val "$HIST_INTENDED" p50)" "$(hist_val "$HIST_INTENDED" p90)" \
         "$(hist_val "$HIST_INTENDED" p99)" "$(hist_val "$HIST_INTENDED" max)")
 
@@ -516,6 +529,7 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
         printf "  %-24s %9s %9s %9s %9s %9s\n" "FIX from intended send" "${FI_ROW[@]}"
         echo "  (intended send corrects for coordinated omission; send slip p50/p99: $(hist_val "$HIST_SLIP" p50)/$(hist_val "$HIST_SLIP" p99))"
     fi
+    echo "  Read cap hits: initiator ${READ_CAP_INITIATOR:-n/a} (timed phase), simulator ${READ_CAP_SIMULATOR:-n/a} (whole connection)$([ -n "$READ_CAP_BYTES" ] && echo ", cap $READ_CAP_BYTES bytes")"
     echo "================================================================"
     if [ "$HOST_CHECK" = true ]; then
         hc_row "Host checks" "initiator (core $INITIATOR_CPU)" \
@@ -555,7 +569,8 @@ jq -nc \
     --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
-    --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" '
+    --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" \
+    --arg rci "${READ_CAP_INITIATOR:-}" --arg rcs "${READ_CAP_SIMULATOR:-}" '
     def stats: split(" ") | map(if . == "-" then null else tonumber end)
                | {min: .[0], p50: .[1], p90: .[2], p99: .[3], max: .[4]};
     # "count=… min=… p50=… …" -> object; null when the initiator did not print it
@@ -566,7 +581,9 @@ jq -nc \
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),
-     send_slip_us: ($hs | hist), fix_exit_code: $rc}' | tr -d '\r' > "$OUT_DIR/summary.json"
+     send_slip_us: ($hs | hist),
+     read_cap_hits: {initiator: ($rci | tonumber? // null), simulator: ($rcs | tonumber? // null)},
+     fix_exit_code: $rc}' | tr -d '\r' > "$OUT_DIR/summary.json"
 if [ "$HOST_CHECK" = true ] && [ -s "$OUT_DIR/summary.json" ]; then
     # key<TAB>value lines -> object, numbers kept numeric
     tsv_json() { jq -Rn '[inputs | split("\t") | {(.[0]): (.[1] | tonumber? // .)}] | add // {}' < "$1" | tr -d '\r'; }
