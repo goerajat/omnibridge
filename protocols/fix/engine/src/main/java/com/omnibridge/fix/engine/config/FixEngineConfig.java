@@ -17,10 +17,12 @@ public final class FixEngineConfig {
 
     private final List<EngineSessionConfig> sessions;
     private final int stageTimingCapacity;
+    private final int readCapBytes;
 
     private FixEngineConfig(Builder builder) {
         this.sessions = Collections.unmodifiableList(new ArrayList<>(builder.sessions));
         this.stageTimingCapacity = builder.stageTimingCapacity;
+        this.readCapBytes = builder.readCapBytes;
     }
 
     /**
@@ -36,6 +38,10 @@ public final class FixEngineConfig {
                 && fixEngineConfig.getBoolean("stage-timing.enabled")) {
             builder.stageTimingCapacity(fixEngineConfig.hasPath("stage-timing.capacity")
                     ? fixEngineConfig.getInt("stage-timing.capacity") : DEFAULT_STAGE_TIMING_CAPACITY);
+        }
+
+        if (fixEngineConfig.hasPath("read-cap-bytes")) {
+            builder.readCapBytes(fixEngineConfig.getInt("read-cap-bytes"));
         }
 
         if (fixEngineConfig.hasPath("sessions")) {
@@ -55,6 +61,11 @@ public final class FixEngineConfig {
     /** Rows of stage timestamps each session keeps; 0 when stage timing is off. */
     public int getStageTimingCapacity() {
         return stageTimingCapacity;
+    }
+
+    /** Most bytes a session takes from the socket per read, unless the session sets its own. */
+    public int getReadCapBytes() {
+        return readCapBytes;
     }
 
     /**
@@ -84,8 +95,14 @@ public final class FixEngineConfig {
     public static final class Builder {
         private final List<EngineSessionConfig> sessions = new ArrayList<>();
         private int stageTimingCapacity;
+        private int readCapBytes = SessionConfig.DEFAULT_READ_CAP_BYTES;
 
         private Builder() {}
+
+        public Builder readCapBytes(int bytes) {
+            this.readCapBytes = bytes;
+            return this;
+        }
 
         public Builder stageTimingCapacity(int capacity) {
             this.stageTimingCapacity = capacity;

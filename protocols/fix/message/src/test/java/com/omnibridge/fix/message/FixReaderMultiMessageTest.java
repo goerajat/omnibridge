@@ -78,6 +78,35 @@ class FixReaderMultiMessageTest {
     }
 
     @Test
+    void severalMessagesAndASplitOneInOneBuffer() {
+        FixReader reader = new FixReader();
+        String split = fix("35=D|34=4|49=CLIENT|56=BROKER|11=ORDER-4|55=IBM|");
+        int cut = split.length() / 2;
+        feed(reader, fix("35=D|34=1|49=CLIENT|56=BROKER|11=ORDER-1|")
+                + fix("35=D|34=2|49=CLIENT|56=BROKER|11=ORDER-2|")
+                + fix("35=D|34=3|49=CLIENT|56=BROKER|11=ORDER-3|")
+                + split.substring(0, cut));
+
+        IncomingFixMessage msg = new IncomingFixMessage();
+        for (int seq = 1; seq <= 3; seq++) {
+            assertTrue(reader.readIncomingMessage(msg), "message " + seq);
+            assertEquals(seq, msg.getSeqNum());
+            assertEquals("ORDER-" + seq, msg.getCharSequence(11).toString());
+        }
+        assertFalse(reader.readIncomingMessage(msg), "half a message is not a message");
+
+        // The next read completes it and brings another
+        feed(reader, split.substring(cut) + fix("35=D|34=5|49=CLIENT|56=BROKER|11=ORDER-5|"));
+        assertTrue(reader.readIncomingMessage(msg));
+        assertEquals(4, msg.getSeqNum());
+        assertEquals("ORDER-4", msg.getCharSequence(11).toString());
+        assertEquals("IBM", msg.getCharSequence(55).toString());
+        assertTrue(reader.readIncomingMessage(msg));
+        assertEquals(5, msg.getSeqNum());
+        assertFalse(reader.readIncomingMessage(msg));
+    }
+
+    @Test
     void logonSurvivesWhenOrderFollowsInSameBuffer() {
         FixReader reader = new FixReader();
         feed(reader, fix("35=A|34=1|49=CLIENT|56=BROKER|98=0|108=30|")

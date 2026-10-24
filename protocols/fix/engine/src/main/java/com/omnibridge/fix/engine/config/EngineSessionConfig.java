@@ -40,6 +40,7 @@ public final class EngineSessionConfig {
     private final boolean logMessages;
     private final boolean traceMessages;
     private final int maxMessageLength;
+    private final int readCapBytes;
     private final int maxTagNumber;
     private final String persistencePath;
     private final String scheduleName;
@@ -73,6 +74,7 @@ public final class EngineSessionConfig {
         this.logMessages = builder.logMessages;
         this.traceMessages = builder.traceMessages != null ? builder.traceMessages : builder.logMessages;
         this.maxMessageLength = builder.maxMessageLength;
+        this.readCapBytes = builder.readCapBytes;
         this.maxTagNumber = builder.maxTagNumber;
         this.persistencePath = builder.persistencePath;
         this.scheduleName = builder.scheduleName;
@@ -141,6 +143,9 @@ public final class EngineSessionConfig {
         }
         if (config.hasPath("max-message-length")) {
             builder.maxMessageLength(config.getInt("max-message-length"));
+        }
+        if (config.hasPath("read-cap-bytes")) {
+            builder.readCapBytes(config.getInt("read-cap-bytes"));
         }
         if (config.hasPath("max-tag-number")) {
             builder.maxTagNumber(config.getInt("max-tag-number"));
@@ -310,6 +315,11 @@ public final class EngineSessionConfig {
         return maxMessageLength;
     }
 
+    /** This session's read cap, or 0 to use the engine's {@code fix-engine.read-cap-bytes}. */
+    public int getReadCapBytes() {
+        return readCapBytes;
+    }
+
     public int getMaxTagNumber() {
         return maxTagNumber;
     }
@@ -403,6 +413,7 @@ public final class EngineSessionConfig {
         private boolean logMessages = true;
         private Boolean traceMessages;
         private int maxMessageLength = 4096;
+        private int readCapBytes;
         private int maxTagNumber = 1000;
         private String persistencePath;
         private String scheduleName;
@@ -509,6 +520,11 @@ public final class EngineSessionConfig {
 
         public Builder traceMessages(boolean traceMessages) {
             this.traceMessages = traceMessages;
+            return this;
+        }
+
+        public Builder readCapBytes(int readCapBytes) {
+            this.readCapBytes = readCapBytes;
             return this;
         }
 

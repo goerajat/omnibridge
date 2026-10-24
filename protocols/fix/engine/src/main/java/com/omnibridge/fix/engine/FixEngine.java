@@ -424,7 +424,9 @@ public class FixEngine implements Component {
      */
     public FixSession createSession(EngineSessionConfig engineSessionConfig) {
         int stageTimingCapacity = engineConfig != null ? engineConfig.getStageTimingCapacity() : 0;
-        FixSession session = createSession(convertToSessionConfig(engineSessionConfig, stageTimingCapacity));
+        int readCapBytes = engineConfig != null ? engineConfig.getReadCapBytes() : SessionConfig.DEFAULT_READ_CAP_BYTES;
+        FixSession session = createSession(
+                convertToSessionConfig(engineSessionConfig, stageTimingCapacity, readCapBytes));
 
         // Associate with schedule if configured
         engineSessionConfig.getScheduleName().ifPresent(scheduleName -> {
@@ -450,8 +452,17 @@ public class FixEngine implements Component {
     }
 
     static SessionConfig convertToSessionConfig(EngineSessionConfig config, int stageTimingCapacity) {
+        return convertToSessionConfig(config, stageTimingCapacity, SessionConfig.DEFAULT_READ_CAP_BYTES);
+    }
+
+    /**
+     * @param engineReadCapBytes the engine's read cap, used unless the session sets its own
+     */
+    static SessionConfig convertToSessionConfig(EngineSessionConfig config, int stageTimingCapacity,
+                                                int engineReadCapBytes) {
         SessionConfig.Builder builder = SessionConfig.builder()
                 .stageTimingCapacity(stageTimingCapacity)
+                .readCapBytes(config.getReadCapBytes() > 0 ? config.getReadCapBytes() : engineReadCapBytes)
                 .sessionName(config.getSessionName())
                 .beginString(config.getBeginString())
                 .senderCompId(config.getSenderCompId())

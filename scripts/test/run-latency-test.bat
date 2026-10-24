@@ -164,6 +164,11 @@ if !STAGES!==1 (
     findstr /C:"Stage timing [" /C:"  stage " acceptor.log
 )
 
+REM The acceptor logs its read-cap count at the initiator's Logout (whole connection, warmup included)
+echo.
+echo Acceptor read cap ^(from acceptor.log^):
+findstr /C:"read cap reached" acceptor.log || echo   ^(no read cap line in acceptor.log^)
+
 REM Capture final heap snapshot before cleanup
 if !GC_MONITOR!==1 (
     if defined ACCEPTOR_PID (

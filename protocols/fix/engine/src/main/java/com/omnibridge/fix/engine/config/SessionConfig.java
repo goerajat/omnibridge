@@ -12,6 +12,9 @@ import java.time.LocalTime;
  */
 public class SessionConfig {
 
+    /** Default upper bound on the bytes taken from the socket per read (about ten NewOrderSingles). */
+    public static final int DEFAULT_READ_CAP_BYTES = 2048;
+
     /**
      * Session role - initiator or acceptor.
      */
@@ -66,6 +69,10 @@ public class SessionConfig {
 
     // Message encoding
     private int maxMessageLength = 4096;
+
+    // Upper bound on the bytes taken from the socket per read: one read may bring several
+    // messages, all processed before the loop sends their replies
+    private int readCapBytes = DEFAULT_READ_CAP_BYTES;
     private int maxTagNumber = 1000;
 
     // Ring buffer capacity for outgoing messages (must be power of 2)
@@ -206,6 +213,11 @@ public class SessionConfig {
             return this;
         }
 
+        public Builder readCapBytes(int bytes) {
+            config.readCapBytes = bytes;
+            return this;
+        }
+
         public Builder maxMessageLength(int length) {
             config.maxMessageLength = length;
             return this;
@@ -321,6 +333,9 @@ public class SessionConfig {
             }
             if (config.port <= 0) {
                 throw new IllegalArgumentException("Port must be positive");
+            }
+            if (config.readCapBytes <= 0) {
+                throw new IllegalArgumentException("Read cap must be positive");
             }
         }
     }
@@ -449,6 +464,11 @@ public class SessionConfig {
 
     public boolean isTraceMessages() {
         return traceMessages != null ? traceMessages : logMessages;
+    }
+
+    /** Most bytes taken from the socket in one read. */
+    public int getReadCapBytes() {
+        return readCapBytes;
     }
 
     public int getMaxMessageLength() {

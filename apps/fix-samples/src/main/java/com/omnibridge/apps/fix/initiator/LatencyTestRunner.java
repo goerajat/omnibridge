@@ -36,6 +36,7 @@ public class LatencyTestRunner {
 
     private final LatencyTracker tracker;
     private final StringBuilder clOrdId = new StringBuilder(32);
+    private long warmupReadCapHits;
     private volatile boolean running = true;
 
     public LatencyTestRunner(FixSession session, InitiatorMessageListener messageListener,
@@ -156,8 +157,26 @@ public class LatencyTestRunner {
         }
 
         printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
+        printWarmupBurst();
         messageListener.setLatencyTracker(null);
+        warmupReadCapHits = session.getReadCapHits();
         return true;
+    }
+
+    /**
+     * The warmup is an unpaced burst: acks queue behind each other, and one read can bring
+     * as many as the read cap allows. Shows how long the first ack and the rest took.
+     */
+    private void printWarmupBurst() {
+        int received = tracker.getRecordedCount();
+        if (received == 0) {
+            return;
+        }
+        Histogram rtt = tracker.getActualHistogram();
+        System.out.printf("  Warmup burst: acks=%d first-ack=%.2f p50=%.2f p99=%.2f max=%.2f us, read-cap hits initiator=%d%n",
+                received, tracker.getLatencies()[0] / 1000.0,
+                rtt.getValueAtPercentile(50) / 1000.0, rtt.getValueAtPercentile(99) / 1000.0,
+                rtt.getMaxValue() / 1000.0, session.getReadCapHits());
     }
 
     private boolean runLatencyTest() throws InterruptedException {
@@ -235,6 +254,8 @@ public class LatencyTestRunner {
             printLatencyTestResults(ordersSent, receivedCount, totalTimeNanos, totalBackpressureTimeNanos);
             printLatencyStats(tracker.getLatencies(), receivedCount);
             printHistograms(pacer.isPaced());
+            // Reads that filled the read cap during the timed phase (scripts parse this line)
+            System.out.println("  Read cap hits: initiator=" + (session.getReadCapHits() - warmupReadCapHits));
             printStageTiming();
         } else {
             System.out.println("  No orders were sent successfully.");

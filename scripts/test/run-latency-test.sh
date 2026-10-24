@@ -194,6 +194,15 @@ if [ "$STAGES" = true ]; then
     grep -E 'Stage timing \[|^  stage ' acceptor.log || echo "  (no report found in acceptor.log)"
 fi
 
+# The acceptor logs its read-cap count at the initiator's Logout (whole connection, warmup included)
+echo ""
+echo "Acceptor read cap (from acceptor.log):"
+if grep -q 'read cap reached' acceptor.log; then
+    grep 'read cap reached' acceptor.log | sed 's/^.* - /  /'
+else
+    echo "  (no read cap line in acceptor.log)"
+fi
+
 # Capture final heap snapshot before stopping
 if [ "$GC_MONITOR" = true ] && [ -n "$JSTAT_PID" ]; then
     # Stop jstat

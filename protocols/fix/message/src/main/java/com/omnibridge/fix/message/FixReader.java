@@ -72,7 +72,15 @@ public class FixReader {
      * Create a new FixReader.
      */
     public FixReader() {
-        this.accumulationBuffer = new UnsafeBuffer(ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE));
+        this(DEFAULT_BUFFER_SIZE);
+    }
+
+    /**
+     * Create a FixReader whose buffer starts at the given size. If it holds the largest
+     * partial message plus one read, it never has to grow.
+     */
+    public FixReader(int initialCapacity) {
+        this.accumulationBuffer = new UnsafeBuffer(ByteBuffer.allocateDirect(initialCapacity));
         this.accumulationPosition = 0;
     }
 

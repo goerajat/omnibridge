@@ -45,7 +45,13 @@ public class FixSession implements NetworkHandler {
 
     private final SessionConfig config;
     private final LogStore logStore;
-    private final FixReader reader = new FixReader();
+    private final FixReader reader;
+
+    // Reads that returned the full cap on this connection (more data was probably waiting).
+    // Written on the event loop only; volatile so the application can read it.
+    private final int readCapBytes;
+    private volatile long readCapHits;
+    private boolean readCapSummaryLogged;
 
     private final AtomicReference<SessionState> state = new AtomicReference<>(SessionState.CREATED);
     private final AtomicInteger outgoingSeqNum = new AtomicInteger(1);
@@ -120,6 +126,7 @@ public class FixSession implements NetworkHandler {
     private Counter resendRequestSentCounter;
     private Counter resendRequestReceivedCounter;
     private Counter claimFailedCounter;
+    private Counter readCapHitCounter;
     private DistributionSummary processingTimeSummary;
 
     // Local message counters (single-threaded network loop, no sync needed)
@@ -153,6 +160,11 @@ public class FixSession implements NetworkHandler {
         }
 
         this.poolConfig = poolConfigBuilder.build();
+
+        // Reads are capped; the reader holds at most one read plus a partial message, so sized
+        // like this it never grows on the event loop
+        this.readCapBytes = config.getReadCapBytes();
+        this.reader = new FixReader(Math.max(64 * 1024, readCapBytes + config.getMaxMessageLength()));
 
         // Initialize thread-local ring buffer message wrappers for concurrent access
         this.ringBufferMessageThreadLocal = ThreadLocal.withInitial(() -> new RingBufferOutgoingMessage(poolConfig));
@@ -325,6 +337,10 @@ public class FixSession implements NetworkHandler {
         claimFailedCounter = Counter.builder("omnibridge.ringbuffer.claim_failed.total")
                 .tags(sessionTags).description("Ring buffer claim failures").register(registry);
 
+        // Network reads
+        readCapHitCounter = Counter.builder("omnibridge.network.read_cap_reached.total")
+                .tags(sessionTags).description("Reads that returned the full read cap").register(registry);
+
         // Latency
         processingTimeSummary = DistributionSummary.builder("omnibridge.message.processing.time")
                 .tags(sessionTags)
@@ -443,7 +459,41 @@ public class FixSession implements NetworkHandler {
 
     @Override
     public int getNumBytesToRead(TcpChannel channel) {
-        return reader.getBytesNeeded();
+        return readCapBytes;
+    }
+
+    /**
+     * Reads on the current connection that returned the full read cap.
+     */
+    public long getReadCapHits() {
+        return readCapHits;
+    }
+
+    /**
+     * Most bytes this session takes from the socket in one read.
+     */
+    public int getReadCapBytes() {
+        return readCapBytes;
+    }
+
+    private void onReadCapReached() {
+        long hits = readCapHits + 1;
+        readCapHits = hits;
+        if (readCapHitCounter != null) {
+            readCapHitCounter.increment();
+        }
+        // Once per connection: logging on the event loop per hit would cost more than the read
+        if (hits == 1) {
+            log.warn("[{}] Read cap reached: a read returned the full {} bytes, more data was waiting. "
+                    + "Further hits are counted and summarised at Logout", config.getSessionId(), readCapBytes);
+        }
+    }
+
+    private void reportReadCap() {
+        if (!readCapSummaryLogged) {
+            readCapSummaryLogged = true;
+            timingLog.info("[{}] read cap reached {} times, cap {}", config.getSessionId(), readCapHits, readCapBytes);
+        }
     }
 
     @Override
@@ -462,6 +512,8 @@ public class FixSession implements NetworkHandler {
         // stale state (accumulated buffer data, expected message length) from
         // the previous connection
         reader.reset();
+        readCapHits = 0;
+        readCapSummaryLogged = false;
 
         // Initiator sends logon first
         if (config.isInitiator()) {
@@ -475,6 +527,9 @@ public class FixSession implements NetworkHandler {
             recvRead = System.nanoTime();
         }
         lastReceivedTime = clockProvider.currentTimeMillis();
+        if (length == readCapBytes) {
+            onReadCapReached();
+        }
 
         // Feed data to reader
         reader.addData(buffer, offset, length);
@@ -535,6 +590,7 @@ public class FixSession implements NetworkHandler {
         if (disconnectCounter != null) {
             disconnectCounter.increment();
         }
+        reportReadCap();
 
         SessionState oldState = state.get();
         setState(SessionState.DISCONNECTED);
@@ -1011,6 +1067,7 @@ public class FixSession implements NetworkHandler {
         String text = textCs != null ? textCs.toString() : null;
         log.info("[{}] Logout received: {}", config.getSessionId(), text);
         reportStageTimingOnLogout();
+        reportReadCap();
 
         SessionState currentState = state.get();
 

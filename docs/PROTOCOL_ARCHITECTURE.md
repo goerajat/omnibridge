@@ -642,6 +642,34 @@ wait for the next event or the select timeout; none does today. A channel withou
 SSL wrapper, channels built by hand in tests) keeps the unconditional wakeup.
 `NetworkEventLoopWakeupTest` counts the wakeups.
 
+**Read sizing.** Before each read the loop asks the handler `getNumBytesToRead(channel)` and
+limits the read to `min(that, free space in the channel's read buffer)`. FIX sessions return
+their read cap (below); OUCH and SBE sessions still return the exact bytes their framing needs.
+FIX used to ask for the 25 header bytes and then the rest of one message: two `read()` calls and
+two select returns per message, with the message waiting a loop iteration in between.
+`FixReader` frames any number of messages per `addData` and keeps a partial message for the next
+one, so one read may now bring several messages and part of another.
+
+**FIX read cap.** One read that brings N messages delays the first reply by about N times the
+listener time (all N are processed before the loop drains their replies), so reads are capped:
+
+```hocon
+fix-engine {
+  read-cap-bytes = 2048        # default; about ten NewOrderSingles
+  sessions = [
+    { session-id = "BULK", ..., read-cap-bytes = 16384 }   # per-session override
+  ]
+}
+```
+
+A read that returns exactly the cap ("cap hit": more data was probably waiting) is counted per
+connection: `FixSession.getReadCapHits()` and the `omnibridge.network.read_cap_reached.total`
+counter. The first hit on a connection logs one WARN; later ones are only counted, since a log
+line per hit on the event loop would cost more than the read. At Logout or disconnect the session
+logs `[<session>] read cap reached N times, cap 2048` to the `com.omnibridge.fix.engine.timing`
+logger. `FixReader`'s buffer is sized to `max(64 KB, cap + max-message-length)`, so it never grows
+on the event loop. `FixSessionReadCapTest` covers several messages and a partial one per read,
+a burst larger than the cap, and the single WARN line.
 
 ### 4.4 Message Sending Pattern
 
@@ -2472,6 +2500,12 @@ scripts\test\run-latency-test.bat 20000 100000 1000 --busy-spin --stages [--pers
 | `--stages` | `-Dfix-engine.stage-timing.enabled=true`; the acceptor's stage report is printed from `acceptor.log` after the run |
 | `--persistence` | adds `latency-{acceptor,initiator}-persistence.conf`: `log-messages = true`, `trace-messages = false` (as the AWS test's `--persistence`) |
 | `--gc` | jstat heap monitoring of the acceptor |
+
+The runner also prints, after the warmup, `  Warmup burst: acks=… first-ack=… p50=… p99=… max=… us,
+read-cap hits initiator=N` (the warmup is unpaced, so this shows the read cap's head-of-line cost),
+and after the RTT lines `  Read cap hits: initiator=N` for the timed phase. The scripts then print
+the acceptor's `read cap reached N times, cap …` line from `acceptor.log` (whole connection,
+warmup included).
 
 Baseline numbers for this machine and the AWS runs they compare with are kept in
 `docs/latency-baseline.md`; AWS runs are appended to `docs/latency-history.jsonl`.
