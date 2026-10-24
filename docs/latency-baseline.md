@@ -326,3 +326,47 @@ cpu 0 only; `--sender-cpu 2`).
   (GC, JIT, Chronicle, admin, the host check), and the order is encoded on the sender thread.
 - On a 4-vCPU host, the sender pinned to its own isolated cpu leaves one cpu for everything else;
   a larger instance would give the sender a whole physical core.
+
+## AWS: stage breakdown, ENA interrupt moderation, busy polling (`316316e`, one stack, persistence on, isolated), µs
+
+Five runs on one stack in this order. The NIC settings were changed live on both trading hosts and
+are not in `options`; the history lines carry them in `note`.
+
+| Run | FIX p50 (actual) | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP |
+|-----|----:|----:|----:|------:|-------:|----:|--------:|----:|
+| stage timing on, NIC defaults | 64.2 | 73.2 | 123.1 | 189 | 435 | 1,016 | 52.1 | 12.1 |
+| NIC defaults | 87.5 | 274.7 | 292.6 | 319 | 382 | 1,833 | 51.4 | (bimodal) |
+| ENA `adaptive-rx off`, `rx-usecs 0` | 65.2 | 73.1 | 108.7 | 143 | 248 | 1,715 | 50.2 | 15.0 |
+| + `busy_read`/`busy_poll` = 50 | 63.9 | 71.7 | 112.1 | 152 | 244 | 1,116 | 38.1 | (25.8) |
+| NIC defaults again | 63.6 | 72.1 | 121.1 | 162 | 250 | 649 | 50.6 | 13.0 |
+
+- **This stack's network was faster** (TCP p50 ~51 µs, against 58–66 on the earlier stacks), so
+  compare within the table.
+- **Interrupt moderation:** ENA's defaults here are adaptive RX on with `rx-usecs 0`. Turning
+  adaptive off changed nothing at p50 (65.2 vs 63.6 µs) and gave p99 −12 µs and p99.9 −19 µs against
+  the final baseline, within what separates runs. Not worth a setting.
+- **Busy polling:** `net.core.busy_read`/`busy_poll` cut sockperf's TCP round trip by 12.5 µs
+  (50.6 → 38.1; sockperf blocks in its receive, so polling the NIC queue replaces the interrupt
+  wake-up) but not the FIX round trip (63.9). The engine already busy-spins on non-blocking reads,
+  so it gets nothing from a kernel that would otherwise wake it, and FIX − TCP stops meaning
+  engine time in that run.
+- **The bimodal run** (p90 275 µs, a second mode ~210 µs above the first) matches run 2 on
+  `6d856d7`; the repeat at the end, with the same settings, was clean. Cause not found: the
+  host checks were clean in both, and moderation was not it (the repeat had it on).
+
+Stage timing, p50 µs (means are close; `--stages` adds a few µs to the round trip):
+
+| Side | send: encode | prepare | queue | persist | write | recv: frame | parse | session | callback |
+|------|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|
+| initiator (order out, ack in) | 0.61 | 0.33 | 0.50 | 0.86 | 3.47 | 0.40 | 0.66 | 0.60 | 0.23 |
+| simulator (order in, ack out) | 0.75 | 0.32 | 4.22 | 0.73 | 2.89 | 0.31 | 0.63 | 0.73 | 3.12 |
+
+- **Socket writes are the largest fixed cost**: 3.5 µs (initiator) and 2.9 µs (simulator) per
+  message, the `write()` syscall through the TCP stack.
+- **Simulator `send.queue` 4.2 µs:** the ExecutionReport is committed to the ring inside the order
+  handler on the event loop and waits there until the loop has finished the callback and its
+  iteration and drains the ring. A message committed on the loop thread could be written
+  directly instead.
+- **Simulator `recv.callback` 3.1 µs:** the exchange simulator's order handler (order book, fill
+  rules, building the ack).
+- Persistence: 0.7–0.9 µs per message per side on send, and part of `recv.session` (0.6–0.7).
