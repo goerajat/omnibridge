@@ -23,6 +23,42 @@ scripts\test\run-latency-test.bat 20000 100000 100 --busy-spin                  
 mvn -Pbenchmarks -pl benchmarks -am package -DskipTests && java -jar benchmarks\target\benchmarks.jar -prof gc
 ```
 
+## Phase 1, items 1 and 2: no selector wakeup, FIX read cap (`e688195`, `d76566a`), µs
+
+Item 1: a commit no longer wakes the selector when the loop busy-spins or when it runs on the
+loop thread. Item 2: FIX reads take up to `read-cap-bytes` (2048), not 25 header bytes and then
+the rest of one message.
+
+This machine was much busier than for the baseline below (browsers, a video call): the
+unchanged code ran at p50 56–80 µs instead of 48–49. So the old jar (`92dd417`, B) and the new
+one (A) ran alternately under the same conditions, same commands and setup as below; compare
+within a pair, not with the older tables. RTT from intended send:
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | mean |
+|-----|----:|----:|----:|----:|------:|-------:|----:|-----:|
+| busy-spin, pair 1, before | 31.8 | 69.6 | 129.9 | 238.1 | 567 | 3,373 | 8,372 | 81.7 |
+| busy-spin, pair 1, after | 20.0 | 54.1 | 111.4 | 207.7 | 444 | 4,309 | 10,117 | 66.2 |
+| busy-spin, pair 2, before | 30.9 | 56.0 | 95.7 | 155.5 | 269 | 487 | 2,234 | 63.5 |
+| busy-spin, pair 2, after | 21.8 | 40.9 | 75.3 | 122.9 | 217 | 391 | 1,640 | 47.9 |
+| no busy-spin, before | 47.0 | 93.1 | 155.3 | 238.1 | 303 | 380 | 1,096 | 103.7 |
+| no busy-spin, after | 37.6 | 86.5 | 177.0 | 278.8 | 382 | 612 | 2,335 | 107.3 |
+| busy-spin, stages on, after | 17.4 | 25.4 | 61.3 | 133.0 | 234 | 1,099 | 2,839 | 35.0 |
+
+- **Busy-spin: p50 −15 µs and min −10 µs in both pairs**, p99 −30 µs. Per round trip that is
+  two `Selector.wakeup()` calls (one per side, each a lock + pipe write on the sending thread,
+  then an extra select return on the loop) and two `read()` calls + two select returns per
+  message per side.
+- **`send.commit_call` (sender time in the ring commit) fell from 3.5 µs mean to 0.04 µs**; the
+  acceptor's `recv.callback`, which commits the ExecutionReport, from 5.9 to 2.0 µs mean.
+- **No busy-spin: p50 −7 µs, tails within noise (higher here).** In normal mode only loop-thread
+  commits skip the wakeup; a blocked `select()` dominates either way.
+- **Read cap hits in the paced phase: 0** on both sides. In the unpaced 20,000-order warmup
+  burst the initiator hit the cap 850–1,300 times and the acceptor 1,120–1,265 (logged once at
+  Logout, never per hit). Burst acks: first 3.6–6.5 ms, p50 2.0–2.5 ms, p99 10–13 ms; that is the
+  burst queueing behind itself (up to the runner's pending-order limit), not the read cap alone.
+- The stages-on run (p50 25 µs) happened to land in a quiet spell; its stage report is the
+  useful part, not its absolute RTT.
+
 ## Current baseline: after the event-loop allocation fix, µs
 
 The first baseline (below, at `7be58cc`) had two problems in the measuring setup itself, found
