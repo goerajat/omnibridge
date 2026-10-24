@@ -491,8 +491,9 @@ public class TcpChannel {
      */
     public void commit(int index) {
         ringBuffer.commit(index);
-        // Wake up selector to send
-        wakeupSelector();
+        // Wake the selector only if the loop may be blocked in select()
+        // (not busy-spinning, and not called on the loop thread)
+        eventLoop.wakeup();
     }
 
     /**
@@ -624,6 +625,23 @@ path of whatever order is in flight). Two rules follow from what JFR found:
 Check new event-loop code with JFR (`-XX:StartFlightRecording=settings=profile`, then
 `jfr print --events jdk.ObjectAllocationSample`): the `NetworkIO-*` thread should show only
 per-message allocation, not allocation per spin.
+
+**Selector wakeups only when the loop may be blocked.** `TcpChannel.commit()` and
+`NetworkEventLoop.execute()` go through `NetworkEventLoop.wakeup()` (package-private; a channel
+learns its loop at registration). `Selector.wakeup()` is a system call (a pipe or eventfd write
+under a lock), and it makes the next select return once more just to consume it, so it is skipped:
+
+- when the loop busy-spins: `selectNow()` never blocks, and the next spin drains the ring;
+- on the loop thread: the loop drains every ring after processing ready keys and after running
+  queued tasks, so anything a callback commits goes out in the same iteration.
+
+Otherwise (normal mode, another thread) the selector is woken as before, so a commit or task
+reaches a loop blocked in `select(timeout)` at once. Code that commits from inside the drain
+itself (a frame handler or outgoing listener) is not covered by the post-drain pass and would
+wait for the next event or the select timeout; none does today. A channel without a loop (the
+SSL wrapper, channels built by hand in tests) keeps the unconditional wakeup.
+`NetworkEventLoopWakeupTest` counts the wakeups.
+
 
 ### 4.4 Message Sending Pattern
 
@@ -2493,8 +2511,8 @@ The three stamps taken on the sending thread travel in 24 extra bytes at the end
 ring record, past the message's own `max-message-length` (the claim is enlarged only when timing
 is on), so each message carries its own stamps whatever thread sent it; they are never written
 to the socket. The event loop writes each completed row. The time the sending thread spends in
-the ring commit itself (commit + `selector.wakeup()`) is recorded separately as
-`send.commit_call`.
+the ring commit itself (commit, plus `selector.wakeup()` when the loop may be blocked) is
+recorded separately as `send.commit_call`.
 
 **Report** (`StageTimingReport`): deltas between consecutive stamps go into HdrHistograms, one
 line per stage, `stage <name> mean=… p50=… p90=… p99=… p99.9=… max=…` (µs). Means add up along

@@ -94,6 +94,8 @@ public class TcpChannel {
     private final ControlledMessageHandler drainHandler = this::drainRecord;
 
     private SelectionKey selectionKey;
+    // The loop that drains this channel; set at registration, null for channels not on a loop
+    private NetworkEventLoop eventLoop;
     private volatile boolean connected;
     private volatile boolean closed;
     private Object attachment;
@@ -216,6 +218,13 @@ public class TcpChannel {
     }
 
     /**
+     * Set the event loop that drains this channel's ring buffer.
+     */
+    void setEventLoop(NetworkEventLoop eventLoop) {
+        this.eventLoop = eventLoop;
+    }
+
+    /**
      * Mark the channel as connected.
      */
     void markConnected() {
@@ -332,7 +341,10 @@ public class TcpChannel {
     public void commit(int index) {
         ringBuffer.commit(index);
         // Wake up the selector so the event loop can drain the ring buffer immediately
-        if (selectionKey != null && selectionKey.selector() != null) {
+        NetworkEventLoop loop = eventLoop;
+        if (loop != null) {
+            loop.wakeup();
+        } else if (selectionKey != null && selectionKey.selector() != null) {
             selectionKey.selector().wakeup();
         }
     }

@@ -20,6 +20,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /**
@@ -68,7 +69,10 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     private int drainKeyCount;
     private boolean drainKeysStale = true;
 
-    private Thread eventLoopThread;
+    // Selector wakeups requested for work queued from outside the loop (commits, tasks)
+    private final LongAdder selectorWakeups = new LongAdder();
+
+    private volatile Thread eventLoopThread;
     private NetworkHandler defaultHandler;
     private ComponentProvider componentProvider;
 
@@ -263,8 +267,31 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             task.run();
         } else {
             taskQueue.add(task);
-            selector.wakeup();
+            wakeup();
         }
+    }
+
+    /**
+     * Wake the selector so the loop picks up work queued from another thread
+     * (a ring buffer commit or a task).
+     *
+     * <p>No-op when the loop busy-spins (selectNow() never blocks) or when called on the
+     * loop thread, which drains ring buffers after processing keys and tasks. A wakeup is
+     * a system call plus an extra select() return, once per message otherwise.</p>
+     */
+    void wakeup() {
+        if (busySpinMode || Thread.currentThread() == eventLoopThread) {
+            return;
+        }
+        selectorWakeups.increment();
+        selector.wakeup();
+    }
+
+    /**
+     * Number of selector wakeups requested through {@link #wakeup()} (for tests).
+     */
+    long getSelectorWakeupCount() {
+        return selectorWakeups.sum();
     }
 
     /**
@@ -374,6 +401,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                                 new ChannelContext(channel, effectiveHandler));
                         drainKeysStale = true;
                         channel.setSelectionKey(key);
+                        channel.setEventLoop(this);
                         channel.markConnected();
                         effectiveHandler.onConnected(channel);
                     }
@@ -748,6 +776,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                     new ChannelContext(channel, acceptor.getHandler()));
             drainKeysStale = true;
             channel.setSelectionKey(channelKey);
+            channel.setEventLoop(this);
             channel.markConnected();
 
             log.debug("Accepted connection from {}", channel.getRemoteAddress());
@@ -776,6 +805,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                     key.interestOps(SelectionKey.OP_READ);
                     key.attach(new ChannelContext(channel, ctx.handler));
                     channel.setSelectionKey(key);
+                    channel.setEventLoop(this);
                     channel.markConnected();
 
                     log.debug("Connected to {}", channel.getRemoteAddress());
