@@ -290,3 +290,37 @@ except the "actual" rows:
   18.2 µs not isolated and 15.3 µs isolated at `ec21814`. Different stacks for `b1e881e`, so
   roughly −6 µs from item 3. The exchange simulator's own order handler was not measured for allocation (only
   the engine paths and the sample acceptor were changed).
+
+## AWS: simulator without Aeron, pinned sender (`028bdef`, one stack, persistence on, 20k + 100k at 1,000/s), µs
+
+All three runs on one stack, event-loop cpus isolated as provisioned. "Chronicle only": the
+simulator stores to its local Chronicle queue (same path) without publishing each message to the
+Aeron remote store (`--simulator-store chronicle`). "Pinned sender": the initiator's sending
+(pacer) thread pinned to cpu 2, isolated too (`latency-host-tuning.sh apply 3 2`, housekeeping on
+cpu 0 only; `--sender-cpu 2`).
+
+| Run | Column | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 |
+|-----|--------|----:|----:|----:|----:|------:|-------:|----:|--------:|
+| baseline (Aeron, sender unpinned) | intended | 64.7 | 78.7 | 96.1 | 147.2 | 285 | 2,822 | 2,961 | 65.8 |
+| | actual | 64.4 | 78.5 | 95.9 | 146.3 | 228 | 385 | 966 | |
+| | send slip | | 0.21 | | 0.82 | 6.3 | 2,699 | 2,783 | |
+| Chronicle only | intended | 63.8 | 79.1 | 95.7 | 141.8 | 1,101 | 3,992 | 6,226 | 62.4 |
+| | actual | 63.8 | 78.9 | 95.4 | 139.8 | 228 | 379 | 2,861 | |
+| | send slip | | 0.16 | | 0.87 | 870 | 3,844 | 5,988 | |
+| pinned sender | intended | 65.4 | 81.3 | 99.2 | 143.0 | 222 | 385 | 1,758 | 61.1 |
+| | actual | 65.2 | 81.1 | 99.0 | 142.7 | 222 | 384 | 1,758 | |
+| | send slip | | 0.21 | | 0.76 | 2.1 | 6.9 | 307 | |
+
+- **Dropping the Aeron publish changes nothing measurable.** From the actual send the two runs
+  match to within 0.5 µs up to p99.99 (p50 78.9 vs 78.5, p99.9 228 vs 228); the publish is an
+  encode and a copy into the publication buffer, and the media driver's network send is off the
+  event loop. Its intended-send tail is the unpinned sender again (slip p99.9 870 µs in that run).
+- **Pinning the sender removes the intended-send tail:** send slip p99.99 2,699 → 6.9 µs, max
+  2,783 → 307 µs; RTT from intended send p99.99 2,822 → 385 µs and max 2,961 → 1,758 µs, so
+  intended and actual now agree (p99.99 385 vs 384). The remaining max (1.8 ms) is on the round
+  trip itself.
+- **p50 +2.6 µs with the pinned sender** (actual 81.1 vs 78.5). Within stack noise so far, but a
+  candidate cause: cpu 2 is the hyperthread sibling of cpu 0, which now carries all housekeeping
+  (GC, JIT, Chronicle, admin, the host check), and the order is encoded on the sender thread.
+- On a 4-vCPU host, the sender pinned to its own isolated cpu leaves one cpu for everything else;
+  a larger instance would give the sender a whole physical core.
