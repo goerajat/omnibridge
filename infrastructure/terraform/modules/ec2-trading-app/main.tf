@@ -128,6 +128,9 @@ resource "aws_instance" "trading_app" {
     environment = var.environment
     ebs_device  = var.ebs_device_name
     admin_port  = var.app_type == "fix" ? "8081" : "8082"
+    latency_cpu = var.latency_cpu
+    # Embedded so the host has it at first boot; LF in case of a CRLF checkout
+    tuning_script = replace(file("${path.module}/../../../../scripts/deploy/latency-host-tuning.sh"), "\r\n", "\n")
   }))
 
   tags = {

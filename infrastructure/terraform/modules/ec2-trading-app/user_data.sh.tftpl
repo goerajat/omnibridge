@@ -72,4 +72,39 @@ cat > /etc/security/limits.d/99-omnibridge.conf << 'LIMITS'
 *  hard  memlock  unlimited
 LIMITS
 
+# -----------------------------------------------------------------------------
+# Event-loop core isolation (scripts/deploy/latency-host-tuning.sh)
+# -----------------------------------------------------------------------------
+# The engines pin their event loop to cpu ${latency_cpu}. Isolating it and its
+# hyperthread sibling needs kernel parameters, so the host reboots once; the
+# completion line below is then written after that reboot, which is what
+# wait-for-hosts.sh waits for.
+
+%{ if latency_cpu > 0 ~}
+cat > /usr/local/sbin/latency-host-tuning.sh << 'TUNING'
+${tuning_script}
+TUNING
+chmod 755 /usr/local/sbin/latency-host-tuning.sh
+if /usr/local/sbin/latency-host-tuning.sh apply ${latency_cpu}; then
+  cat > /etc/systemd/system/omnibridge-bootstrap-done.service << 'UNIT'
+[Unit]
+Description=OmniBridge: bootstrap complete after the core isolation reboot
+After=omnibridge-irq-affinity.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "=== OmniBridge ${app_type} host bootstrap complete (rebooted for core isolation) ===" >> /var/log/omnibridge-bootstrap.log; systemctl disable omnibridge-bootstrap-done.service'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl enable omnibridge-bootstrap-done.service
+  echo "=== Rebooting in 1 minute for the kernel command line $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+  # Scheduled, so that cloud-init finishes and does not run this script again
+  shutdown -r +1
+  exit 0
+fi
+echo "WARNING: core isolation not applied"
+%{ endif ~}
+
 echo "=== OmniBridge ${app_type} host bootstrap complete $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="

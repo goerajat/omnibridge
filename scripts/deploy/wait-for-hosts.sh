@@ -172,23 +172,32 @@ check_host() {
     done
     echo "ok"
 
+    # The trading hosts reboot once after cloud-init (core isolation, see
+    # user_data.sh.tftpl) and write the completion line after that reboot, so
+    # a missing line or a dropped connection is retried until the deadline
     printf "[3/3] %-11s cloud-init and /opt ... " "$label"
-    status=$(run_on "$host" "$jump" "bash -s" <<< "$REMOTE_CHECK" 2>/dev/null | tail -1)
+    local ci opt bootstrap warn problems
+    while true; do
+        status=$(run_on "$host" "$jump" "bash -s" <<< "$REMOTE_CHECK" 2>/dev/null | tail -1)
+        ci=$(sed -n 's/.*cloud-init=\([^ ]*\).*/\1/p' <<< "$status")
+        opt=$(sed -n 's/.*opt=\([^ ]*\).*/\1/p' <<< "$status")
+        bootstrap=$(sed -n 's/.*bootstrap=\([0-9]*\).*/\1/p' <<< "$status")
+        warn=$(sed -n 's/.*warn=\([0-9]*\).*/\1/p' <<< "$status")
+
+        problems=()
+        [ "$ci" = "done" ] || problems+=("cloud-init ${ci:-unreachable}")
+        if [ "$needs_volume" = true ]; then
+            [ "${bootstrap:-0}" -ge 1 ] || problems+=("bootstrap log has no completion line")
+            [[ "$opt" == /dev/nvme* || "$opt" == /dev/xvd* ]] || problems+=("data volume not mounted at /opt ($opt)")
+            [ "${warn:-0}" -eq 0 ] || problems+=("bootstrap logged a warning")
+        fi
+        # A warning is final; anything else may still be the reboot
+        if [ ${#problems[@]} -eq 0 ] || [ "${warn:-0}" -gt 0 ] || [ "$(remaining)" -le 0 ]; then
+            break
+        fi
+        sleep 10
+    done
     echo "$status"
-
-    local ci opt bootstrap warn
-    ci=$(sed -n 's/.*cloud-init=\([^ ]*\).*/\1/p' <<< "$status")
-    opt=$(sed -n 's/.*opt=\([^ ]*\).*/\1/p' <<< "$status")
-    bootstrap=$(sed -n 's/.*bootstrap=\([0-9]*\).*/\1/p' <<< "$status")
-    warn=$(sed -n 's/.*warn=\([0-9]*\).*/\1/p' <<< "$status")
-
-    local problems=()
-    [ "$ci" = "done" ] || problems+=("cloud-init $ci")
-    if [ "$needs_volume" = true ]; then
-        [ "${bootstrap:-0}" -ge 1 ] || problems+=("bootstrap log has no completion line")
-        [[ "$opt" == /dev/nvme* || "$opt" == /dev/xvd* ]] || problems+=("data volume not mounted at /opt ($opt)")
-        [ "${warn:-0}" -eq 0 ] || problems+=("bootstrap logged a warning")
-    fi
 
     if [ ${#problems[@]} -eq 0 ]; then
         RESULTS+=("$(printf "OK    %-11s %s" "$label" "$status")")

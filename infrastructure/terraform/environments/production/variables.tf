@@ -93,3 +93,9 @@ variable "slack_webhook_url" {
   sensitive   = true
   default     = ""
 }
+
+variable "latency_cpu" {
+  description = "Event-loop cpu of the FIX and OUCH hosts, isolated with its hyperthread sibling at boot; 0 disables (matches --initiator-cpu/--simulator-cpu of run-aws-latency-test.sh)"
+  type        = number
+  default     = 3
+}

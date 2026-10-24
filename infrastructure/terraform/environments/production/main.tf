@@ -98,6 +98,7 @@ module "fix_acceptor" {
   security_group_id = module.vpc.trading_security_group_id
   placement_group   = aws_placement_group.trading.name
   app_type          = "fix"
+  latency_cpu       = var.latency_cpu
   app_version       = var.app_version
   s3_bucket         = var.s3_artifact_bucket
   ebs_volume_size   = 100
@@ -120,6 +121,7 @@ module "ouch_acceptor" {
   security_group_id = module.vpc.trading_security_group_id
   placement_group   = aws_placement_group.trading.name
   app_type          = "ouch"
+  latency_cpu       = var.latency_cpu
   app_version       = var.app_version
   s3_bucket         = var.s3_artifact_bucket
   ebs_volume_size   = 100

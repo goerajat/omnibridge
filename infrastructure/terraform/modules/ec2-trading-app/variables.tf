@@ -99,3 +99,9 @@ variable "ebs_device_name" {
   type        = string
   default     = "/dev/xvdf"
 }
+
+variable "latency_cpu" {
+  description = "Event-loop cpu to isolate with its hyperthread sibling at boot (scripts/deploy/latency-host-tuning.sh); 0 leaves the host untuned"
+  type        = number
+  default     = 3
+}
