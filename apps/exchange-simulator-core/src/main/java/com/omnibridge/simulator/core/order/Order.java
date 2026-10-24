@@ -1,6 +1,6 @@
 package com.omnibridge.simulator.core.order;
 
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
  * Protocol-agnostic order representation.
@@ -23,7 +23,9 @@ public class Order {
     private final long createTime;
 
     // Mutable state
-    private final AtomicReference<OrderState> state;
+    private volatile OrderState state;
+    private static final AtomicReferenceFieldUpdater<Order, OrderState> STATE =
+            AtomicReferenceFieldUpdater.newUpdater(Order.class, OrderState.class, "state");
     private volatile double filledQty;
     private volatile double leavesQty;
     private volatile double avgFillPrice;
@@ -31,19 +33,26 @@ public class Order {
     private volatile String rejectReason;
 
     private Order(Builder builder) {
-        this.orderId = builder.orderId;
-        this.clientOrderId = builder.clientOrderId;
-        this.symbol = builder.symbol;
-        this.side = builder.side;
-        this.orderType = builder.orderType;
-        this.originalQty = builder.qty;
-        this.price = builder.price;
-        this.sessionId = builder.sessionId;
-        this.protocol = builder.protocol;
+        this(builder.orderId, builder.clientOrderId, builder.symbol, builder.side, builder.orderType,
+                builder.qty, builder.price, builder.sessionId, builder.protocol);
+    }
+
+    /** The order path uses this directly: the order is the only object it allocates. */
+    public Order(long orderId, String clientOrderId, String symbol, OrderSide side, OrderType orderType,
+                 double qty, double price, String sessionId, String protocol) {
+        this.orderId = orderId;
+        this.clientOrderId = clientOrderId;
+        this.symbol = symbol;
+        this.side = side;
+        this.orderType = orderType;
+        this.originalQty = qty;
+        this.price = price;
+        this.sessionId = sessionId;
+        this.protocol = protocol;
         this.createTime = System.currentTimeMillis();
-        this.state = new AtomicReference<>(OrderState.PENDING);
+        this.state = OrderState.PENDING;
         this.filledQty = 0;
-        this.leavesQty = builder.qty;
+        this.leavesQty = qty;
         this.avgFillPrice = 0;
         this.lastUpdateTime = this.createTime;
     }
@@ -91,7 +100,7 @@ public class Order {
     }
 
     public OrderState getState() {
-        return state.get();
+        return state;
     }
 
     public double getFilledQty() {
@@ -122,7 +131,7 @@ public class Order {
      * @return true if state changed, false if order was not in PENDING state
      */
     public boolean accept() {
-        boolean changed = state.compareAndSet(OrderState.PENDING, OrderState.NEW);
+        boolean changed = STATE.compareAndSet(this, OrderState.PENDING, OrderState.NEW);
         if (changed) {
             lastUpdateTime = System.currentTimeMillis();
         }
@@ -137,7 +146,7 @@ public class Order {
      * @return true if fill applied, false if order not in fillable state
      */
     public synchronized boolean fill(double fillQty, double fillPrice) {
-        OrderState current = state.get();
+        OrderState current = state;
         if (current != OrderState.NEW && current != OrderState.PARTIALLY_FILLED) {
             return false;
         }
@@ -152,9 +161,9 @@ public class Order {
         // Update state
         if (leavesQty <= 0) {
             leavesQty = 0;
-            state.set(OrderState.FILLED);
+            state = OrderState.FILLED;
         } else {
-            state.set(OrderState.PARTIALLY_FILLED);
+            state = OrderState.PARTIALLY_FILLED;
         }
 
         return true;
@@ -166,9 +175,9 @@ public class Order {
      * @return true if canceled, false if order not in cancelable state
      */
     public boolean cancel() {
-        OrderState current = state.get();
+        OrderState current = state;
         if (current == OrderState.NEW || current == OrderState.PARTIALLY_FILLED) {
-            state.set(OrderState.CANCELED);
+            state = OrderState.CANCELED;
             lastUpdateTime = System.currentTimeMillis();
             return true;
         }
@@ -182,10 +191,10 @@ public class Order {
      * @return true if rejected, false if order not in rejectable state
      */
     public boolean reject(String reason) {
-        OrderState current = state.get();
+        OrderState current = state;
         if (current == OrderState.PENDING) {
             this.rejectReason = reason;
-            state.set(OrderState.REJECTED);
+            state = OrderState.REJECTED;
             lastUpdateTime = System.currentTimeMillis();
             return true;
         }
@@ -198,9 +207,9 @@ public class Order {
      * @return true if marked as replaced, false if order not in replaceable state
      */
     public boolean markReplaced() {
-        OrderState current = state.get();
+        OrderState current = state;
         if (current == OrderState.NEW || current == OrderState.PARTIALLY_FILLED) {
-            state.set(OrderState.REPLACED);
+            state = OrderState.REPLACED;
             lastUpdateTime = System.currentTimeMillis();
             return true;
         }
@@ -277,6 +286,6 @@ public class Order {
     @Override
     public String toString() {
         return String.format("Order[id=%d, clOrdId=%s, symbol=%s, side=%s, qty=%.0f, price=%.2f, state=%s, filled=%.0f]",
-                orderId, clientOrderId, symbol, side, originalQty, price, state.get(), filledQty);
+                orderId, clientOrderId, symbol, side, originalQty, price, state, filledQty);
     }
 }

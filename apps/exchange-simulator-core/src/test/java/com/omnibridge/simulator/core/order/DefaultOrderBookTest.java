@@ -33,8 +33,12 @@ class DefaultOrderBookTest {
 
     @Test
     void defaultBookIsAllocatedForAMillionOrders() throws Exception {
-        List<Integer> lengths = tableLengths(new DefaultOrderBook());
-        assertEquals(3, lengths.size(), "maps with the ClOrdID-only index");
+        DefaultOrderBook book = new DefaultOrderBook();
+        assertEquals(2, tableLengths(book).size(), "maps allocated at construction, with the ClOrdID-only index");
+        // A session's ClOrdID map is allocated at its first order, at the same size
+        assertTrue(book.addOrder(order(1, "ORD1", "S1")));
+        List<Integer> lengths = tableLengths(book);
+        assertEquals(3, lengths.size(), "maps after the first order");
         for (int len : lengths) {
             // ConcurrentHashMap grows at 3/4 of its table
             assertTrue(len * 3L / 4 >= DefaultOrderBook.DEFAULT_EXPECTED_ORDERS,
@@ -47,8 +51,9 @@ class DefaultOrderBookTest {
         int expected = 200_000;
         for (boolean demo : new boolean[] {true, false}) {
             DefaultOrderBook book = new DefaultOrderBook(expected, demo);
+            assertTrue(book.addOrder(order(1, "ORD1", "S1")));
             List<Integer> before = tableLengths(book);
-            for (int i = 1; i <= expected; i++) {
+            for (int i = 2; i <= expected; i++) {
                 assertTrue(book.addOrder(order(i, "ORD" + i, "S1")));
             }
             assertEquals(before, tableLengths(book), "table lengths after " + expected + " orders, demo=" + demo);
@@ -59,7 +64,7 @@ class DefaultOrderBookTest {
     @Test
     void withoutTheDemoIndexLookupsStillWork() throws Exception {
         DefaultOrderBook book = new DefaultOrderBook(1024, false);
-        assertEquals(2, tableLengths(book).size(), "no ClOrdID-only map outside demo mode");
+        assertEquals(1, tableLengths(book).size(), "no ClOrdID-only map outside demo mode");
 
         Order a = order(1, "ORD1", "S1");
         Order b = order(2, "ORD1", "S2");
@@ -95,7 +100,11 @@ class DefaultOrderBookTest {
         assertSame(b, book.getOrderByClientId("ORD1").orElseThrow());
     }
 
-    /** Lengths of the backing tables of every ConcurrentHashMap field of the book. */
+    /**
+     * Lengths of the backing tables of the book's order maps: every ConcurrentHashMap field,
+     * and the per-session maps inside the one that holds maps (the outer map, keyed by session,
+     * stays small and is left out).
+     */
     static List<Integer> tableLengths(DefaultOrderBook book) throws Exception {
         Field table = ConcurrentHashMap.class.getDeclaredField("table");
         table.setAccessible(true);
@@ -103,13 +112,25 @@ class DefaultOrderBookTest {
         for (Field f : DefaultOrderBook.class.getDeclaredFields()) {
             if (Map.class.isAssignableFrom(f.getType())) {
                 f.setAccessible(true);
-                Object map = f.get(book);
-                if (map != null) {
-                    Object[] t = (Object[]) table.get(map);
-                    lengths.add(t == null ? 0 : t.length);
+                Map<?, ?> map = (Map<?, ?>) f.get(book);
+                if (map == null) {
+                    continue;
+                }
+                boolean holdsMaps = !map.isEmpty() && map.values().iterator().next() instanceof Map;
+                if (holdsMaps) {
+                    for (Object inner : map.values()) {
+                        lengths.add(tableLength(table, inner));
+                    }
+                } else if (!f.getGenericType().getTypeName().contains("Map<java.lang.String, java.util.Map")) {
+                    lengths.add(tableLength(table, map));
                 }
             }
         }
         return lengths;
+    }
+
+    private static int tableLength(Field table, Object map) throws Exception {
+        Object[] t = (Object[]) table.get(map);
+        return t == null ? 0 : t.length;
     }
 }

@@ -30,9 +30,9 @@ public class FixResponseSender implements ResponseSender<FixSession> {
                 return false;
             }
 
-            execReport.setField(FixTags.OrderID, String.valueOf(order.getOrderId()));
+            execReport.setField(FixTags.OrderID, order.getOrderId());
             execReport.setField(FixTags.ClOrdID, order.getClientOrderId());
-            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC", execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }
@@ -68,9 +68,9 @@ public class FixResponseSender implements ResponseSender<FixSession> {
             char execType = decision.isFullFill() ? FixTags.EXEC_TYPE_FILL : FixTags.EXEC_TYPE_PARTIAL_FILL;
             char ordStatus = order.getLeavesQty() <= 0 ? FixTags.ORD_STATUS_FILLED : FixTags.ORD_STATUS_PARTIALLY_FILLED;
 
-            execReport.setField(FixTags.OrderID, String.valueOf(order.getOrderId()));
+            execReport.setField(FixTags.OrderID, order.getOrderId());
             execReport.setField(FixTags.ClOrdID, order.getClientOrderId());
-            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC", execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }
@@ -105,9 +105,9 @@ public class FixResponseSender implements ResponseSender<FixSession> {
                 return false;
             }
 
-            execReport.setField(FixTags.OrderID, String.valueOf(order.getOrderId()));
+            execReport.setField(FixTags.OrderID, order.getOrderId());
             execReport.setField(FixTags.ClOrdID, order.getClientOrderId());
-            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC", execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }
@@ -140,10 +140,10 @@ public class FixResponseSender implements ResponseSender<FixSession> {
                 return false;
             }
 
-            execReport.setField(FixTags.OrderID, String.valueOf(order.getOrderId()));
+            execReport.setField(FixTags.OrderID, order.getOrderId());
             execReport.setField(FixTags.ClOrdID, clOrdId);
             execReport.setField(41, order.getClientOrderId()); // OrigClOrdID
-            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC", execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }
@@ -176,7 +176,7 @@ public class FixResponseSender implements ResponseSender<FixSession> {
             execReport.setField(FixTags.OrderID, String.valueOf(newOrder.getOrderId()));
             execReport.setField(FixTags.ClOrdID, newOrder.getClientOrderId());
             execReport.setField(41, oldOrder.getClientOrderId()); // OrigClOrdID
-            execReport.setField(FixTags.ExecID, "EXEC" + execIdCounter.getAndIncrement());
+            execReport.setField(FixTags.ExecID, "EXEC", execIdCounter.getAndIncrement());
             if (session.requiresExecTransType()) {
                 execReport.setField(FixTags.ExecTransType, FixTags.EXEC_TRANS_TYPE_NEW);
             }

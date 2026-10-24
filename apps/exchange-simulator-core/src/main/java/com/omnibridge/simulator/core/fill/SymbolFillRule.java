@@ -12,6 +12,11 @@ public class SymbolFillRule implements FillRule {
 
     private final String symbolPattern;
     private final Pattern regex;
+    // "ABC", "ABC*", "*ABC" and "AB*C" are matched without the regex (a Matcher per call);
+    // prefix null means the pattern needs the regex, suffix null means an exact symbol
+    private final String prefix;
+    private final String suffix;
+    private static final FillDecision NO_FILL = FillDecision.noFill("Below fill probability threshold");
     private final double fillProbability;
     private final double partialFillProbability;
     private final double minPartialFillRatio;
@@ -22,6 +27,11 @@ public class SymbolFillRule implements FillRule {
     private SymbolFillRule(Builder builder) {
         this.symbolPattern = builder.symbolPattern;
         this.regex = patternToRegex(builder.symbolPattern);
+        String pattern = builder.symbolPattern;
+        int star = pattern.indexOf('*');
+        boolean simple = pattern.indexOf('?') < 0 && (star < 0 || pattern.indexOf('*', star + 1) < 0);
+        this.prefix = !simple ? null : star < 0 ? pattern : pattern.substring(0, star);
+        this.suffix = !simple || star < 0 ? null : pattern.substring(star + 1);
         this.fillProbability = builder.fillProbability;
         this.partialFillProbability = builder.partialFillProbability;
         this.minPartialFillRatio = builder.minPartialFillRatio;
@@ -32,14 +42,23 @@ public class SymbolFillRule implements FillRule {
 
     @Override
     public boolean matches(Order order) {
-        return regex.matcher(order.getSymbol()).matches();
+        String symbol = order.getSymbol();
+        if (prefix == null) {
+            return regex.matcher(symbol).matches();
+        }
+        if (suffix == null) {
+            return symbol.equalsIgnoreCase(prefix);
+        }
+        return symbol.length() >= prefix.length() + suffix.length()
+                && symbol.regionMatches(true, 0, prefix, 0, prefix.length())
+                && symbol.regionMatches(true, symbol.length() - suffix.length(), suffix, 0, suffix.length());
     }
 
     @Override
     public FillDecision evaluate(Order order) {
         // Check if we should fill at all
         if (random.nextDouble() >= fillProbability) {
-            return FillDecision.noFill("Below fill probability threshold");
+            return NO_FILL;
         }
 
         double fillPrice = order.getPrice() > 0 ? order.getPrice() : 100.0;

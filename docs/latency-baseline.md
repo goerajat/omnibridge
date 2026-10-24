@@ -436,3 +436,18 @@ FIX − TCP from the actual-send p50 (72.8 and 65.3). This stack's network was 5
 of the 7.5 µs p50 drop is the network; the engines' share fell about 2 µs, and p90/p99/p99.9 fell
 12.7/12.2/58 µs. Without the fill the simulator's loop is free sooner after each ack, which fits the
 lower p90 to p99.9; one run, so the size of that gain is not firm.
+
+## Simulator order path: allocation per order (`SimulatorAllocationTest`, local)
+
+The exchange simulator's `handleNewOrder` + ack, measured like the sample acceptor
+(`ThreadMXBean` allocated bytes over 20k orders after 30k warm-up, Symbol NOFILL):
+
+| | bytes per order |
+|---|---:|
+| before | 1,076 |
+| after (`Order` constructor, symbol cache, no `Matcher`, shared no-fill decision, numeric OrderID and prefixed ExecID, per-session ClOrdID maps, guarded debug logs, no `AtomicReference`, `OrderType` table) | 312 |
+
+The 312 B are the retained order: `Order` 112, ClOrdID `String` 24 + 32 + the 32 B copy
+`String`'s constructor makes from the off-heap bytes, `Long` key 16, two `ConcurrentHashMap`
+nodes 64. At 1,000 orders/s that is 0.3 MB/s, against 1 MB/s before; the garbage per order is now
+the one 32 B copy. Not yet measured on AWS.

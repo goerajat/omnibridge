@@ -22,6 +22,15 @@ public enum OrderType {
 
     private final char fixValue;
 
+    // values() clones the array on every call; the order path looks up by char instead
+    private static final OrderType[] BY_FIX_VALUE = new OrderType[128];
+
+    static {
+        for (OrderType type : values()) {
+            BY_FIX_VALUE[type.fixValue] = type;
+        }
+    }
+
     OrderType(char fixValue) {
         this.fixValue = fixValue;
     }
@@ -31,12 +40,11 @@ public enum OrderType {
     }
 
     public static OrderType fromFixValue(char value) {
-        for (OrderType type : values()) {
-            if (type.fixValue == value) {
-                return type;
-            }
+        OrderType type = value < BY_FIX_VALUE.length ? BY_FIX_VALUE[value] : null;
+        if (type == null) {
+            throw new IllegalArgumentException("Unknown order type: " + value);
         }
-        throw new IllegalArgumentException("Unknown order type: " + value);
+        return type;
     }
 
     public static OrderType fromOuchType(char type) {

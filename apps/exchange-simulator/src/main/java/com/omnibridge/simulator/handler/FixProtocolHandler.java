@@ -90,9 +90,11 @@ public class FixProtocolHandler implements MessageListener {
         long orderId = orderIdGenerator.nextId();
         Order order = adapter.adapt(message, session, orderId);
 
-        log.debug("New FIX order: clOrdId={}, symbol={}, side={}, qty={}, price={}",
-                order.getClientOrderId(), order.getSymbol(), order.getSide(),
-                order.getOriginalQty(), order.getPrice());
+        if (log.isDebugEnabled()) {   // the varargs box qty and price
+            log.debug("New FIX order: clOrdId={}, symbol={}, side={}, qty={}, price={}",
+                    order.getClientOrderId(), order.getSymbol(), order.getSide(),
+                    order.getOriginalQty(), order.getPrice());
+        }
 
         // Track incoming message
         if (tracker != null && tracker.isEnabled()) {
@@ -265,8 +267,10 @@ public class FixProtocolHandler implements MessageListener {
         if (order.fill(decision.getFillQty(), decision.getFillPrice())) {
             ordersFilled.incrementAndGet();
             responseSender.sendFill(session, order, decision, execId);
-            log.debug("Order filled: clOrdId={}, qty={}, price={}",
-                    order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            if (log.isDebugEnabled()) {
+                log.debug("Order filled: clOrdId={}, qty={}, price={}",
+                        order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            }
 
             if (tracker != null && tracker.isEnabled()) {
                 String execType = decision.isFullFill() ? "FILL" : "PARTIAL_FILL";

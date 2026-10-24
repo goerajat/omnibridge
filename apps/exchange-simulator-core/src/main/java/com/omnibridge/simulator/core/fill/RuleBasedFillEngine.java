@@ -21,7 +21,8 @@ public class RuleBasedFillEngine implements FillEngine {
     @Override
     public FillDecision evaluate(Order order) {
         // Evaluate rules in priority order (highest first)
-        for (FillRule rule : rules) {
+        for (int i = 0, n = rules.size(); i < n; i++) {
+            FillRule rule = rules.get(i);
             if (rule.matches(order)) {
                 FillDecision decision = rule.evaluate(order);
                 log.debug("Order {} matched rule {}: {}", order.getClientOrderId(), rule, decision);

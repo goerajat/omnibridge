@@ -21,17 +21,30 @@ public class FixOrderAdapter implements OrderAdapter<IncomingFixMessage, FixSess
         char ordType = message.getChar(FixTags.OrdType);
         double price = message.getDouble(FixTags.Price);
 
-        return Order.builder()
-                .orderId(orderId)
-                .clientOrderId(clOrdId != null ? clOrdId.toString() : null)
-                .symbol(symbol != null ? symbol.toString() : null)
-                .side(OrderSide.fromFixValue(side))
-                .orderType(OrderType.fromFixValue(ordType))
-                .qty(orderQty)
-                .price(price)
-                .sessionId(session.getConfig().getSessionId())
-                .protocol(getProtocol())
-                .build();
+        return new Order(orderId, clOrdId != null ? clOrdId.toString() : null, symbolOf(symbol),
+                OrderSide.fromFixValue(side), OrderType.fromFixValue(ordType), orderQty, price,
+                session.getConfig().getSessionId(), getProtocol());
+    }
+
+    /** Symbols seen so far by their characters: a repeated symbol costs no String. */
+    private final String[] symbolCache = new String[1024];
+
+    private String symbolOf(CharSequence symbol) {
+        if (symbol == null) {
+            return null;
+        }
+        int hash = 0;
+        for (int i = 0, n = symbol.length(); i < n; i++) {
+            hash = 31 * hash + symbol.charAt(i);
+        }
+        int slot = hash & (symbolCache.length - 1);
+        String cached = symbolCache[slot];
+        if (cached != null && cached.contentEquals(symbol)) {
+            return cached;
+        }
+        String fresh = symbol.toString();
+        symbolCache[slot] = fresh;
+        return fresh;
     }
 
     /**

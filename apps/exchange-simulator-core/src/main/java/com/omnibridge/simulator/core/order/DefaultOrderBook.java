@@ -26,8 +26,11 @@ public class DefaultOrderBook implements OrderBook {
     // null unless enabled. The last order wins when sessions reuse a ClOrdID.
     private final Map<String, Order> ordersByClientId;
 
-    // Composite key index for client order ID + session ID (cancel/replace lookups)
-    private final Map<String, Order> ordersByClientIdAndSession;
+    // Client order ID per session (cancel/replace lookups): a map per session, so that adding
+    // an order builds no composite key. Each session's map is sized like the book, when its
+    // first order arrives.
+    private final Map<String, Map<String, Order>> ordersBySessionAndClientId = new ConcurrentHashMap<>();
+    private final int expectedOrders;
 
     /**
      * A book for {@link #DEFAULT_EXPECTED_ORDERS} orders, with the ClOrdID-only index.
@@ -44,7 +47,7 @@ public class DefaultOrderBook implements OrderBook {
     public DefaultOrderBook(int expectedOrders, boolean indexByClientIdAlone) {
         this.ordersByOrderId = allocated(expectedOrders, -1L);
         this.ordersByClientId = indexByClientIdAlone ? allocated(expectedOrders, "") : null;
-        this.ordersByClientIdAndSession = allocated(expectedOrders, "");
+        this.expectedOrders = expectedOrders;
     }
 
     /**
@@ -71,8 +74,7 @@ public class DefaultOrderBook implements OrderBook {
             ordersByClientId.put(order.getClientOrderId(), order);
         }
 
-        String compositeKey = makeCompositeKey(order.getClientOrderId(), order.getSessionId());
-        ordersByClientIdAndSession.put(compositeKey, order);
+        sessionOrders(order.getSessionId(), true).put(order.getClientOrderId(), order);
 
         return true;
     }
@@ -99,8 +101,8 @@ public class DefaultOrderBook implements OrderBook {
 
     @Override
     public Optional<Order> getOrderByClientId(String clientOrderId, String sessionId) {
-        String compositeKey = makeCompositeKey(clientOrderId, sessionId);
-        return Optional.ofNullable(ordersByClientIdAndSession.get(compositeKey));
+        Map<String, Order> sessionOrders = sessionOrders(sessionId, false);
+        return Optional.ofNullable(sessionOrders != null ? sessionOrders.get(clientOrderId) : null);
     }
 
     @Override
@@ -110,8 +112,10 @@ public class DefaultOrderBook implements OrderBook {
             if (ordersByClientId != null) {
                 ordersByClientId.remove(order.getClientOrderId(), order);
             }
-            String compositeKey = makeCompositeKey(order.getClientOrderId(), order.getSessionId());
-            ordersByClientIdAndSession.remove(compositeKey);
+            Map<String, Order> sessionOrders = sessionOrders(order.getSessionId(), false);
+            if (sessionOrders != null) {
+                sessionOrders.remove(order.getClientOrderId(), order);
+            }
         }
         return Optional.ofNullable(order);
     }
@@ -153,10 +157,19 @@ public class DefaultOrderBook implements OrderBook {
         if (ordersByClientId != null) {
             ordersByClientId.clear();
         }
-        ordersByClientIdAndSession.clear();
+        ordersBySessionAndClientId.clear();
     }
 
-    private String makeCompositeKey(String clientOrderId, String sessionId) {
-        return sessionId + ":" + clientOrderId;
+    private Map<String, Order> sessionOrders(String sessionId, boolean create) {
+        String key = sessionId != null ? sessionId : "";
+        Map<String, Order> orders = ordersBySessionAndClientId.get(key);
+        if (orders == null && create) {
+            orders = allocated(expectedOrders, "");
+            Map<String, Order> raced = ordersBySessionAndClientId.putIfAbsent(key, orders);
+            if (raced != null) {
+                orders = raced;
+            }
+        }
+        return orders;
     }
 }

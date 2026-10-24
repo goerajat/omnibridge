@@ -3001,6 +3001,15 @@ and what they do now:
 | `SessionConfig.getSessionId()` | `sender + "->" + target` per call (a log argument on every message) | built once |
 | `FixSession` message listeners | `CopyOnWriteArrayList` iterator per message | volatile array |
 | `AcceptorMessageListener` | `"ORD" + n`, `"EXEC" + n` | `setField(tag, prefix, number)` writes prefix and digits into the message |
+| `FixResponseSender` (exchange simulator) | `String.valueOf(orderId)`, `"EXEC" + n` | `setField(tag, long)`, `setField(tag, prefix, number)` |
+| `FixOrderAdapter` | `symbol.toString()` per order, `Order.builder()` | symbols cached by their characters (a repeat costs no String); the `Order` constructor |
+| `Order` | `AtomicReference` for the state | volatile field with an `AtomicReferenceFieldUpdater` |
+| `OrderType.fromFixValue()` | `values()` (clones the array) per call | lookup table by FIX character |
+| `SymbolFillRule.matches()` | a regex `Matcher` per rule per order | prefix/suffix comparison for `ABC`, `ABC*`, `*ABC`, `AB*C`; the regex only for `?` or several `*` |
+| `SymbolFillRule.evaluate()` | a `FillDecision` for every no-fill | one shared no-fill decision |
+| `RuleBasedFillEngine.evaluate()` | list iterator | indexed loop |
+| `DefaultOrderBook.addOrder()` | `sessionId + ":" + clOrdId` key String | a ClOrdID map per session (allocated at the session's first order, sized like the book) |
+| `FixProtocolHandler` debug logs | varargs array and boxed qty/price per order, debug off or on | behind `isDebugEnabled()` |
 
 `AcceptorAllocationTest` (`apps/fix-samples`) guards this in `mvn test`: it feeds NewOrderSingles
 to a `FixSession` with the acceptor's listener in latency mode, drains the ExecutionReports to a
@@ -3008,6 +3017,13 @@ socket, and asserts at most 8 bytes per order on the thread
 (`ThreadMXBean.getCurrentThreadAllocatedBytes`, after a JIT warm-up; it measures 0). A listener
 that needs a String for a field still pays for it; read fields as `CharSequence`, `int`, `long`,
 `char` or `double` to stay allocation-free.
+
+The exchange simulator keeps every order in its book, so its order path cannot be allocation-free:
+`SimulatorAllocationTest` (`apps/exchange-simulator`) runs the same feed through
+`FixProtocolHandler` with the real fill rules and asserts at most 320 bytes per order, which is
+the retained order itself (the `Order`, its ClOrdID `String` and the byte copies `String` makes
+from the off-heap field, the boxed `Long` key and two `ConcurrentHashMap` nodes; measured 312 B,
+down from 1,076 B before the table above).
 
 ### 11.5 JVM Tuning
 
