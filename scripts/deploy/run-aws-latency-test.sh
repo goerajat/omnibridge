@@ -12,8 +12,8 @@
 #      host, on port 11111 (opened between the trading hosts by Terraform).
 #      On a stack without that rule, --sockperf-port 9876 borrows the FIX port
 #      and stops the simulator for the duration.
-#   3. Restart the simulator with busy-spin, cpu-affinity and log-messages =
-#      false on FIX-SIM-1, like the initiator (its exchange-simulator.conf is
+#   3. Restart the simulator with busy-spin, cpu-affinity, demo mode off and
+#      FIX-SIM-1's message settings, like the initiator (its exchange-simulator.conf is
 #      backed up and restored afterwards; --no-tune-simulator leaves it as deployed).
 #   4. Run SampleInitiator --latency with a tuned override conf (busy-spin,
 #      cpu-affinity, log-messages = false, reset-on-logon = true).
@@ -37,7 +37,7 @@
 #   -r, --rate            Orders per second (default: 100)
 #   --initiator-cpu       Initiator event loop core (default: 3)
 #   --no-tune-simulator   Leave the simulator as deployed (default: busy-spin,
-#                         pinned to --simulator-cpu, no FIX-SIM-1 message logging)
+#                         pinned to --simulator-cpu, demo order tracking off)
 #   --simulator-cpu       Simulator event loop core (default: 3)
 #   --skip-baseline       Skip the sockperf measurement
 #   --sockperf-time       sockperf duration in seconds (default: 30)
@@ -303,7 +303,7 @@ fi
 # -----------------------------------------------------------------------------
 
 if [ "$TUNE_SIM" = true ]; then
-    echo "[3/4] Tuning simulator (busy-spin, core $SIM_CPU, FIX-SIM-1 $MSG_CFG)"
+    echo "[3/4] Tuning simulator (busy-spin, core $SIM_CPU, demo off, FIX-SIM-1 $MSG_CFG)"
     # The simulator loads only exchange-simulator.conf, so the tuning is appended
     # there. HOCON replaces arrays, so all five FIX sessions from the classpath
     # exchange-simulator.conf are restated. The deployed file is CRLF; HOCON
@@ -316,6 +316,12 @@ if [ "$TUNE_SIM" = true ]; then
 network {
     busy-spin-mode = true
     cpu-affinity = $SIM_CPU
+}
+
+# The demo order tracker records every order (and its ClOrdID index in the order book)
+# on the event loop; the deployed config turns it on for the demo UI
+demo {
+    enabled = false
 }
 
 fix-engine {
