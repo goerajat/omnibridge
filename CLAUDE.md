@@ -386,6 +386,7 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 ./scripts/deploy/run-aws-latency-test.sh --no-tune-simulator   # simulator as deployed
 ./scripts/deploy/run-aws-latency-test.sh --no-persistence      # measured sessions store nothing
 ./scripts/deploy/run-aws-latency-test.sh --skip-baseline       # FIX run only
+./scripts/deploy/run-aws-latency-test.sh --nic-tuning          # ENA moderation off, busy polling on
 ```
 
 - Stops `fix-initiator` and runs `SampleInitiator --latency` with an override conf (busy-spin, `--initiator-cpu`, `log-messages = true, trace-messages = false`, `reset-on-logon = true`, separate persistence path). The service is always restarted on exit.
@@ -397,6 +398,7 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 - Before the demo initiator restarts, FIX-SIM-1's sequence numbers are reset through the simulator admin API (incoming 1, outgoing `--outgoing-seq`, default 1000000), so the demo initiator doesn't disconnect.
 - Host checks: `latency-host-check.sh` samples each engine's `NetworkIO-*` event-loop thread during the measured phase and the summary reports affinity (thread stayed on its core), busy-spin CPU %, isolation of the core and its hyperthread sibling, NIC IRQ placement/irqbalance, preemptions and IRQs/s on the core. Affinity or busy-spin FAIL fails the run; isolation problems only warn unless `--require-isolation`. `--no-host-check` skips it.
 - Core isolation: the FIX and OUCH hosts isolate the event-loop cpu (Terraform `latency_cpu`, default 3, matching `--initiator-cpu`/`--simulator-cpu`; 0 disables) and its hyperthread sibling at first boot and reboot once (`scripts/deploy/latency-host-tuning.sh`: `isolcpus`, `nohz_full`, `rcu_nocbs`, IRQs to the other cpus, irqbalance off). On a host, `sudo /usr/local/sbin/latency-host-tuning.sh status|remove|apply <cpu>` plus a reboot shows or toggles it (for a before/after on one stack). With it in place, pass `--require-isolation`.
+- `--nic-tuning` sets, on both trading hosts for the whole run, `ethtool -C <iface> adaptive-rx off rx-usecs 0` and `net.core.busy_read = busy_poll = 50`, restoring the values found afterwards; recorded as `options.nic_tuning`. Busy polling also speeds up sockperf's blocking receive, so in such a run FIX − TCP is not engine time; compare `nic_tuning: true` lines with each other.
 - `--stages` turns on per-stage engine timestamps on both sides; the simulator's report is taken from its journal into `simulator-stages.txt` and printed in the summary. Costs a few µs per message, so leave it off for headline numbers.
 - The summary and `summary.json` (`read_cap_hits`) show how many reads filled the FIX read cap: initiator during the timed phase, simulator over the whole connection.
 - Logs, `summary.txt` and `summary.json` go to `logs/aws-latency/<time>/`; each run is also appended to `docs/latency-history.jsonl` (commit, instance type, options, percentiles) for comparison across commits.

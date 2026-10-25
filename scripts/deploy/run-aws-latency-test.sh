@@ -60,11 +60,18 @@
 #                         session store (log-messages = true) without tracing
 #                         it to the application log (trace-messages = false).
 #                         --persistence is accepted for older commands.
+#   --nic-tuning          On both trading hosts, for the whole run (sockperf too):
+#                         ENA interrupt moderation off (ethtool -C adaptive-rx off
+#                         rx-usecs 0) and kernel busy polling on
+#                         (net.core.busy_read = busy_poll = 50). Restored afterwards.
+#                         Note: busy polling also speeds up sockperf's blocking
+#                         receive, so FIX - TCP is not engine time in such a run.
 #
 # Examples:
 #   ./run-aws-latency-test.sh
 #   ./run-aws-latency-test.sh -w 20000 -n 100000 -r 1000
 #   ./run-aws-latency-test.sh --no-tune-simulator          # simulator as deployed
+#   ./run-aws-latency-test.sh --nic-tuning                 # moderation off, busy polling on
 # =============================================================================
 
 set -uo pipefail
@@ -94,6 +101,7 @@ HOST_CHECK=true
 REQUIRE_ISOLATION=false
 PERSIST=true
 STAGES=false
+NIC_TUNING=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -120,7 +128,8 @@ while [[ $# -gt 0 ]]; do
         --persistence)    PERSIST=true;       shift ;;  # the default; kept for old invocations
         --no-persistence) PERSIST=false;      shift ;;
         --stages)         STAGES=true;        shift ;;
-        -h|--help)        sed -n '2,68p' "$0"; exit 0 ;;
+        --nic-tuning)     NIC_TUNING=true;    shift ;;
+        -h|--help)        sed -n '2,75p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -198,6 +207,7 @@ echo "  Initiator core:         $INITIATOR_CPU"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
 echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off)"
 echo "  Stage timing:           $STAGES"
+echo "  NIC tuning:             $([ "$NIC_TUNING" = true ] && echo "on (adaptive-rx off, rx-usecs 0, busy_read/busy_poll 50)" || echo off)"
 echo "  Baseline (sockperf):    $([ "$BASELINE" = true ] && echo "${SP_SIZE}B for ${SP_TIME}s on port $SP_PORT" || echo skipped)"
 echo "  Results:                $OUT_DIR"
 echo ""
@@ -209,7 +219,42 @@ echo ""
 INITIATOR_STOPPED=false
 SIM_STOPPED=false
 SIM_TUNED=false
+NIC_TUNED=false
 CLEANED=false
+
+# --nic-tuning: the settings are changed live on each trading host and the
+# values found there are kept in /tmp for the restore. The interface is the one
+# carrying the default route (ens5 on these hosts).
+NIC_APPLY=$(cat <<'REMOTE'
+set -e
+IFACE=$(ip -o route get 1.1.1.1 | sed -n 's/.* dev \([^ ]*\).*/\1/p')
+[ -n "$IFACE" ] || { echo "  no default-route interface"; exit 1; }
+{
+    echo "iface=$IFACE"
+    echo "adaptive_rx=$(ethtool -c "$IFACE" | awk '/^Adaptive RX:/ { print tolower($3) }')"
+    echo "rx_usecs=$(ethtool -c "$IFACE" | awk '/^rx-usecs:/ { print $2 }')"
+    echo "busy_read=$(sysctl -n net.core.busy_read)"
+    echo "busy_poll=$(sysctl -n net.core.busy_poll)"
+} > /tmp/latency-nic-before
+sudo ethtool -C "$IFACE" adaptive-rx off
+sudo ethtool -C "$IFACE" rx-usecs 0
+sudo sysctl -q -w net.core.busy_read=50 net.core.busy_poll=50
+echo "  $(hostname): $IFACE $(ethtool -c "$IFACE" | awk '/^Adaptive RX:/ { printf "adaptive-rx %s", tolower($3) } /^rx-usecs:/ { printf ", rx-usecs %s", $2 }'), busy_read $(sysctl -n net.core.busy_read), busy_poll $(sysctl -n net.core.busy_poll) (was: $(tr '\n' ' ' < /tmp/latency-nic-before))"
+REMOTE
+)
+NIC_RESTORE=$(cat <<'REMOTE'
+[ -f /tmp/latency-nic-before ] || exit 0
+. /tmp/latency-nic-before
+# ENA rejects rx-usecs while adaptive RX is on, so set the fixed value first
+sudo ethtool -C "$iface" rx-usecs "$rx_usecs" 2>/dev/null
+sudo ethtool -C "$iface" adaptive-rx "$adaptive_rx"
+sudo sysctl -q -w net.core.busy_read="$busy_read" net.core.busy_poll="$busy_poll"
+rm -f /tmp/latency-nic-before
+echo "  $(hostname): $iface adaptive-rx $(ethtool -c "$iface" | awk '/^Adaptive RX:/ { print tolower($3) }'), busy_read $(sysctl -n net.core.busy_read)"
+REMOTE
+)
+nic_apply()   { run_on "$1" "bash -s" <<<"$NIC_APPLY"; }
+nic_restore() { run_on "$1" "bash -s" <<<"$NIC_RESTORE"; }
 
 # Waits until FIX-SIM-1 is known to the admin API and the FIX port listens
 wait_for_simulator() {
@@ -235,6 +280,11 @@ cleanup() {
     on_ouch "pkill -f '[o]mnibridge.latency-test'; pkill -f '[l]atency-host-check'; true" 2>/dev/null
     on_fix "pkill -x sockperf; pkill -f '[l]atency-host-check'; true" 2>/dev/null
 
+    if [ "$NIC_TUNED" = true ]; then
+        echo "[cleanup] Restoring NIC settings"
+        nic_restore "$FIX_IP"
+        nic_restore "$OUCH_IP"
+    fi
     if [ "$SIM_TUNED" = true ]; then
         echo "[cleanup] Restoring $SIM_CONF"
         on_fix "mv -f $SIM_BACKUP $SIM_CONF && sudo systemctl restart exchange-simulator"
@@ -271,6 +321,15 @@ INITIATOR_STOPPED=true
 if ! on_ouch "sudo systemctl stop fix-initiator"; then
     echo "  FAIL: could not stop fix-initiator"
     exit 1
+fi
+
+if [ "$NIC_TUNING" = true ]; then
+    echo "[nic] Interrupt moderation off, busy polling on, both hosts"
+    NIC_TUNED=true
+    if ! nic_apply "$FIX_IP" || ! nic_apply "$OUCH_IP"; then
+        echo "  FAIL: could not apply the NIC settings"
+        exit 1
+    fi
 fi
 
 # -----------------------------------------------------------------------------
@@ -585,7 +644,7 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
         tr -d '\r' < "$OUT_DIR/simulator-stages.txt" 2>/dev/null | sed 's/^/  /'
         echo "================================================================"
     fi
-    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; NIC tuning: $NIC_TUNING; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
@@ -598,7 +657,7 @@ DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/nu
 jq -nc \
     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
-    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
+    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson nic "$NIC_TUNING" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
     --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" \
@@ -609,7 +668,7 @@ jq -nc \
     def hist: if . == "" then null
               else split(" ") | map(select(contains("=")) | split("=") | {(.[0]): (.[1] | tonumber? // .)}) | add end;
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
-     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, warmup: $warmup, test_orders: $orders, rate: $rate,
+     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, nic_tuning: $nic, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),
