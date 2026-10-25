@@ -543,3 +543,33 @@ from the intended send:
   `--require-isolation` exit 1 on them.
 
 The NIC settings stay off by default; the flag is there for repeating the experiment.
+
+## Sender on the event loop; simulator handler trims (local, Windows, `--stages`, 5k + 20k at 1,000/s), µs
+
+`--sender loop` (default now) runs the latency runner's paced sender as the event loop's loop
+task (`NetworkEventLoop.setLoopTask`): each busy-spin iteration sends the next order once it is
+due, so schedule, encode and socket write are on one thread and nothing is handed off.
+`--sender main` is the older form. The simulator's order handler lost a `containsKey` before its
+`put`, a hash of the session id per order (the last session's ClOrdID map is remembered), a
+`Random.nextDouble()` for a fill probability of 0, a varargs `log.debug` and two locked counter
+adds. Two simulator jars (before `0d0feb4`, after), each with both senders, same JVM:
+
+| Simulator | Sender | RTT p50 (intended) | p90 | p99 | p99.9 | max | slip p99.99 | sim `recv.callback` p50 | callback − send stages |
+|-----------|--------|----:|----:|----:|------:|----:|----:|----:|----:|
+| before | main | 80.3 | 179.8 | 374.5 | 6,980 | 16,646 | 184 | 48.2 | 3.5 |
+| before | loop | 80.8 | 157.6 | 310.5 | 2,363 | 5,059 | 180 | 48.1 | 3.4 |
+| after | main | 78.2 | 151.8 | 297.5 | 2,693 | 5,202 | 158 | 47.0 | 3.4 |
+| after | loop | 81.7 | 152.3 | 295.7 | 1,562 | 3,881 | 169 | 48.3 | 3.4 |
+
+- **Windows cannot resolve either change.** The simulator's Chronicle write takes 24 µs p50 here
+  and the socket write 18 µs (0.8 and 2.9 on AWS), so `recv.callback` is ~48 µs of which the
+  handler's own work (callback minus encode, prepare, persist, write) is 3.4–3.5 µs in all four
+  runs: the trims are below this machine's noise. The sender's slip tail is ~180 µs with both
+  senders (the Windows scheduling quantum), so the main thread's millisecond slip seen on AWS does
+  not occur here to be fixed.
+- **The loop sender's intended-send tails were lower in both pairs** (p99.9 6,980 → 2,363 and
+  2,693 → 1,562; max 16.6 → 5.1 ms and 5.2 → 3.9 ms), but each loop run followed the main run on
+  the same simulator, so a warmer simulator is as likely a cause. p50 moved by −0.5 to +3.5 µs,
+  within run-to-run noise here.
+- Both changes are to be judged on AWS: `--sender main` against the default on one stack, and the
+  simulator's `recv.callback` minus its send stages with `--stages`.

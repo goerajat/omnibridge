@@ -661,6 +661,16 @@ loop's next drain to report and close the channel. Channels without a loop (the 
 are not affected. `NetworkEventLoopLoopCommitTest` covers the immediate write, ring order,
 nesting, a full socket and the switch.
 
+**A loop task** (`NetworkEventLoop.setLoopTask(Runnable)`) runs once per iteration on the loop
+thread, after queued tasks and before the ring drain, in both loop modes. It is for work that must
+happen on the loop at a time of its own choosing rather than in response to a socket event: the
+latency runner's paced sender (8.3), which checks `System.nanoTime()` against the next order's due
+time on every iteration and, when due, claims, encodes and commits it — written inside the
+commit by the rule above, so there is no thread hand-off between the schedule and the socket. A
+busy-spin iteration is well under a microsecond, so the send lands within that of its due time.
+The task must return quickly (it holds up every channel on the loop), an exception in it is
+logged and the loop goes on, and `null` removes it. `NetworkEventLoopLoopTaskTest`.
+
 **Read sizing.** Before each read the loop asks the handler `getNumBytesToRead(channel)` and
 limits the read to `min(that, free space in the channel's read buffer)`. FIX sessions return
 their read cap (below); OUCH and SBE sessions still return the exact bytes their framing needs.
@@ -2467,6 +2477,14 @@ each round trip to the first ExecutionReport. The rules a new protocol's runner 
 - **Pace by spinning, on a schedule that never drifts.** Order `i` is due at
   `start + i * interval` (`RatePacer`); the sender spins (`Thread.onSpinWait()`) until then.
   `Thread.sleep` overshoots by tens of microseconds to milliseconds and is not used.
+- **Send from the event loop thread** (`--sender loop`, the default). The runner's `PhaseSender`
+  is the loop task (`NetworkEventLoop.setLoopTask`): each iteration sends the next order once
+  it is due (timed phase) or as soon as flow control allows (warmup), so the schedule, the claim,
+  the encode and the socket write all happen on the one busy-spinning thread, with no hand-off
+  and no second thread to be descheduled. The warmup runs the same way, so the JIT warms the
+  path that is measured. `--sender main` keeps the older form, below, where the calling thread
+  spins on the schedule and commits to the ring for the loop to write: on a 4-vCPU host that
+  thread shares a core with housekeeping and its send slip reached milliseconds at p99.99.
 - **Measure from the intended send time.** A response's latency from its *scheduled* send time
   includes any wait a slow earlier order caused, so a stall cannot hide its effect on the orders
   queued behind it (coordinated omission). The latency from the *actual* send time is kept as a
@@ -2482,12 +2500,16 @@ each round trip to the first ExecutionReport. The rules a new protocol's runner 
   in latency mode. Orders stay in the simulator's order book either way (it never removes them).
 
 ```java
+// --sender loop: one tick per loop iteration (PhaseSender.tick), on the loop thread
 RatePacer pacer = new RatePacer(System.nanoTime() + leadNanos, ordersPerSecond);
-for (int i = 0; i < testOrders; i++) {
-    long intended = pacer.awaitSendTime(i);        // spin until due
-    tracker.recordSend(i, intended, System.nanoTime());
-    sendOrder("TEST", i);                          // ClOrdID = TEST<i>, built in a reused StringBuilder
-}
+void tick() {
+    if (tracker.getPendingOrderCount() >= maxPending) return;   // flow control, never waits
+    long intended = pacer.intendedSendTime(next), now = System.nanoTime();
+    if (now - intended < 0) return;                             // not due yet
+    tracker.recordSend(next, intended, now);
+    sendOrder("TEST", next++);                                  // ClOrdID = TEST<i>, reused StringBuilder;
+}                                                               // written inside commitMessage
+// --sender main: the calling thread spins on the same tick (PhaseSender.sendAll)
 // event loop, on ExecutionReport (New):
 tracker.recordResponse(execReport.getCharSequence(FixTags.ClOrdID), System.nanoTime());
 ```
@@ -3013,6 +3035,9 @@ and what they do now:
 | Persistence, both directions (`FixSession`) | a `byte[]` copy of the message, a `LogEntry` and its builder, `Instant.now()`; for outbound the MsgSeqNum parsed from the copy | `LogStore.write(timestamp, direction, seqNum, stream, buffer, offset, length)`: the message goes from the read buffer or the outgoing ring straight into the store; `System.currentTimeMillis()`; MsgSeqNum read from the ring |
 | `ChronicleLogStore` | `computeIfAbsent` lambda per write, the message copied from the entry's array | `get` first; the bytes copied once, from off-heap memory through a reusable pointer store or from a heap array in place |
 | `AeronLogStore` | `streamName.getBytes()` per publish | encoded once per stream; the frame encoded from the buffer |
+| `DefaultOrderBook.addOrder` | `containsKey` + `put` (two hash lookups), the session's ClOrdID map found by hashing the session id | `putIfAbsent`; the last session's map remembered (one volatile read and a reference compare) |
+| `SymbolFillRule.evaluate` | a `Random.nextDouble()` (a CAS on the shared seed) even for probability 0 or 1 | no draw when the outcome is fixed; `ThreadLocalRandom` otherwise |
+| `RuleBasedFillEngine.evaluate`, handler counters | three-argument `log.debug` (a varargs array), `AtomicLong.incrementAndGet` (a locked add) per order | behind `isDebugEnabled()`; `lazySet(get() + 1)`, the counters having one writer |
 
 `AcceptorAllocationTest` (`apps/fix-samples`) guards this in `mvn test`: it feeds NewOrderSingles
 to a `FixSession` with the acceptor's listener in latency mode, drains the ExecutionReports to a
