@@ -627,3 +627,35 @@ copies on a faster, unshared core) and the tails (p99.9, p99.99, max) should imp
 sibling and the sender on its own core. Per-core speed alone is worth single-digit percent of
 the engine's 10 µs — a few µs at most; a move in the network number would be worth more than
 everything engine-side that remains.
+
+**Results** (one run each, RTT from the intended send; the c5 row is the last c5 stack, `7b916f7`,
+same code except the debug guards, and the c5 range is the four stacks since the ack-only change):
+
+| Type | TCP p50 (p25 / p75) | FIX min | p50 | p90 | p99 | p99.9 | p99.99 | max | FIX − TCP |
+|------|------:|----:|----:|----:|----:|------:|-------:|----:|----:|
+| c5.xlarge (last stack) | 56.0 (53.9 / 58.7) | 58.7 | 66.5 | 74.7 | 121.3 | 180 | 276 | 2,122 | 10.5 |
+| c5.xlarge (four stacks) | 48–62 | 50.7–62.2 | 58.3–73.3 | | 109–157 | 150–334 | 276–1,935 | 2,122–4,960 | 7.9–13.4 |
+| **c6in.xlarge** | 54.8 (51.2 / 57.3) | 50.7 | **58.7** | 65.3 | **90.1** | **122** | **193** | **521** | **3.9** |
+| c7a.2xlarge | 54.4 (53.1 / 56.0) | 56.4 | 63.9 | 73.0 | 100.4 | 130 | 322 | 633 | 9.5 |
+
+- **The network did not move**: sockperf p50 54.4–54.8 on both, inside the c5 range, with no
+  bimodal second mode on either (p75 57.3 / 56.0 against 119–255 on the bimodal c5 runs). The
+  raw path between two hosts in the placement group is ~54 µs whatever the generation; the
+  expectation that the "n" NIC would lower it was wrong.
+- **c6in.xlarge is the best stack measured**: FIX p50 58.7, equal to the best c5 stack
+  (`b056403`, which had a 50.3 network), on an ordinary 54.8 network, so FIX − TCP fell to 3.9.
+  Part of that is the host (Ice Lake against Skylake for the engine's syscalls and copies), part
+  is what sockperf measures: its blocking receive pays an interrupt and a wake-up that the
+  busy-spinning engine does not, so the gap is engine time minus sockperf's own overhead, and a
+  host with a faster wake-up path shows a smaller gap. One run; what is not in doubt is the
+  round trip itself and its tails.
+- **Tails are where the generations differ most**: p99.9 122 / 130 against 150–334 on c5,
+  p99.99 193 / 322 against 276–1,935, max 521 / 633 µs against 2.1–5.0 ms. Every c5 stack had a
+  millisecond max; neither newer host does. Nothing in the code changed between these runs.
+- **c7a.2xlarge did not beat c6in** despite the full cores and the 3.7 GHz clock: p50 63.9,
+  FIX − TCP 9.5. Its initiator still shows the 1/s preemption WARN with cpu 3 isolated alone
+  (so the WARN is not the hyperthread sibling), and its tails are second best. Whole cores did
+  not matter at 1,000 msg/s; the Nitro/host generation of the "n" type did.
+- Price (us-east-1 on-demand, per host): c5.xlarge $0.17/h, c6in.xlarge $0.227/h,
+  c7a.2xlarge $0.41/h. c6in.xlarge is the only candidate to make the default; `terraform.tfvars`
+  still says c5.xlarge (the skill's `--instance-type` selects per run).
