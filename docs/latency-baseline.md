@@ -573,3 +573,31 @@ adds. Two simulator jars (before `0d0feb4`, after), each with both senders, same
   within run-to-run noise here.
 - Both changes are to be judged on AWS: `--sender main` against the default on one stack, and the
   simulator's `recv.callback` minus its send stages with `--stages`.
+
+## AWS: sender on the event loop (`7b916f7`, one stack, persistence on, isolated), µs
+
+Two runs on one stack, 20k + 100k at 1,000/s, the loop sender (`98c75d9`, the default) first and
+`--sender main` as the control right after; both with the simulator handler trims (`6ab4bbc`).
+RTT from the intended send:
+
+| Sender | min | p50 | p90 | p99 | p99.9 | p99.99 | max | slip p99.9 / p99.99 / max | TCP p50 | FIX − TCP |
+|--------|----:|----:|----:|----:|------:|-------:|----:|----:|--------:|----:|
+| loop | 58.7 | 66.5 | 74.7 | 121.3 | 180 | 276 | 2,122 | 0.67 / 1.3 / 81 | 56.0 | 10.5 |
+| main (control) | 60.6 | 69.4 | 77.3 | 121.3 | 158 | 1,483 | 5,362 | 1.9 / 1,278 / 5,272 | 56.1* | 13.4 |
+
+\* The control's sockperf run was bimodal (p75 61, p90 240); its p25/p50 match the first run's.
+
+- **The sender's tail is gone.** Send slip p99.99 1,278 → 1.3 µs and max 5,272 → 81 µs: the
+  loop sends an order within one busy-spin iteration of its due time, and there is no second
+  thread to be descheduled. RTT from the intended send now agrees with RTT from the actual send
+  (p99.99 276 vs 276, max 2,122 both), where the control shows the familiar gap (1,483 vs 245,
+  5,362 vs 1,118). The 2.1 ms max that remains is on the round trip itself.
+- **p50 −2.9 µs** (69.4 → 66.5; min −1.9) with the same network (sockperf p50 56.0 / 56.1): the
+  claim, encode and write now run on the pinned, isolated core instead of the main thread's,
+  and the ring hand-off to the loop is gone. FIX − TCP 13.4 → 10.5.
+- **p99.9 is the one number the control wins** (158 vs 180 µs): one run each, and the loop run's
+  p99 is identical (121.3), so it is noise until repeated.
+- The simulator handler trims cannot be separated here (both runs have them); the handler's own
+  work was ~2 µs before, and the AWS FIX − TCP of 10.5 is in line with the 8–13 of earlier stacks.
+- Host checks all PASS on both runs, including the initiator's preemption (1.0/s, rounding to the
+  threshold), so `--require-isolation` exited 0 for the first time.
