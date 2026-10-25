@@ -3010,11 +3010,17 @@ and what they do now:
 | `RuleBasedFillEngine.evaluate()` | list iterator | indexed loop |
 | `DefaultOrderBook.addOrder()` | `sessionId + ":" + clOrdId` key String | a ClOrdID map per session (allocated at the session's first order, sized like the book) |
 | `FixProtocolHandler` debug logs | varargs array and boxed qty/price per order, debug off or on | behind `isDebugEnabled()` |
+| Persistence, both directions (`FixSession`) | a `byte[]` copy of the message, a `LogEntry` and its builder, `Instant.now()`; for outbound the MsgSeqNum parsed from the copy | `LogStore.write(timestamp, direction, seqNum, stream, buffer, offset, length)`: the message goes from the read buffer or the outgoing ring straight into the store; `System.currentTimeMillis()`; MsgSeqNum read from the ring |
+| `ChronicleLogStore` | `computeIfAbsent` lambda per write, the message copied from the entry's array | `get` first; the bytes copied once, from off-heap memory through a reusable pointer store or from a heap array in place |
+| `AeronLogStore` | `streamName.getBytes()` per publish | encoded once per stream; the frame encoded from the buffer |
 
 `AcceptorAllocationTest` (`apps/fix-samples`) guards this in `mvn test`: it feeds NewOrderSingles
 to a `FixSession` with the acceptor's listener in latency mode, drains the ExecutionReports to a
 socket, and asserts at most 8 bytes per order on the thread
-(`ThreadMXBean.getCurrentThreadAllocatedBytes`, after a JIT warm-up; it measures 0). A listener
+(`ThreadMXBean.getCurrentThreadAllocatedBytes`, after a JIT warm-up; it measures 0), with and
+without a Chronicle store (`log-messages = true`, `trace-messages = false`). The test JVMs run
+with `-da:net.openhft...`: Chronicle records a stack trace on every queue write when assertions
+are enabled, which only a test JVM has. A listener
 that needs a String for a field still pays for it; read fields as `CharSequence`, `int`, `long`,
 `char` or `double` to stay allocation-free.
 

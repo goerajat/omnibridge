@@ -8,6 +8,8 @@ import com.omnibridge.fix.message.FixTags;
 import com.omnibridge.fix.message.MessagePoolConfig;
 import com.omnibridge.fix.message.RingBufferOutgoingMessage;
 import com.omnibridge.network.TcpChannel;
+import com.omnibridge.persistence.LogStore;
+import com.omnibridge.persistence.chronicle.ChronicleLogStore;
 import java.util.List;
 import com.omnibridge.simulator.core.fill.FillConfig;
 import com.omnibridge.simulator.core.fill.RuleBasedFillEngine;
@@ -15,7 +17,8 @@ import com.omnibridge.simulator.core.order.DefaultOrderBook;
 import com.omnibridge.simulator.core.order.OrderIdGenerator;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -25,6 +28,10 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,6 +58,24 @@ class SimulatorAllocationTest {
     private ServerSocketChannel server;
     private SocketChannel client;
     private SocketChannel peer;
+    private LogStore logStore;
+    private Path storeDir;
+
+    /** A Chronicle store in a temporary directory, as the sessions run with log-messages = true. */
+    private LogStore newStore() throws IOException {
+        storeDir = Files.createTempDirectory("alloc-test-store");
+        logStore = new ChronicleLogStore(storeDir.toFile());
+        return logStore;
+    }
+
+    private void closeStore() throws IOException {
+        if (logStore != null) {
+            logStore.close();
+            try (Stream<Path> paths = Files.walk(storeDir)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
+    }
 
     @AfterEach
     void tearDown() throws IOException {
@@ -59,10 +84,13 @@ class SimulatorAllocationTest {
             peer.close();
             server.close();
         }
+        closeStore();
     }
 
-    @Test
-    void ordersAndAcksAllocateOnlyTheRetainedOrder() throws Exception {
+    /** With persistence on, every order and ack is also written to the store, still within the budget. */
+    @ParameterizedTest(name = "persistence={0}")
+    @ValueSource(booleans = {false, true})
+    void ordersAndAcksAllocateOnlyTheRetainedOrder(boolean persistence) throws Exception {
         server = ServerSocketChannel.open();
         server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
         client = SocketChannel.open();
@@ -78,8 +106,9 @@ class SimulatorAllocationTest {
                 .targetCompId("CLIENT")
                 .acceptor()
                 .port(1)
-                .logMessages(false)
-                .build(), null);
+                .logMessages(persistence)
+                .traceMessages(false)   // trace-messages defaults to log-messages: a log line per message
+                .build(), persistence ? newStore() : null);
         session.setChannel(channel);
         forceLoggedOn(session);
 

@@ -475,3 +475,19 @@ host or network, not the engine); two clean sockperf runs right after on the sam
   simulator is restarted after the run, so its counters were gone); the script should record
   `jcmd PerfCounter.print` from both JVMs before the restart.
 
+## Persistence without allocation (`AcceptorAllocationTest`, `SimulatorAllocationTest` with a store, local)
+
+Before, every persisted message (both directions, both sides) allocated a `byte[]` copy of the
+message, a `LogEntry` and its builder and an `Instant`, plus a `computeIfAbsent` lambda in the
+Chronicle store; the outbound path also parsed MsgSeqNum from the copy. The store now writes
+straight from the session's buffer (`LogStore.write(..., buffer, offset, length)`, one copy into
+the queue's memory), and the sessions pass the read buffer or the outgoing ring.
+
+| | bytes per order, no store | with Chronicle store |
+|---|---:|---:|
+| sample acceptor | 0 | 0 |
+| exchange simulator | 312 (the retained order) | 312 |
+
+So with `log-messages = true` the initiator's event loop allocates nothing per message, and the
+simulator's only the order it keeps. Not yet measured on AWS; the stage-timing `send.persist`
+(0.7–0.9 µs p50) is where any time saving would show.

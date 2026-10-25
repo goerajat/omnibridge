@@ -7,9 +7,12 @@ import com.omnibridge.fix.message.FixTags;
 import com.omnibridge.fix.message.MessagePoolConfig;
 import com.omnibridge.fix.message.RingBufferOutgoingMessage;
 import com.omnibridge.network.TcpChannel;
+import com.omnibridge.persistence.LogStore;
+import com.omnibridge.persistence.chronicle.ChronicleLogStore;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -19,6 +22,10 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,6 +45,24 @@ class AcceptorAllocationTest {
     private ServerSocketChannel server;
     private SocketChannel client;
     private SocketChannel peer;
+    private LogStore logStore;
+    private Path storeDir;
+
+    /** A Chronicle store in a temporary directory, as the sessions run with log-messages = true. */
+    private LogStore newStore() throws IOException {
+        storeDir = Files.createTempDirectory("alloc-test-store");
+        logStore = new ChronicleLogStore(storeDir.toFile());
+        return logStore;
+    }
+
+    private void closeStore() throws IOException {
+        if (logStore != null) {
+            logStore.close();
+            try (Stream<Path> paths = Files.walk(storeDir)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
+    }
 
     @AfterEach
     void tearDown() throws IOException {
@@ -46,10 +71,13 @@ class AcceptorAllocationTest {
             peer.close();
             server.close();
         }
+        closeStore();
     }
 
-    @Test
-    void ordersAndAcksAllocateNothingOnTheEventLoop() throws Exception {
+    /** With persistence on, every order and ack is also written to the store, still without allocating. */
+    @ParameterizedTest(name = "persistence={0}")
+    @ValueSource(booleans = {false, true})
+    void ordersAndAcksAllocateNothingOnTheEventLoop(boolean persistence) throws Exception {
         server = ServerSocketChannel.open();
         server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
         client = SocketChannel.open();
@@ -65,8 +93,9 @@ class AcceptorAllocationTest {
                 .targetCompId("CLIENT")
                 .acceptor()
                 .port(1)
-                .logMessages(false)
-                .build(), null);
+                .logMessages(persistence)
+                .traceMessages(false)   // trace-messages defaults to log-messages: a log line per message
+                .build(), persistence ? newStore() : null);
         session.setChannel(channel);
         forceLoggedOn(session);
         AcceptorMessageListener listener = new AcceptorMessageListener(0.0, true);

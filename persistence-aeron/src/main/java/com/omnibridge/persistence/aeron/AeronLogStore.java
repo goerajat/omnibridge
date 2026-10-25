@@ -19,8 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * LogStore implementation that writes to a local ChronicleLogStore (write-through cache)
@@ -58,6 +60,8 @@ public class AeronLogStore implements LogStore, Component {
 
     // Encode buffer for write path (not thread-safe - sized for typical max message)
     private final MutableDirectBuffer encodeBuffer = new ExpandableDirectByteBuffer(8192);
+    // Stream names as published, encoded once per stream
+    private final ConcurrentHashMap<String, byte[]> streamNameBytes = new ConcurrentHashMap<>();
 
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
     private Thread catchUpThread;
@@ -91,6 +95,24 @@ public class AeronLogStore implements LogStore, Component {
         if (transport.isRunning()) {
             int length = LogEntryCodec.encode(encodeBuffer, 0, entry, publisherId);
             transport.publishEntry(encodeBuffer, 0, length);
+        }
+
+        return position;
+    }
+
+    @Override
+    public long write(long timestamp, LogEntry.Direction direction, int sequenceNumber, String streamName,
+                      DirectBuffer buffer, int offset, int length) {
+        long position = localStore.write(timestamp, direction, sequenceNumber, streamName, buffer, offset, length);
+
+        if (transport.isRunning()) {
+            byte[] streamBytes = streamNameBytes.get(streamName);
+            if (streamBytes == null) {
+                streamBytes = streamNameBytes.computeIfAbsent(streamName, s -> s.getBytes(StandardCharsets.UTF_8));
+            }
+            int encoded = LogEntryCodec.encode(encodeBuffer, 0, timestamp, direction, sequenceNumber, streamBytes,
+                    buffer, offset, length, publisherId);
+            transport.publishEntry(encodeBuffer, 0, encoded);
         }
 
         return position;

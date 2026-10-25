@@ -39,6 +39,39 @@ public final class LogEntryCodec {
     private LogEntryCodec() {
     }
 
+    /**
+     * Encode an entry whose message is still in a buffer and whose stream name is already
+     * encoded (no metadata): the message path, which allocates nothing.
+     */
+    public static int encode(MutableDirectBuffer buffer, int offset, long timestamp, LogEntry.Direction direction,
+                             int sequenceNumber, byte[] streamBytes, DirectBuffer raw, int rawOffset, int rawLen,
+                             long publisherId) {
+        AeronMessageHeader.write(buffer, offset, BLOCK_LENGTH, TEMPLATE_ID,
+                MessageTypes.SCHEMA_ID, MessageTypes.SCHEMA_VERSION);
+        int pos = offset + AeronMessageHeader.HEADER_SIZE;
+
+        buffer.putLong(pos + TIMESTAMP_OFFSET, timestamp, ByteOrder.LITTLE_ENDIAN);
+        buffer.putByte(pos + DIRECTION_OFFSET, (byte) (direction == LogEntry.Direction.INBOUND ? 0 : 1));
+        buffer.putInt(pos + SEQUENCE_NUMBER_OFFSET, sequenceNumber, ByteOrder.LITTLE_ENDIAN);
+        buffer.putLong(pos + PUBLISHER_ID_OFFSET, publisherId, ByteOrder.LITTLE_ENDIAN);
+        pos += BLOCK_LENGTH;
+
+        buffer.putInt(pos, streamBytes.length, ByteOrder.LITTLE_ENDIAN);
+        pos += 4;
+        buffer.putBytes(pos, streamBytes);
+        pos += streamBytes.length;
+
+        buffer.putInt(pos, 0, ByteOrder.LITTLE_ENDIAN);   // no metadata
+        pos += 4;
+
+        buffer.putInt(pos, rawLen, ByteOrder.LITTLE_ENDIAN);
+        pos += 4;
+        buffer.putBytes(pos, raw, rawOffset, rawLen);
+        pos += rawLen;
+
+        return pos - offset;
+    }
+
     public static int encode(MutableDirectBuffer buffer, int offset, LogEntry entry, long publisherId) {
         AeronMessageHeader.write(buffer, offset, BLOCK_LENGTH, TEMPLATE_ID,
                 MessageTypes.SCHEMA_ID, MessageTypes.SCHEMA_VERSION);

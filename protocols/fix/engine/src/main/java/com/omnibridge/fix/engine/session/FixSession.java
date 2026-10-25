@@ -23,7 +23,6 @@ import org.agrona.MutableDirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.IOException;
-import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -791,14 +790,9 @@ public class FixSession implements NetworkHandler {
 
     private void logIncomingMessage(IncomingFixMessage message, LogEntry.Direction direction) {
         if (logStore != null && config.isLogMessages()) {
-            LogEntry entry = LogEntry.builder()
-                .timestamp(Instant.now().toEpochMilli())
-                .sequenceNumber(message.getSeqNum())
-                .direction(direction)
-                .streamName(config.getSessionId())
-                .rawMessage(message.getRawMessage())
-                .build();
-            logStore.write(entry);
+            // Straight from the read buffer: no copy, no entry
+            logStore.write(System.currentTimeMillis(), direction, message.getSeqNum(), config.getSessionId(),
+                    message.getDirectBuffer(), message.getStartOffset(), message.getLength());
         }
     }
 
@@ -934,17 +928,10 @@ public class FixSession implements NetworkHandler {
     private void registerOutgoingMessageListener(TcpChannel channel) {
         if (logStore != null && config.isLogMessages()) {
             channel.setOutgoingMessageListener((buffer, offset, length) -> {
-                byte[] logCopy = new byte[length];
-                buffer.getBytes(offset, logCopy, 0, length);
-                int seqNum = parseSeqNum(logCopy);
-                LogEntry entry = LogEntry.builder()
-                    .timestamp(Instant.now().toEpochMilli())
-                    .sequenceNumber(seqNum)
-                    .direction(LogEntry.Direction.OUTBOUND)
-                    .streamName(config.getSessionId())
-                    .rawMessage(logCopy)
-                    .build();
-                logStore.write(entry);
+                // Straight from the ring buffer: no copy, no entry
+                int seqNum = parseSeqNum(buffer, offset, length);
+                logStore.write(System.currentTimeMillis(), LogEntry.Direction.OUTBOUND, seqNum,
+                        config.getSessionId(), buffer, offset, length);
                 if (headTimed) {
                     headBeforeWrite = System.nanoTime();
                 }
@@ -1011,12 +998,15 @@ public class FixSession implements NetworkHandler {
      * Parse MsgSeqNum (tag 34) from raw FIX message bytes.
      * Scans for SOH + "34=" pattern and parses the integer value inline.
      */
-    private static int parseSeqNum(byte[] fixMessage) {
-        for (int i = 0; i < fixMessage.length - 4; i++) {
-            if (fixMessage[i] == 0x01 && fixMessage[i + 1] == '3' && fixMessage[i + 2] == '4' && fixMessage[i + 3] == '=') {
+    /** MsgSeqNum (tag 34) of the encoded message at buffer[offset, offset + length), or 0. */
+    private static int parseSeqNum(DirectBuffer buffer, int offset, int length) {
+        int end = offset + length;
+        for (int i = offset; i < end - 4; i++) {
+            if (buffer.getByte(i) == 0x01 && buffer.getByte(i + 1) == '3' && buffer.getByte(i + 2) == '4'
+                    && buffer.getByte(i + 3) == '=') {
                 int num = 0;
-                for (int j = i + 4; j < fixMessage.length && fixMessage[j] != 0x01; j++) {
-                    num = num * 10 + (fixMessage[j] - '0');
+                for (int j = i + 4; j < end && buffer.getByte(j) != 0x01; j++) {
+                    num = num * 10 + (buffer.getByte(j) - '0');
                 }
                 return num;
             }

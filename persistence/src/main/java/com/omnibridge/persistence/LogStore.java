@@ -2,6 +2,7 @@ package com.omnibridge.persistence;
 
 import com.omnibridge.config.Component;
 import com.omnibridge.config.Singleton;
+import org.agrona.DirectBuffer;
 
 import java.io.Closeable;
 import java.util.Collection;
@@ -25,6 +26,27 @@ public interface LogStore extends Closeable, Component {
      * @return the position/index of the written entry
      */
     long write(LogEntry entry);
+
+    /**
+     * Write an entry whose message is still in a buffer, without metadata: the message path
+     * calls this on every message, so a store on that path overrides it to copy the bytes
+     * straight into its storage. This default builds a {@link LogEntry} (one copy, one entry).
+     *
+     * @param timestamp      epoch milliseconds
+     * @param direction      INBOUND or OUTBOUND
+     * @param sequenceNumber protocol sequence number
+     * @param streamName     session/stream identifier
+     * @param buffer         holds the raw message
+     * @param offset         first byte of the message in the buffer
+     * @param length         message length in bytes
+     * @return the position/index of the entry
+     */
+    default long write(long timestamp, LogEntry.Direction direction, int sequenceNumber, String streamName,
+                       DirectBuffer buffer, int offset, int length) {
+        byte[] rawMessage = new byte[length];
+        buffer.getBytes(offset, rawMessage, 0, length);
+        return write(new LogEntry(timestamp, direction, sequenceNumber, streamName, null, rawMessage));
+    }
 
     /**
      * Replay all entries from a stream to a callback.

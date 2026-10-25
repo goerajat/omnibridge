@@ -10,11 +10,14 @@ import com.omnibridge.persistence.LogReader;
 import com.omnibridge.persistence.LogStore;
 import com.omnibridge.persistence.config.PersistenceConfig;
 import net.openhft.chronicle.bytes.Bytes;
+import net.openhft.chronicle.bytes.BytesStore;
+import net.openhft.chronicle.bytes.PointerBytesStore;
 import net.openhft.chronicle.queue.ExcerptAppender;
 import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import net.openhft.chronicle.wire.DocumentContext;
+import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +55,9 @@ public class ChronicleLogStore implements LogStore, Component {
     private final Map<String, StreamState> streams = new ConcurrentHashMap<>();
     private final Map<String, Decoder> streamDecoders = new ConcurrentHashMap<>();
     private final AtomicLong totalEntries = new AtomicLong(0);
+
+    // A view of off-heap memory for the buffer write, re-pointed at each message (single writer)
+    private final PointerBytesStore offHeap = BytesStore.nativePointer();
     private final LogEntry flyweightEntry = new LogEntry();
     private ComponentProvider componentProvider;
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
@@ -121,6 +127,42 @@ public class ChronicleLogStore implements LogStore, Component {
             bytes.write(metadata);
             bytes.writeInt(rawMessage.length);
             bytes.write(rawMessage);
+            index = state.appender.lastIndexAppended();
+        }
+
+        state.entryCount.incrementAndGet();
+        totalEntries.incrementAndGet();
+        return index;
+    }
+
+    /**
+     * The message path: the bytes go from the caller's buffer into the queue's memory in one
+     * copy, with no entry, array or lambda allocated.
+     */
+    @Override
+    public long write(long timestamp, LogEntry.Direction direction, int sequenceNumber, String streamName,
+                      DirectBuffer buffer, int offset, int length) {
+        if (streamName == null || streamName.isEmpty()) {
+            throw new IllegalArgumentException("Stream name is required");
+        }
+
+        StreamState state = getOrCreateStream(streamName);
+
+        long index;
+        try (DocumentContext dc = state.appender.writingDocument()) {
+            Bytes<?> bytes = dc.wire().bytes();
+            bytes.writeLong(timestamp);
+            bytes.writeByte((byte) (direction == LogEntry.Direction.INBOUND ? 0 : 1));
+            bytes.writeInt(sequenceNumber);
+            bytes.writeShort((short) 0);
+            bytes.writeInt(length);
+            byte[] array = buffer.byteArray();
+            if (array != null) {
+                bytes.write(array, buffer.wrapAdjustment() + offset, length);
+            } else {
+                offHeap.set(buffer.addressOffset() + offset, length);
+                bytes.write(offHeap, 0L, (long) length);
+            }
             index = state.appender.lastIndexAppended();
         }
 
@@ -429,6 +471,10 @@ public class ChronicleLogStore implements LogStore, Component {
     }
 
     StreamState getOrCreateStream(String streamName) {
+        StreamState existing = streams.get(streamName);   // computeIfAbsent's lambda would allocate per call
+        if (existing != null) {
+            return existing;
+        }
         return streams.computeIfAbsent(streamName, name -> {
             String sanitizedName = sanitizeFileName(name);
             File dir = new File(baseDir, sanitizedName);

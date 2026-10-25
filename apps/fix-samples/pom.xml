@@ -60,6 +60,27 @@
 
     <build>
         <plugins>
+            <!-- Surefire: add-opens for Chronicle Queue on Java 17+ (the allocation test writes to a store);
+                 Chronicle records a stack trace per write when assertions are on, which only the test JVM has -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+                        --add-opens java.base/java.io=ALL-UNNAMED
+                        --add-opens java.base/java.nio=ALL-UNNAMED
+                        --add-opens java.base/sun.nio.ch=ALL-UNNAMED
+                        --add-opens java.base/jdk.internal.misc=ALL-UNNAMED
+                        --add-exports java.base/jdk.internal.misc=ALL-UNNAMED
+                        --add-exports java.base/jdk.internal.ref=ALL-UNNAMED
+                        --add-exports java.base/sun.nio.ch=ALL-UNNAMED
+                        -da:net.openhft...
+                    </argLine>
+                </configuration>
+            </plugin>
+
             <!-- Create executable JAR for acceptor -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
