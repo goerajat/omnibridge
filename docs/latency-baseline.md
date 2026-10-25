@@ -489,5 +489,28 @@ the queue's memory), and the sessions pass the read buffer or the outgoing ring.
 | exchange simulator | 312 (the retained order) | 312 |
 
 So with `log-messages = true` the initiator's event loop allocates nothing per message, and the
-simulator's only the order it keeps. Not yet measured on AWS; the stage-timing `send.persist`
-(0.7–0.9 µs p50) is where any time saving would show.
+simulator's only the order it keeps.
+
+**AWS** (`b056403` = `b8c9ab1` + a skill edit, new stack, persistence on, isolated, 20k + 100k at
+1,000/s; RTT from intended send):
+
+| Run | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | FIX − TCP |
+|-----|----:|----:|----:|----:|------:|-------:|----:|--------:|----:|
+| ack only (`96d7d71`) | 57.0 | 65.5 | 74.0 | 115.4 | 159 | 1,583 | 6,066 | 54.5 | 10.9 |
+| + no allocation in the simulator (`6558e62`) | 60.1 | 68.2 | 76.7 | 125.5 | 307 | 2,896 | 6,259 | 58.2* | 9.8 |
+| + allocation-free persistence (`b8c9ab1`) | 50.7 | 58.3 | 64.7 | 109.3 | 150 | 548 | 4,366 | 50.2* | 7.9 |
+
+\* The run's own sockperf baseline was bimodal again (p25 49.5, p50 51.8, p75 119 µs); two clean
+runs right after gave p50 50.3 and 50.0, and their mean is used. FIX − TCP from the actual-send
+p50 (58.1).
+
+- **The fastest stack so far** (sockperf min 40.7 µs against 45–48 before), so most of the 10 µs
+  p50 drop is the network; FIX − TCP went 9.8 → 7.9 µs. That is more than the persistence stage
+  alone was (0.7–0.9 µs per side), so part of it is run-to-run noise. The three stacks since the
+  ack-only change give FIX − TCP 10.9, 9.8, 7.9 for engine changes that only removed garbage.
+- **Tails improved for the first time**: p99.9 307 → 150, p99.99 2,896 → 548 µs (intended send),
+  actual-send max 998 → 590 µs; send slip p99.99 2,600 → 303 µs. With no garbage on either event
+  loop there is nothing for ZGC to do during the run, but one run on a new stack cannot separate
+  that from the stack itself.
+- `--require-isolation` exited 1 again on the initiator's 1/s preemption WARN only.
+
