@@ -1,7 +1,7 @@
 ---
 name: aws-latency-test
 description: Provision the AWS stack with Terraform, deploy the current code, run the FIX latency test with its sockperf network baseline, summarize the results against earlier runs, and destroy the stack.
-argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--keep]"
+argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main] [--keep]"
 allowed-tools:
   - Bash(./scripts/deploy/terraform-deploy.sh:*)
   - Bash(./scripts/deploy/deploy-pipeline.sh:*)
@@ -35,7 +35,7 @@ Arguments: `$ARGUMENTS`
 
 - Up to three numbers: warmup orders, test orders, rate (defaults 10000 1000 100).
   Keep the defaults unless the user gives others, so runs stay comparable.
-- `--no-tune-simulator`, `--no-persistence`, `--skip-baseline`, `--nic-tuning`: passed through to
+- `--no-tune-simulator`, `--no-persistence`, `--skip-baseline`, `--nic-tuning`, `--sender`: passed through to
   the test script. One run, persistence on: by default the measured sessions
   write every message to their store without log tracing. Do not run the
   non-persistence variant unless the user asks for it.
@@ -44,7 +44,10 @@ Arguments: `$ARGUMENTS`
   off and kernel busy polling on for the run (both hosts, restored afterwards);
   it is recorded as `options.nic_tuning`, so compare such a run only with other
   `nic_tuning: true` lines, and say in the report that FIX − TCP is not engine
-  time there (busy polling also speeds up sockperf's blocking receive).
+  time there (busy polling also speeds up sockperf's blocking receive). `--sender main`
+  sends the orders from the initiator's main thread as before the loop sender (the
+  default, `loop`, sends them from the event loop's own thread); recorded as
+  `options.sender`. Lines without `options.sender` were `main`.
 - `--keep`: skip the destroy step and say so in the report. Only when passed.
 
 Long steps (Terraform, the pipeline, the test) take minutes: run them with
@@ -89,7 +92,7 @@ otherwise go to step 6 with the diagnosis.
 
 ## 4. Test
 
-`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> --require-isolation [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning]`
+`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> --require-isolation [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main]`
 
 The trading hosts isolate the event-loop cpu at boot, so `--require-isolation` fails
 the run if that did not take effect.

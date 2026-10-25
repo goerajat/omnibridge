@@ -74,6 +74,9 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     private final LongAdder selectorWakeups = new LongAdder();
 
     private volatile Thread eventLoopThread;
+    // Run once per loop iteration, on the loop thread, before the ring drain: work that must
+    // happen on the loop at a time of its own choosing (a paced sender). Null when unused.
+    private volatile Runnable loopTask;
     private NetworkHandler defaultHandler;
     private ComponentProvider componentProvider;
 
@@ -271,6 +274,19 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             taskQueue.add(task);
             wakeup();
         }
+    }
+
+    /**
+     * Set a task the loop runs once per iteration on its own thread, before draining the
+     * rings, so a message the task commits is written in the same iteration (with
+     * write-on-loop-commit, inside the commit). In busy-spin mode an iteration takes well
+     * under a microsecond, so the task can pace sends by {@code System.nanoTime()} without a
+     * thread hand-off. The task must return quickly: it holds up every channel on the loop.
+     *
+     * @param task the task, or null to remove it
+     */
+    public void setLoopTask(Runnable task) {
+        this.loopTask = task;
     }
 
     /**
@@ -494,6 +510,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             try {
                 // Process any queued tasks
                 processTasks();
+                runLoopTask();
 
                 // Drain ring buffers BEFORE select (for messages from other threads)
                 drainAllChannelRingBuffers();
@@ -526,6 +543,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             try {
                 // Process any queued tasks
                 processTasks();
+                runLoopTask();
 
                 // Drain ring buffers to sockets
                 drainAllChannelRingBuffers();
@@ -750,6 +768,17 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                 handler.onDisconnected(wrapper, reason);
             } catch (Exception e) {
                 log.error("Error in onDisconnected for SSL channel: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    private void runLoopTask() {
+        Runnable task = loopTask;
+        if (task != null) {
+            try {
+                task.run();
+            } catch (Exception e) {
+                log.error("Error in loop task: {}", e.getMessage(), e);
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.omnibridge.apps.fix.initiator;
 
 import com.omnibridge.fix.engine.session.FixSession;
+import com.omnibridge.network.NetworkEventLoop;
 import com.omnibridge.fix.engine.timing.StageTimingRecorder;
 import com.omnibridge.fix.engine.timing.StageTimingReport;
 import com.omnibridge.fix.message.FixTags;
@@ -8,6 +9,7 @@ import com.omnibridge.fix.message.RingBufferOutgoingMessage;
 import org.HdrHistogram.Histogram;
 
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,6 +32,8 @@ public class LatencyTestRunner {
     private static final long PACER_LEAD_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
 
     private final FixSession session;
+    // Sends from the loop's own thread when set (the default); null sends from this thread
+    private final NetworkEventLoop eventLoop;
     private final InitiatorMessageListener messageListener;
     private final int warmupOrders;
     private final int testOrders;
@@ -42,10 +46,15 @@ public class LatencyTestRunner {
     private long warmupReadCapHits;
     private volatile boolean running = true;
 
-    public LatencyTestRunner(FixSession session, InitiatorMessageListener messageListener,
+    /**
+     * @param eventLoop the session's event loop, to send the orders from its thread (see
+     *                  {@link #run()}); null sends them from the thread that calls {@code run}
+     */
+    public LatencyTestRunner(FixSession session, NetworkEventLoop eventLoop, InitiatorMessageListener messageListener,
                              int warmupOrders, int testOrders, int ordersPerSecond,
                              int maxPendingOrders, int backpressureTimeoutSeconds) {
         this.session = session;
+        this.eventLoop = eventLoop;
         this.messageListener = messageListener;
         this.warmupOrders = warmupOrders;
         this.testOrders = testOrders;
@@ -61,10 +70,18 @@ public class LatencyTestRunner {
     /**
      * Run the latency test (warmup + actual test).
      *
+     * <p>With an event loop, both phases send from the loop's own thread through its loop
+     * task: each iteration sends the next order once it is due (timed phase) or as soon as
+     * flow control allows (warmup). The loop busy-spins, so an order is sent within an
+     * iteration of its intended time and there is no thread hand-off or wake-up between the
+     * pacer and the socket write. Without a loop the orders are sent from this thread, which
+     * spins on the schedule and commits to the ring for the loop to write.</p>
+     *
      * @return true if test completed successfully
      */
     public boolean run() throws InterruptedException {
         System.out.println("\n========== LATENCY TRACKING MODE ==========\n");
+        System.out.println("Sender: " + (eventLoop != null ? "event loop thread" : "main thread"));
 
         // Phase 1: Warmup
         System.out.println("Phase 1: Warmup (" + warmupOrders + " orders for JIT compilation)...");
@@ -100,56 +117,146 @@ public class LatencyTestRunner {
         return testSuccess;
     }
 
+    /** What a phase's sender did; written by the sending thread, read after it is done. */
+    private static final class SendResult {
+        int sent;
+        long backpressureNanos;
+        String error;   // null when every order went out
+    }
+
+    /**
+     * One phase's orders. Warmup (no pacer) sends whenever flow control allows; the timed phase
+     * sends order {@code i} once it is due. {@link #tick()} sends at most one order and never
+     * waits, so it can run as the loop task; {@link #sendAll()} spins on it from a thread.
+     */
+    private final class PhaseSender implements Runnable {
+        private final String prefix;
+        private final int count;
+        private final RatePacer pacer;   // null: as fast as flow control allows
+        private final long backpressureTimeoutNanos = TimeUnit.SECONDS.toNanos(backpressureTimeoutSeconds);
+        private final CountDownLatch done = new CountDownLatch(1);
+        private final SendResult result = new SendResult();
+        private int next;
+        private long backpressureStart;
+
+        PhaseSender(String prefix, int count, RatePacer pacer) {
+            this.prefix = prefix;
+            this.count = count;
+            this.pacer = pacer;
+        }
+
+        boolean isDone() {
+            return done.getCount() == 0;
+        }
+
+        /** Loop task: one tick per loop iteration. */
+        @Override
+        public void run() {
+            tick();
+        }
+
+        /** Send the next order if it is due and allowed; finish the phase when none are left. */
+        void tick() {
+            if (isDone()) {
+                return;
+            }
+            if (next >= count || !running) {
+                finish();
+                return;
+            }
+            if (tracker.getPendingOrderCount() >= maxPendingOrders) {
+                long now = System.nanoTime();
+                if (backpressureStart == 0) {
+                    backpressureStart = now;
+                } else if (now - backpressureStart > backpressureTimeoutNanos) {
+                    result.error = "Backpressure timeout exceeded (" + backpressureTimeoutSeconds +
+                            "s) - pending orders: " + tracker.getPendingOrderCount();
+                    finish();
+                }
+                return;
+            }
+            if (backpressureStart != 0) {
+                result.backpressureNanos += System.nanoTime() - backpressureStart;
+                backpressureStart = 0;
+            }
+            long intended = pacer != null ? pacer.intendedSendTime(next) : 0;
+            long now = System.nanoTime();
+            if (pacer != null && now - intended < 0) {
+                return;   // not due yet
+            }
+            try {
+                tracker.recordSend(next, pacer != null ? intended : now, now);
+                sendOrder(prefix, next);
+                next++;
+                result.sent++;
+            } catch (Exception e) {
+                result.error = "Failed to send order " + next + ": " + e.getMessage();
+                finish();
+                return;
+            }
+            if (next >= count) {
+                finish();
+            }
+        }
+
+        private void finish() {
+            if (backpressureStart != 0) {
+                result.backpressureNanos += System.nanoTime() - backpressureStart;
+                backpressureStart = 0;
+            }
+            done.countDown();
+        }
+
+        /** Spin on {@link #tick()} from the calling thread until the phase is done. */
+        SendResult sendAll() {
+            while (!isDone()) {
+                tick();
+                Thread.onSpinWait();
+            }
+            return result;
+        }
+
+        /** Run as the loop task until the phase is done or the bound passes. */
+        SendResult sendAllOnLoop(long bound, TimeUnit unit) throws InterruptedException {
+            eventLoop.setLoopTask(this);
+            try {
+                if (!done.await(bound, unit)) {
+                    result.error = "Sender did not finish within " + unit.toSeconds(bound) + "s (sent " + result.sent + ")";
+                    done.countDown();
+                }
+            } finally {
+                eventLoop.setLoopTask(null);
+            }
+            return result;
+        }
+    }
+
+    private SendResult send(String prefix, int count, RatePacer pacer) throws InterruptedException {
+        PhaseSender sender = new PhaseSender(prefix, count, pacer);
+        if (eventLoop == null) {
+            return sender.sendAll();
+        }
+        // The schedule's length plus the backpressure allowance, with room for a slow start
+        long boundSeconds = (pacer != null && ordersPerSecond > 0 ? (long) count / ordersPerSecond : 0)
+                + backpressureTimeoutSeconds + 60;
+        return sender.sendAllOnLoop(boundSeconds, TimeUnit.SECONDS);
+    }
+
     private boolean runWarmup() throws InterruptedException {
         // Reset tracker for warmup phase
         tracker.reset(warmupOrders, WARMUP_PREFIX);
         messageListener.setLatencyTracker(tracker);
 
         long startTime = System.currentTimeMillis();
-        int ordersSent = 0;
-        long backpressureStartTime = 0;
-        long totalBackpressureTime = 0;
+        SendResult sent = send(WARMUP_PREFIX, warmupOrders, null);
+        long backpressureMs = sent.backpressureNanos / 1_000_000;
 
-        for (int i = 0; i < warmupOrders && running; i++) {
-            // Flow control
-            while (tracker.getPendingOrderCount() >= maxPendingOrders && running) {
-                if (backpressureStartTime == 0) {
-                    backpressureStartTime = System.currentTimeMillis();
-                }
-
-                long backpressureDuration = System.currentTimeMillis() - backpressureStartTime;
-                if (backpressureDuration > backpressureTimeoutSeconds * 1000L) {
-                    System.err.println("\nERROR: Backpressure timeout exceeded (" + backpressureTimeoutSeconds +
-                                     "s) - pending orders: " + tracker.getPendingOrderCount());
-                    System.err.println("Warmup phase aborted after " + ordersSent + " orders.");
-                    long elapsed = System.currentTimeMillis() - startTime;
-                    printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
-                    return false;
-                }
-                Thread.sleep(1);
-            }
-
-            if (backpressureStartTime > 0) {
-                totalBackpressureTime += System.currentTimeMillis() - backpressureStartTime;
-                backpressureStartTime = 0;
-            }
-
-            try {
-                long now = System.nanoTime();
-                tracker.recordSend(i, now, now);
-                sendOrder(WARMUP_PREFIX, i);
-                ordersSent++;
-            } catch (Exception e) {
-                System.err.println("\nERROR: Failed to send warmup order " + i + ": " + e.getMessage());
-                System.err.println("Warmup phase aborted after " + ordersSent + " orders.");
-                long elapsed = System.currentTimeMillis() - startTime;
-                printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
-                return false;
-            }
-
-            if (i % 1000 == 0 && i > 0) {
-                Thread.yield();
-            }
+        if (sent.error != null) {
+            System.err.println("\nERROR: " + sent.error);
+            System.err.println("Warmup phase aborted after " + sent.sent + " orders.");
+            printWarmupResults(sent.sent, System.currentTimeMillis() - startTime, backpressureMs);
+            messageListener.setLatencyTracker(null);
+            return false;
         }
 
         boolean completed = tracker.await(60, TimeUnit.SECONDS);
@@ -159,7 +266,7 @@ public class LatencyTestRunner {
             System.out.println("WARNING: Not all warmup acks received within timeout");
         }
 
-        printWarmupResults(ordersSent, elapsed, totalBackpressureTime);
+        printWarmupResults(sent.sent, elapsed, backpressureMs);
         printWarmupBurst();
         messageListener.setLatencyTracker(null);
         warmupReadCapHits = session.getReadCapHits();
@@ -189,49 +296,12 @@ public class LatencyTestRunner {
 
         long startTime = System.nanoTime();
         RatePacer pacer = new RatePacer(startTime + PACER_LEAD_NANOS, ordersPerSecond);
-        int ordersSent = 0;
-        boolean errorOccurred = false;
-        long backpressureStartTime = 0;
-        long totalBackpressureTimeNanos = 0;
-
-        for (int i = 0; i < testOrders && running; i++) {
-            // Flow control
-            while (tracker.getPendingOrderCount() >= maxPendingOrders && running) {
-                if (backpressureStartTime == 0) {
-                    backpressureStartTime = System.nanoTime();
-                }
-
-                long backpressureDurationMs = (System.nanoTime() - backpressureStartTime) / 1_000_000;
-                if (backpressureDurationMs > backpressureTimeoutSeconds * 1000L) {
-                    System.err.println("\nERROR: Backpressure timeout exceeded (" + backpressureTimeoutSeconds +
-                                     "s) - pending orders: " + tracker.getPendingOrderCount());
-                    System.err.println("Latency test aborted after " + ordersSent + " orders.");
-                    errorOccurred = true;
-                    break;
-                }
-                Thread.onSpinWait();
-            }
-
-            if (errorOccurred) break;
-
-            if (backpressureStartTime > 0) {
-                totalBackpressureTimeNanos += System.nanoTime() - backpressureStartTime;
-                backpressureStartTime = 0;
-            }
-
-            // Rate limiting: spin until the order is due on the fixed schedule
-            long intendedSendTime = pacer.awaitSendTime(i);
-
-            try {
-                tracker.recordSend(i, intendedSendTime, System.nanoTime());
-                sendOrder(TEST_PREFIX, i);
-                ordersSent++;
-            } catch (Exception e) {
-                System.err.println("\nERROR: Failed to send test order " + i + ": " + e.getMessage());
-                System.err.println("Latency test aborted after " + ordersSent + " orders.");
-                errorOccurred = true;
-                break;
-            }
+        SendResult sent = send(TEST_PREFIX, testOrders, pacer);
+        int ordersSent = sent.sent;
+        boolean errorOccurred = sent.error != null;
+        if (errorOccurred) {
+            System.err.println("\nERROR: " + sent.error);
+            System.err.println("Latency test aborted after " + ordersSent + " orders.");
         }
 
         long totalTimeNanos = System.nanoTime() - startTime;
@@ -254,7 +324,7 @@ public class LatencyTestRunner {
         }
 
         if (ordersSent > 0) {
-            printLatencyTestResults(ordersSent, receivedCount, totalTimeNanos, totalBackpressureTimeNanos);
+            printLatencyTestResults(ordersSent, receivedCount, totalTimeNanos, sent.backpressureNanos);
             printLatencyStats(tracker.getLatencies(), receivedCount);
             printHistograms(pacer.isPaced());
             // Reads that filled the read cap during the timed phase (scripts parse this line)

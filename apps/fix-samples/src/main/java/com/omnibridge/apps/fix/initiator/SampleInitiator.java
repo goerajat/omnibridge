@@ -5,6 +5,7 @@ import com.omnibridge.apps.common.ApplicationBase;
 import com.omnibridge.apps.common.demo.DemoOrderTracker;
 import com.omnibridge.apps.fix.initiator.routes.InitiatorOrderRoutes;
 import com.omnibridge.fix.engine.FixEngine;
+import com.omnibridge.network.NetworkEventLoop;
 import com.omnibridge.fix.engine.session.FixSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,10 @@ public class SampleInitiator extends ApplicationBase {
 
     @Option(names = {"--backpressure-timeout"}, description = "Seconds to wait in backpressure before aborting", defaultValue = "5")
     private int backpressureTimeoutSeconds;
+
+    @Option(names = {"--sender"}, description = "Thread the latency orders are sent from: loop (the event loop's own thread) or main",
+            defaultValue = "loop")
+    private String sender;
 
     @Option(names = {"--demo"}, description = "Enable demo mode (order tracking UI, no auto-exit)", defaultValue = "false")
     private boolean demoMode;
@@ -127,6 +132,7 @@ public class SampleInitiator extends ApplicationBase {
             System.out.println("Rate: " + (ordersPerSecond > 0 ? ordersPerSecond + " orders/sec" : "unlimited"));
             System.out.println("Max pending orders: " + maxPendingOrders);
             System.out.println("Backpressure timeout: " + backpressureTimeoutSeconds + " seconds");
+            System.out.println("Sender: " + sender);
         }
 
         logonLatch = new CountDownLatch(1);
@@ -185,7 +191,8 @@ public class SampleInitiator extends ApplicationBase {
 
         // Run the selected mode
         if (latencyMode) {
-            LatencyTestRunner runner = new LatencyTestRunner(session, messageListener,
+            NetworkEventLoop loop = "main".equalsIgnoreCase(sender) ? null : provider.getComponent(NetworkEventLoop.class);
+            LatencyTestRunner runner = new LatencyTestRunner(session, loop, messageListener,
                     warmupOrders, testOrders, ordersPerSecond, maxPendingOrders, backpressureTimeoutSeconds);
             runner.run();
         } else if (autoMode) {
