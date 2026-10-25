@@ -684,7 +684,8 @@ inactive. Both hosts identical.
 | Type | TCP p50 (p25 / p75) | FIX min | p50 | p90 | p99 | p99.9 | p99.99 | max | FIX − TCP |
 |------|------:|----:|----:|----:|----:|------:|-------:|----:|----:|
 | c6in.xlarge (network check) | 54.8 (51.2 / 57.3) | 50.7 | 58.7 | 65.3 | 90.1 | 122 | 193 | 521 | 3.9 |
-| **c6in.2xlarge** | 49.1 (48.6 / 50.3) | 39.2 | **46.3** | **50.3** | **69.7** | **85.7** | **98.9** | **451** | **−2.8** |
+| **c6in.2xlarge** (stack 1, `559a939`) | 49.1 (48.6 / 50.3) | 39.2 | **46.3** | **50.3** | **69.7** | **85.7** | **98.9** | **451** | **−2.8** |
+| c6in.2xlarge (stack 2, `63a822a`, default) | 49.1 (48.7 / 50.4) | 41.1 | 54.7 | 67.3 | 76.0 | 101.6 | 120.8 | 410 | 5.5 |
 
 - **The best run so far by a wide margin**: FIX p50 46.3 against 58.7 on the xlarge and 66.5 on
   the last c5, p99.99 98.9 against 193 and 276, max 451 against 521 and 2,122. Send slip p99.99
@@ -704,6 +705,15 @@ inactive. Both hosts identical.
 - Host checks: all PASS on both except the initiator's usual 1.0/s preemption WARN
   (`--require-isolation` exits 1 on it; the data is valid). Simulator read cap hit 500 times over
   the connection, initiator 0 in the timed phase.
-- `trading_instance_type` is now c6in.2xlarge (`terraform.tfvars`, `variables.tf`), on this one
-  run's evidence at twice the xlarge price; the next default run doubles as the repeat that says
-  whether the 12 µs is the size or the stack.
+- `trading_instance_type` is now c6in.2xlarge (`terraform.tfvars`, `variables.tf`). The first run
+  with the default (stack 2, same code) came back at **FIX p50 54.7** on an identical network
+  (sockperf 49.1, p25/p75 48.7/50.4 on both stacks): 8.4 µs above stack 1 with the network
+  ruled out as the cause, p90 67.3 against 50.3, p99.99 121 against 99, max 410 against 451. All
+  host checks PASS on both hosts (the initiator's preemption rounded to PASS this time). So the
+  12 µs between the xlarge and stack 1 was partly the stack: across the two 2xlarge stacks FIX
+  is 46–55 on a 49 network, against 58.7 on the one xlarge stack's 55 network. The size still
+  looks better than the xlarge, and both 2xlarge stacks beat every earlier run on p99.99 (99,
+  121 against 193+) and max (410, 451 against 521+); but the host-side variation between two
+  stacks of the same type on the same network, ~8 µs at p50 and 17 at p90, is now the largest
+  unexplained term and larger than anything left in the engine. Simulator read-cap hits 812
+  against 500; initiator 0 in both.
