@@ -2,7 +2,6 @@
 name: aws-latency-test
 description: Provision the AWS stack with Terraform, deploy the current code, run the FIX latency test with its sockperf network baseline, summarize the results against earlier runs, and destroy the stack.
 argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--keep]"
-disable-model-invocation: true
 allowed-tools:
   - Bash(./scripts/deploy/terraform-deploy.sh:*)
   - Bash(./scripts/deploy/deploy-pipeline.sh:*)
@@ -25,10 +24,12 @@ allowed-tools:
 # AWS latency test
 
 Runs the current checkout on a fresh AWS stack, measures it, reports, and tears
-the stack down. Invoking this skill is the user's approval for every step below,
-including `terraform apply` and `terraform destroy` of the production
+the stack down. Run it only when the user has asked for an AWS latency run (typed
+`/aws-latency-test`, or asked in words); that request is the approval for every
+step below, including `terraform apply` and `terraform destroy` of the production
 environment in `infrastructure/terraform/environments/production`. It is not
-approval for anything else: never push, never change other infrastructure.
+approval for anything else: never push, never change other infrastructure, and
+never start a run the user did not ask for.
 
 Arguments: `$ARGUMENTS`
 
