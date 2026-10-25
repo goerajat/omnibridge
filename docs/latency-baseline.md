@@ -514,3 +514,32 @@ p50 (58.1).
   that from the stack itself.
 - `--require-isolation` exited 1 again on the initiator's 1/s preemption WARN only.
 
+## AWS: NIC tuning as a script option (`0d0feb4`, one stack, persistence on, isolated), µs
+
+`--nic-tuning` now sets ENA `adaptive-rx off`, `rx-usecs 0` and `net.core.busy_read = busy_poll = 50`
+on both trading hosts for the whole run (sockperf included) and restores them afterwards; it is
+recorded as `options.nic_tuning`. Three runs on one stack, in this order, 20k + 100k at 1,000/s; FIX
+from the intended send:
+
+| Run | FIX p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 | TCP p25 / p75 |
+|-----|----:|----:|----:|------:|-------:|----:|--------:|----:|
+| NIC tuning on | 72.6 | 92.5 | 156.8 | 334 | 1,935 | 3,916 | 48.1 | 45.5 / 53.8 |
+| NIC defaults | 87.4 | 170.2 | 300.0 | 1,235 | 3,959 | 5,964 | 62.1 | 58.6 / 68.5 |
+| NIC defaults again | 73.3 | 91.2 | 149.6 | 302 | 1,333 | 4,960 | 61.5 | 58.4 / 67.5 |
+
+- **Same result as the live experiment on `316316e`**: busy polling takes 13 µs off sockperf's
+  blocking round trip (61.5 → 48.1) and nothing off the FIX round trip (73.3 → 72.6 p50, p99
+  150 → 157). The engine already busy-spins on non-blocking reads, so a kernel that polls the NIC
+  queue instead of waking it has nothing to give. FIX − TCP is not engine time in a busy-polling
+  run (24.5 here against 11.8 with defaults).
+- **A slow stack**: sockperf p50 61.5 with defaults (the `b056403` stack had 50.3), so the FIX p50
+  of 73 is the network, not a regression: FIX − TCP with defaults is 11.8, in the 8–13 range of
+  the earlier stacks.
+- **The middle run was bimodal** (FIX p90 170 µs, a second mode ~90 µs above the first, and the
+  sender's slip p99.9 938 µs), with clean host checks; the repeat with the same settings was
+  clean. Fourth time this appears on a run, never twice in a row, never traced to a setting.
+- Host checks: all PASS on the tuned run; the two defaults runs had the usual initiator
+  preemption WARN (both round to 1.0/s, as does the tuned run's PASS), which is all that made
+  `--require-isolation` exit 1 on them.
+
+The NIC settings stay off by default; the flag is there for repeating the experiment.
