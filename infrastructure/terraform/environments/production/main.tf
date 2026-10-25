@@ -3,8 +3,8 @@
 # =============================================================================
 # Orchestrates all infrastructure modules for a production deployment:
 #   - VPC with trading and monitoring network tiers
-#   - FIX protocol engine instance (c5.xlarge)
-#   - OUCH protocol engine instance (c5.xlarge)
+#   - FIX protocol engine instance (c6in.xlarge)
+#   - OUCH protocol engine instance (c6in.xlarge)
 #   - Monitoring stack (Prometheus, Grafana, Alertmanager)
 # =============================================================================
 

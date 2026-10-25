@@ -8,9 +8,9 @@ variable "environment" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. c5.xlarge recommended for production trading workloads."
+  description = "EC2 instance type. c6in.xlarge recommended for production trading workloads (lowest FIX round trip and tails measured)."
   type        = string
-  default     = "c5.xlarge"
+  default     = "c6in.xlarge"
 }
 
 variable "ami_id" {

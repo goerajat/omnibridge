@@ -657,5 +657,6 @@ same code except the debug guards, and the c5 range is the four stacks since the
   (so the WARN is not the hyperthread sibling), and its tails are second best. Whole cores did
   not matter at 1,000 msg/s; the Nitro/host generation of the "n" type did.
 - Price (us-east-1 on-demand, per host): c5.xlarge $0.17/h, c6in.xlarge $0.227/h,
-  c7a.2xlarge $0.41/h. c6in.xlarge is the only candidate to make the default; `terraform.tfvars`
-  still says c5.xlarge (the skill's `--instance-type` selects per run).
+  c7a.2xlarge $0.41/h. c6in.xlarge is now the default `trading_instance_type` (`terraform.tfvars`,
+  `variables.tf`); history lines before this are c5.xlarge unless `instance_type` says otherwise.
+  The skill's `--instance-type` still selects per run.

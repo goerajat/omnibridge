@@ -49,7 +49,7 @@ Arguments: `$ARGUMENTS`
   default, `loop`, sends them from the event loop's own thread); recorded as
   `options.sender`. Lines without `options.sender` were `main`.
 - `--instance-type <type>`: trading hosts of that EC2 type instead of the
-  `terraform.tfvars` default (c5.xlarge): passed to `terraform-deploy.sh -t` on
+  `terraform.tfvars` default (c6in.xlarge since a303017; c5.xlarge before): passed to `terraform-deploy.sh -t` on
   both the apply and the destroy. `summary.json` records the type; compare only
   lines with the same `instance_type`.
 - `--keep`: skip the destroy step and say so in the report. Only when passed.
