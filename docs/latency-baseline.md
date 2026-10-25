@@ -660,3 +660,50 @@ same code except the debug guards, and the c5 range is the four stacks since the
   c7a.2xlarge $0.41/h. c6in.xlarge is now the default `trading_instance_type` (`terraform.tfvars`,
   `variables.tf`); history lines before this are c5.xlarge unless `instance_type` says otherwise.
   The skill's `--instance-type` still selects per run.
+
+## AWS: c6in.2xlarge, ENA LLQ and NUMA (`559a939`, code `410bf11`, one stack, persistence on, isolated), µs
+
+Same code and options as the network check above (20k warmup + 100k at 1,000/s, simulator tuned,
+loop sender), trading hosts `c6in.2xlarge` (8 vCPU / 4 cores, same Ice Lake 8375C and ENA as the
+xlarge, 8 NIC queues instead of 4, $0.45/h per host). Before the run both hosts were inspected for
+the ENA low-latency queue and for NUMA.
+
+**ENA LLQ is already on.** The in-tree `ena` driver (kernel 6.8.0-1066-aws) has no ethtool
+private flag for it (`--show-priv-flags`: not supported), but every indicator says device
+placement: the per-queue `tx_llq_buffer_copy` counters are non-zero (they count only in LLQ mode),
+dmesg has none of the driver's "LLQ is not supported, fallback to host mode" lines, the TX ring
+maximum is 1024 (the LLQ limit; RX is 8192) and the device exposes the 1 MB prefetchable BAR
+(region 2) that LLQ pushes headers through. There is nothing to turn on; it was on for the c5
+and c6in.xlarge runs too.
+
+**NUMA: one node, nothing to place.** One socket, 4 cores × 2 threads, `NUMA node0 CPU(s): 0-7`,
+the NIC reports `numa_node -1` / `local_cpulist 0-7` (a virtual function, no locality). The
+boot tuning isolated cpu 3 and its sibling 7 and put all nine ENA IRQs on 0-2,4-6; irqbalance
+inactive. Both hosts identical.
+
+| Type | TCP p50 (p25 / p75) | FIX min | p50 | p90 | p99 | p99.9 | p99.99 | max | FIX − TCP |
+|------|------:|----:|----:|----:|----:|------:|-------:|----:|----:|
+| c6in.xlarge (network check) | 54.8 (51.2 / 57.3) | 50.7 | 58.7 | 65.3 | 90.1 | 122 | 193 | 521 | 3.9 |
+| **c6in.2xlarge** | 49.1 (48.6 / 50.3) | 39.2 | **46.3** | **50.3** | **69.7** | **85.7** | **98.9** | **451** | **−2.8** |
+
+- **The best run so far by a wide margin**: FIX p50 46.3 against 58.7 on the xlarge and 66.5 on
+  the last c5, p99.99 98.9 against 193 and 276, max 451 against 521 and 2,122. Send slip p99.99
+  0.74 µs, intended = actual.
+- **The network moved this time**: sockperf p50 49.1 with a tight distribution (p25 48.6, p75
+  50.3, p99 63.6, max 133), the lowest and narrowest of any stack. Whether that is the 2xlarge's
+  larger share of the Nitro card or a lucky placement is one run's worth of evidence; the four
+  c5 stacks ranged 48–62 on the same code, so the TCP number alone would not be conclusive. The
+  FIX round trip moving 12 µs with it, and the tails halving, is what one stack cannot explain
+  by placement alone.
+- **FIX is now below sockperf.** The engine's whole round trip (two kernel receives, two sends,
+  parse, session, persist on both sides) takes less than sockperf's own ping-pong, so the
+  "FIX − TCP = engine time" reading is finished: sockperf's blocking `recv` pays an interrupt,
+  a wake-up and a scheduler hop on each side that the pinned, busy-spinning engine does not, and
+  on this host that overhead exceeds the engine's work. From here the sockperf number is a check
+  that the network is normal (bimodal, slow placement), not a floor to subtract.
+- Host checks: all PASS on both except the initiator's usual 1.0/s preemption WARN
+  (`--require-isolation` exits 1 on it; the data is valid). Simulator read cap hit 500 times over
+  the connection, initiator 0 in the timed phase.
+- Not changed: `trading_instance_type` stays c6in.xlarge (set earlier today). The 2xlarge is
+  the stronger choice on this evidence at twice the price; one more run of each would settle
+  whether the 12 µs is the size or the stack.
