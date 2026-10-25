@@ -13,6 +13,7 @@
 #   -o, --output      Output file for Terraform outputs (default: tf-outputs.json)
 #   -e, --env         Terraform environment directory (default: production)
 #   -v, --version     Override app_version in terraform.tfvars
+#   -t, --instance-type  Override trading_instance_type (both trading hosts)
 #   --plan-only       Run init + plan only, do not apply
 #   --auto-approve    Skip confirmation prompts
 #   --skip-ip-update  Skip auto-detection of public IP for ssh_cidrs/grafana_cidrs
@@ -38,6 +39,7 @@ ENVIRONMENT="production"
 PLAN_ONLY=false
 AUTO_APPROVE=false
 VERSION_OVERRIDE=""
+INSTANCE_TYPE_OVERRIDE=""
 SKIP_IP_UPDATE=false
 DESTROY_ONLY=false
 
@@ -58,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--version)
             VERSION_OVERRIDE="$2"
+            shift 2
+            ;;
+        -t|--instance-type)
+            INSTANCE_TYPE_OVERRIDE="$2"
             shift 2
             ;;
         --plan-only)
@@ -87,6 +93,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -o, --output      Output file for Terraform outputs (default: tf-outputs.json)"
             echo "  -e, --env         Terraform environment (default: production)"
             echo "  -v, --version     Override app_version in terraform.tfvars"
+            echo "  -t, --instance-type  Override trading_instance_type (both trading hosts)"
             echo "  --plan-only       Run init + plan only, do not apply"
             echo "  --auto-approve    Skip confirmation prompts"
             echo "  --destroy-only    Destroy infrastructure and exit (no plan/apply)"
@@ -111,6 +118,9 @@ fi
 TF_VAR_FLAGS=""
 if [ -n "$VERSION_OVERRIDE" ]; then
     TF_VAR_FLAGS="-var=app_version=$VERSION_OVERRIDE"
+fi
+if [ -n "${INSTANCE_TYPE_OVERRIDE:-}" ]; then
+    TF_VAR_FLAGS="$TF_VAR_FLAGS -var=trading_instance_type=$INSTANCE_TYPE_OVERRIDE"
 fi
 
 # -------------------------------------------------------------------------

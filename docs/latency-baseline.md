@@ -601,3 +601,29 @@ RTT from the intended send:
   work was ~2 µs before, and the AWS FIX − TCP of 10.5 is in line with the 8–13 of earlier stacks.
 - Host checks all PASS on both runs, including the initiator's preemption (1.0/s, rounding to the
   threshold), so `--require-isolation` exited 0 for the first time.
+
+## AWS: instance generation and core layout (network check), µs
+
+The engines' share of the round trip is ~10.5 µs; the other ~56 is the network between two
+c5.xlarge hosts in one cluster placement group (`aws_placement_group.trading`, already in place,
+so placement is not the cause of the 48–62 µs sockperf spread between stacks). ENA Express was
+ruled out without a run: on the x86 compute families it needs 8xlarge and up, and AWS's own
+guide says median latency during light traffic *rises* by tens of µs (it targets tail latency
+under congestion and single-flow bandwidth). What is left to vary is the host and NIC
+generation and whether a vCPU is a hyperthread or a core. Two stacks, one run each with the
+defaults (loop sender, persistence on, isolated, 20k + 100k at 1,000/s), code `410bf11`:
+
+| Type | vCPU / cores | Sustained clock | NIC | What it isolates |
+|------|------|------|------|------|
+| c5.xlarge (today) | 4 / 2 | 3.4 GHz Skylake 8124M | up to 10 Gb, Nitro v3 | baseline: 56–62 µs TCP p50 on the last four stacks |
+| c6in.xlarge | 4 / 2 | 3.5 GHz Ice Lake 8375C | up to 30 Gb, newest ENA | the network path and host generation, same core layout |
+| c7a.2xlarge | 8 / 8, no SMT | 3.7 GHz Zen 4 EPYC 9R14 | up to 12.5 Gb | a whole core per thread, sender and housekeeping on their own cores |
+
+**Expectations, written before the runs.** sockperf (the network alone) is the number to watch:
+c6in should take it down if the Nitro card and host matter (anything under ~50 would be new; the
+best c5 stack gave 50.3); c7a's network is one generation newer than c5 but not an "n" type, so
+its sockperf may not move, while FIX − TCP should fall below 10 (the engine's syscalls and
+copies on a faster, unshared core) and the tails (p99.9, p99.99, max) should improve with no
+sibling and the sender on its own core. Per-core speed alone is worth single-digit percent of
+the engine's 10 µs — a few µs at most; a move in the network number would be worth more than
+everything engine-side that remains.

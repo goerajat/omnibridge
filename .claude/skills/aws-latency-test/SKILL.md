@@ -1,7 +1,7 @@
 ---
 name: aws-latency-test
 description: Provision the AWS stack with Terraform, deploy the current code, run the FIX latency test with its sockperf network baseline, summarize the results against earlier runs, and destroy the stack.
-argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main] [--keep]"
+argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main] [--instance-type <type>] [--keep]"
 allowed-tools:
   - Bash(./scripts/deploy/terraform-deploy.sh:*)
   - Bash(./scripts/deploy/deploy-pipeline.sh:*)
@@ -48,6 +48,10 @@ Arguments: `$ARGUMENTS`
   sends the orders from the initiator's main thread as before the loop sender (the
   default, `loop`, sends them from the event loop's own thread); recorded as
   `options.sender`. Lines without `options.sender` were `main`.
+- `--instance-type <type>`: trading hosts of that EC2 type instead of the
+  `terraform.tfvars` default (c5.xlarge): passed to `terraform-deploy.sh -t` on
+  both the apply and the destroy. `summary.json` records the type; compare only
+  lines with the same `instance_type`.
 - `--keep`: skip the destroy step and say so in the report. Only when passed.
 
 Long steps (Terraform, the pipeline, the test) take minutes: run them with
@@ -72,7 +76,7 @@ everything from the repository root.
 Read the version from `pom.xml` (`<version>` of the root project), then start
 both in the background:
 
-- `./scripts/deploy/terraform-deploy.sh --auto-approve -v <version>`
+- `./scripts/deploy/terraform-deploy.sh --auto-approve -v <version> [-t <instance-type>]`
   (init, plan, apply, writes `tf-outputs.json`; it also writes the caller's
   public IP into `terraform.tfvars`).
 - `mvn install -DskipTests -q`
@@ -122,7 +126,7 @@ run to `docs/latency-history.jsonl`. On failure, read `fix-latency.log` and
 
 Also after any failure in steps 2 to 5, once the logs above have been read.
 
-1. `./scripts/deploy/terraform-deploy.sh --destroy-only --auto-approve -v <version>`
+1. `./scripts/deploy/terraform-deploy.sh --destroy-only --auto-approve -v <version> [-t <instance-type>]`
 2. Verify with `terraform -chdir=infrastructure/terraform/environments/production state list`:
    it must be empty. If anything is left, retry the destroy once, then report
    the leftover resources prominently (they cost money).
