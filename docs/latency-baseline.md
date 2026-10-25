@@ -717,3 +717,49 @@ inactive. Both hosts identical.
   stacks of the same type on the same network, ~8 µs at p50 and 17 at p90, is now the largest
   unexplained term and larger than anything left in the engine. Simulator read-cap hits 812
   against 500; initiator 0 in both.
+
+## AWS: three runs on one c6in.2xlarge stack, with `--stages` (`890b5c6`, code `410bf11`), µs
+
+To separate the JVM from the host in the 8 µs between the two 2xlarge stacks above: one stack
+(stack 3), the test three times without re-provisioning. Each run restarts both engines (fresh
+JVMs on both sides); runs 1 and 2 are the plain test, run 3 adds `--stages`. Cpu 3's reported
+MHz and steal were sampled once a second on both hosts during runs 1 and 2: the guest reports a
+constant nominal 2,899.9 MHz and zero steal, so turbo is not observable from inside the instance
+and that candidate stays unmeasured.
+
+| Run | TCP p50 (p25 / p75) | FIX p50 | p90 | p99 | p99.9 | p99.99 | max |
+|-----|------:|----:|----:|----:|------:|-------:|----:|
+| 1 | 49.3 (48.0 / 50.8) | 47.3 | 51.7 | 70.4 | 89.9 | 108 | 382 |
+| 2 (4 min later) | 49.1 (48.4 / 49.9) | 47.7 | 51.5 | 70.1 | 88.3 | 122 | 928 |
+| 3 (`--stages`, 7 min later) | 48.8 (45.9 / 50.7) | 52.8 | 68.1 | 77.7 | 101.7 | 307 | 876 |
+| stack 1 (`559a939`) | 49.1 | 46.3 | 50.3 | 69.7 | 85.7 | 99 | 451 |
+| stack 2 (`63a822a`) | 49.1 | 54.7 | 67.3 | 76.0 | 101.6 | 121 | 410 |
+
+**Run 3 stage tables** (p50 / p90 / p99, µs; the simulator's `recv.callback` holds the ack's
+encode, prepare, persist and write under write-on-loop-commit):
+
+| Side | send.encode | send.prepare | send.queue | send.persist | send.write | send.total | recv.frame | recv.parse | recv.session | recv.callback | recv.total |
+|------|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| initiator | 0.31 / 0.34 / 0.55 | 0.28 / 0.28 / 0.44 | 0.05 / 0.06 / 0.11 | 0.46 / 0.50 / 3.39 | 2.32 / 2.51 / 2.74 | 3.42 / 3.73 / 6.49 | 0.38 / 0.40 / 0.41 | 0.49 / 0.51 / 0.55 | 0.42 / 0.45 / 3.37 | 0.17 / 0.20 / 0.32 | 1.46 / 1.58 / 4.44 |
+| simulator | 0.95 / 0.99 / 1.29 | 0.25 / 0.26 / 0.44 | 0.05 / 0.05 / 0.17 | 0.61 / 0.67 / 4.41 | 2.29 / 2.51 / 2.92 | 4.12 / 4.58 / 8.34 | 0.35 / 0.37 / 0.39 | 0.37 / 0.40 / 0.44 | 0.73 / 0.79 / 4.17 | 5.09 / 5.70 / 9.49 | 6.54 / 8.96 / 12.02 |
+
+- **The JVM is cleared.** Runs 1 and 2, fresh JVMs on both sides four minutes apart, agree to
+  0.4 µs at p50 and 0.2 at p90. Whatever separates a 47 run from a 55 run is not C2's compile
+  of that process.
+- **So is "the stack".** Run 3, same hosts seven minutes after run 2, is a 55-class run: p50
+  52.8, p90 68.1, the same p50-to-p90 spread of 13–15 µs as stack 2 (`--stages` itself costs
+  ~1–2 µs per side, not 5 at p50 and 17 at p90). The slow mode comes and goes over minutes on
+  one pair of hosts; it is not a property fixed at placement.
+- **The engines are not where it is.** With the slow mode present, both stage tables are flat:
+  the initiator's send is 3.4 / 3.7 / 6.5 and its receive 1.5 / 1.6 / 4.4; the simulator's
+  receive-plus-ack is 6.5 / 9.0 / 12.0. Summing p50s the engines hold ~11.4 µs of the 52.8
+  round trip and ~14.3 of the 68.1 at p90: their p50-to-p90 growth is ~3 µs against 15 for the
+  round trip. The other ~12 µs of spread sits between one side's `send.write` returning and the
+  other side's read: NIC queues, the Nitro card, the fabric and the receiving kernel. The
+  guest-side evidence (sockperf runs before the FIX phase, not during it, and showed nothing)
+  cannot say which; a sockperf run concurrent with the FIX phase on a spare core would.
+- **What the engines do show**: `send.persist` and `recv.session` (the two store writes) carry
+  the p99 on both sides (3.4–4.4 against 0.4–0.7 at p50) and the p99.9 (32–36 µs): the journal
+  tail, the lighter-journal target. Socket write is 2.3 µs p50 on both sides, encode 0.3 / 0.95.
+- Host checks: all PASS on both hosts in all three runs except the initiator's preemption WARN
+  in runs 2 and 3 (1.0/s rounding); steal 0 throughout.
