@@ -310,8 +310,10 @@ public class OptiqSession extends SbeSession<OptiqSessionConfig> {
         long orderId = msg.getOrderId();
         byte orderStatus = msg.getOrderStatus();
 
-        log.debug("[{}] Received ExecutionReport: clientOrderId={}, orderId={}, status={}",
-                sessionId, clientOrderId, orderId, orderStatus);
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Received ExecutionReport: clientOrderId={}, orderId={}, status={}",
+                    sessionId, clientOrderId, orderId, orderStatus);
+        }
 
         notifyMessage(msg);
     }

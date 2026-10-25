@@ -446,7 +446,9 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
             boolean sent = sendMessage(sendBuffer, message.getOffset(), length);
 
             if (sent) {
-                log.debug("[{}] Sent message: templateId={}", sessionId, message.getTemplateId());
+                if (log.isDebugEnabled()) {
+                    log.debug("[{}] Sent message: templateId={}", sessionId, message.getTemplateId());
+                }
                 outboundSeqNum.incrementAndGet();
                 if (messagesSentCounter != null) {
                     messagesSentCounter.increment();
@@ -467,7 +469,9 @@ public abstract class SbeSession<C extends SbeSessionConfig> implements NetworkH
      */
     public void abort(SbeMessage message) {
         try {
-            log.debug("[{}] Aborted message: templateId={}", sessionId, message.getTemplateId());
+            if (log.isDebugEnabled()) {
+                log.debug("[{}] Aborted message: templateId={}", sessionId, message.getTemplateId());
+            }
         } finally {
             message.reset();
             sendLock.unlock();

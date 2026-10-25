@@ -232,7 +232,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
     }
 
     private void handleOrderAck(OrderAckMessage ack) {
-        log.debug("[{}] Order acknowledged: clOrdId={}", sessionId, ack.getClOrdId());
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Order acknowledged: clOrdId={}", sessionId, ack.getClOrdId());
+        }
         notifyMessage(ack);
     }
 
@@ -245,13 +247,17 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
     }
 
     private void handleExecutionReport(ExecutionReportMessage execReport) {
-        log.debug("[{}] Execution report: clOrdId={}, execId={}",
-                sessionId, execReport.getClOrdId(), execReport.getExecId());
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Execution report: clOrdId={}, execId={}",
+                    sessionId, execReport.getClOrdId(), execReport.getExecId());
+        }
         notifyMessage(execReport);
     }
 
     private void handleCancelAck(CancelAckMessage ack) {
-        log.debug("[{}] Cancel acknowledged: clOrdId={}", sessionId, ack.getClOrdId());
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Cancel acknowledged: clOrdId={}", sessionId, ack.getClOrdId());
+        }
         notifyMessage(ack);
     }
 
@@ -264,7 +270,9 @@ public class PillarSession extends SbeSession<PillarSessionConfig> {
     }
 
     private void handleReplaceAck(ReplaceAckMessage ack) {
-        log.debug("[{}] Replace acknowledged: clOrdId={}", sessionId, ack.getClOrdId());
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Replace acknowledged: clOrdId={}", sessionId, ack.getClOrdId());
+        }
         notifyMessage(ack);
     }
 

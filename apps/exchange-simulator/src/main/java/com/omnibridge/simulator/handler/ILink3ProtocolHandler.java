@@ -75,7 +75,9 @@ public class ILink3ProtocolHandler {
                 .protocol("ILINK3")
                 .build();
 
-        log.debug("New iLink3 order: clOrdId={}, qty={}, price={}", clOrdId, qty, price);
+        if (log.isDebugEnabled()) {
+            log.debug("New iLink3 order: clOrdId={}, qty={}, price={}", clOrdId, qty, price);
+        }
 
         if (!orderBook.addOrder(order)) {
             log.error("Failed to add order to book: duplicate orderId {}", orderId);
@@ -192,8 +194,10 @@ public class ILink3ProtocolHandler {
             ordersFilled.incrementAndGet();
             // Send fill via ExecutionReportNew with updated cumQty/leavesQty
             sendExecutionReportNew(session, order);
-            log.debug("iLink3 Order Filled: clOrdId={}, qty={}, price={}",
-                    order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            if (log.isDebugEnabled()) {
+                log.debug("iLink3 Order Filled: clOrdId={}, qty={}, price={}",
+                        order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            }
         }
     }
 

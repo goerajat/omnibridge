@@ -55,9 +55,11 @@ public class OuchProtocolHandler implements OuchMessageListener<OuchSession> {
         long orderId = orderIdGenerator.nextId();
         Order order = adapter.adapt(msg, session, orderId);
 
-        log.debug("New OUCH order: token={}, symbol={}, side={}, qty={}, price={}",
-                order.getClientOrderId(), order.getSymbol(), order.getSide(),
-                order.getOriginalQty(), order.getPrice());
+        if (log.isDebugEnabled()) {
+            log.debug("New OUCH order: token={}, symbol={}, side={}, qty={}, price={}",
+                    order.getClientOrderId(), order.getSymbol(), order.getSide(),
+                    order.getOriginalQty(), order.getPrice());
+        }
 
         if (!orderBook.addOrder(order)) {
             log.error("Failed to add order to book: duplicate orderId {}", orderId);
@@ -150,9 +152,11 @@ public class OuchProtocolHandler implements OuchMessageListener<OuchSession> {
         long orderId = orderIdGenerator.nextId();
         Order order = adapter.adaptV50(msg, session, orderId);
 
-        log.debug("New OUCH 5.0 order: userRef={}, symbol={}, side={}, qty={}, price={}",
-                order.getClientOrderId(), order.getSymbol(), order.getSide(),
-                order.getOriginalQty(), order.getPrice());
+        if (log.isDebugEnabled()) {
+            log.debug("New OUCH 5.0 order: userRef={}, symbol={}, side={}, qty={}, price={}",
+                    order.getClientOrderId(), order.getSymbol(), order.getSide(),
+                    order.getOriginalQty(), order.getPrice());
+        }
 
         if (!orderBook.addOrder(order)) {
             log.error("Failed to add order to book: duplicate orderId {}", orderId);
@@ -246,8 +250,10 @@ public class OuchProtocolHandler implements OuchMessageListener<OuchSession> {
         if (order.fill(decision.getFillQty(), decision.getFillPrice())) {
             ordersFilled.incrementAndGet();
             responseSender.sendFill(session, order, decision, matchNumber);
-            log.debug("OUCH Order Filled: token={}, qty={}, price={}",
-                    order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            if (log.isDebugEnabled()) {
+                log.debug("OUCH Order Filled: token={}, qty={}, price={}",
+                        order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            }
         }
     }
 

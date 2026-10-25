@@ -77,7 +77,9 @@ public class OptiqProtocolHandler {
                 .protocol("OPTIQ")
                 .build();
 
-        log.debug("New Optiq order: clientOrderId={}, qty={}, price={}", clientOrderId, qty, price);
+        if (log.isDebugEnabled()) {
+            log.debug("New Optiq order: clientOrderId={}, qty={}, price={}", clientOrderId, qty, price);
+        }
 
         if (!orderBook.addOrder(order)) {
             log.error("Failed to add order to book: duplicate orderId {}", orderId);
@@ -151,8 +153,10 @@ public class OptiqProtocolHandler {
             ordersFilled.incrementAndGet();
             byte ordStatus = order.getLeavesQty() <= 0 ? ORD_STATUS_FILLED : ORD_STATUS_PARTIAL;
             sendExecutionReport(session, order, ordStatus);
-            log.debug("Optiq Order Filled: clientOrderId={}, qty={}, price={}",
-                    order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            if (log.isDebugEnabled()) {
+                log.debug("Optiq Order Filled: clientOrderId={}, qty={}, price={}",
+                        order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            }
         }
     }
 

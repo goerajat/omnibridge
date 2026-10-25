@@ -385,8 +385,10 @@ public class ILink3Session extends SbeSession<ILink3SessionConfig> {
         String clOrdId = msg.getClOrdId();
         long orderId = msg.getOrderId();
 
-        log.debug("[{}] Received ExecutionReport: clOrdId={}, orderId={}",
-                sessionId, clOrdId, orderId);
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Received ExecutionReport: clOrdId={}, orderId={}",
+                    sessionId, clOrdId, orderId);
+        }
 
         notifyMessage(msg);
     }

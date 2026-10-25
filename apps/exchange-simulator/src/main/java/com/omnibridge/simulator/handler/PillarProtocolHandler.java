@@ -59,8 +59,10 @@ public class PillarProtocolHandler {
         long orderId = orderIdGenerator.nextId();
         Order order = adapter.adapt(msg, session, orderId);
 
-        log.debug("New Pillar order: clOrdId={}, symbol={}, qty={}, price={}",
-                order.getClientOrderId(), order.getSymbol(), order.getOriginalQty(), order.getPrice());
+        if (log.isDebugEnabled()) {
+            log.debug("New Pillar order: clOrdId={}, symbol={}, qty={}, price={}",
+                    order.getClientOrderId(), order.getSymbol(), order.getOriginalQty(), order.getPrice());
+        }
 
         if (!orderBook.addOrder(order)) {
             log.error("Failed to add order to book: duplicate orderId {}", orderId);
@@ -105,8 +107,10 @@ public class PillarProtocolHandler {
         if (order.fill(decision.getFillQty(), decision.getFillPrice())) {
             ordersFilled.incrementAndGet();
             responseSender.sendFill(session, order, decision, execId);
-            log.debug("Pillar Order Filled: clOrdId={}, qty={}, price={}",
-                    order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            if (log.isDebugEnabled()) {
+                log.debug("Pillar Order Filled: clOrdId={}, qty={}, price={}",
+                        order.getClientOrderId(), decision.getFillQty(), decision.getFillPrice());
+            }
         }
     }
 
