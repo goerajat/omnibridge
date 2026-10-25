@@ -30,7 +30,14 @@ public class DefaultOrderBook implements OrderBook {
     // an order builds no composite key. Each session's map is sized like the book, when its
     // first order arrives.
     private final Map<String, Map<String, Order>> ordersBySessionAndClientId = new ConcurrentHashMap<>();
+    // The session looked up last and its map, as one pair so a reader sees a matching one:
+    // on the order path every order of a connection is from the same session, so the lookup is
+    // a reference compare instead of a hash of the session id
+    private volatile SessionOrders lastSession;
     private final int expectedOrders;
+
+    private record SessionOrders(String key, Map<String, Order> orders) {
+    }
 
     /**
      * A book for {@link #DEFAULT_EXPECTED_ORDERS} orders, with the ClOrdID-only index.
@@ -65,11 +72,9 @@ public class DefaultOrderBook implements OrderBook {
 
     @Override
     public boolean addOrder(Order order) {
-        if (ordersByOrderId.containsKey(order.getOrderId())) {
+        if (ordersByOrderId.putIfAbsent(order.getOrderId(), order) != null) {
             return false;
         }
-
-        ordersByOrderId.put(order.getOrderId(), order);
         if (ordersByClientId != null) {
             ordersByClientId.put(order.getClientOrderId(), order);
         }
@@ -158,10 +163,15 @@ public class DefaultOrderBook implements OrderBook {
             ordersByClientId.clear();
         }
         ordersBySessionAndClientId.clear();
+        lastSession = null;
     }
 
     private Map<String, Order> sessionOrders(String sessionId, boolean create) {
         String key = sessionId != null ? sessionId : "";
+        SessionOrders last = lastSession;
+        if (last != null && (last.key == key || last.key.equals(key))) {
+            return last.orders;
+        }
         Map<String, Order> orders = ordersBySessionAndClientId.get(key);
         if (orders == null && create) {
             orders = allocated(expectedOrders, "");
@@ -169,6 +179,9 @@ public class DefaultOrderBook implements OrderBook {
             if (raced != null) {
                 orders = raced;
             }
+        }
+        if (orders != null) {
+            lastSession = new SessionOrders(key, orders);
         }
         return orders;
     }

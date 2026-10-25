@@ -2,7 +2,7 @@ package com.omnibridge.simulator.core.fill;
 
 import com.omnibridge.simulator.core.order.Order;
 
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 /**
@@ -22,7 +22,6 @@ public class SymbolFillRule implements FillRule {
     private final double minPartialFillRatio;
     private final double maxPartialFillRatio;
     private final int priority;
-    private final Random random;
 
     private SymbolFillRule(Builder builder) {
         this.symbolPattern = builder.symbolPattern;
@@ -37,7 +36,6 @@ public class SymbolFillRule implements FillRule {
         this.minPartialFillRatio = builder.minPartialFillRatio;
         this.maxPartialFillRatio = builder.maxPartialFillRatio;
         this.priority = builder.priority;
-        this.random = new Random();
     }
 
     @Override
@@ -56,8 +54,13 @@ public class SymbolFillRule implements FillRule {
 
     @Override
     public FillDecision evaluate(Order order) {
-        // Check if we should fill at all
-        if (random.nextDouble() >= fillProbability) {
+        // Check if we should fill at all. A probability of 0 or 1 needs no draw (the common
+        // configurations: a draw is a seed update on a shared Random otherwise).
+        if (fillProbability <= 0) {
+            return NO_FILL;
+        }
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        if (fillProbability < 1 && random.nextDouble() >= fillProbability) {
             return NO_FILL;
         }
 

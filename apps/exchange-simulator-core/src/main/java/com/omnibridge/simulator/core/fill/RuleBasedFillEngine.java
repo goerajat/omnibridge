@@ -25,12 +25,16 @@ public class RuleBasedFillEngine implements FillEngine {
             FillRule rule = rules.get(i);
             if (rule.matches(order)) {
                 FillDecision decision = rule.evaluate(order);
-                log.debug("Order {} matched rule {}: {}", order.getClientOrderId(), rule, decision);
+                if (log.isDebugEnabled()) {   // three arguments: a varargs array per call otherwise
+                    log.debug("Order {} matched rule {}: {}", order.getClientOrderId(), rule, decision);
+                }
                 return decision;
             }
         }
 
-        log.debug("Order {} no matching rule, using default: {}", order.getClientOrderId(), defaultDecision);
+        if (log.isDebugEnabled()) {
+            log.debug("Order {} no matching rule, using default: {}", order.getClientOrderId(), defaultDecision);
+        }
         return defaultDecision;
     }
 

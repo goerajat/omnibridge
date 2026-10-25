@@ -84,8 +84,13 @@ public class FixProtocolHandler implements MessageListener {
         }
     }
 
+    /** The counters are written on the event loop only: an ordered store, not a locked add. */
+    private static void bump(AtomicLong counter) {
+        counter.lazySet(counter.get() + 1);
+    }
+
     private void handleNewOrder(FixSession session, IncomingFixMessage message) {
-        ordersReceived.incrementAndGet();
+        bump(ordersReceived);
 
         long orderId = orderIdGenerator.nextId();
         Order order = adapter.adapt(message, session, orderId);
@@ -118,7 +123,7 @@ public class FixProtocolHandler implements MessageListener {
 
         // Accept the order
         order.accept();
-        ordersAccepted.incrementAndGet();
+        bump(ordersAccepted);
 
         // Send order accepted
         responseSender.sendOrderAccepted(session, order);
