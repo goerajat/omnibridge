@@ -704,6 +704,6 @@ inactive. Both hosts identical.
 - Host checks: all PASS on both except the initiator's usual 1.0/s preemption WARN
   (`--require-isolation` exits 1 on it; the data is valid). Simulator read cap hit 500 times over
   the connection, initiator 0 in the timed phase.
-- Not changed: `trading_instance_type` stays c6in.xlarge (set earlier today). The 2xlarge is
-  the stronger choice on this evidence at twice the price; one more run of each would settle
+- `trading_instance_type` is now c6in.2xlarge (`terraform.tfvars`, `variables.tf`), on this one
+  run's evidence at twice the xlarge price; the next default run doubles as the repeat that says
   whether the 12 µs is the size or the stack.

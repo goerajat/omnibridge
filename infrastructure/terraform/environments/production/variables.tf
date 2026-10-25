@@ -50,9 +50,9 @@ variable "grafana_cidrs" {
 # --- Instance Types ---
 
 variable "trading_instance_type" {
-  description = "EC2 instance type for trading applications (c6in.xlarge: best FIX round trip and tails measured, see docs/latency-baseline.md)"
+  description = "EC2 instance type for trading applications (c6in.2xlarge: best FIX round trip and tails measured, see docs/latency-baseline.md)"
   type        = string
-  default     = "c6in.xlarge"
+  default     = "c6in.2xlarge"
 }
 
 variable "monitoring_instance_type" {

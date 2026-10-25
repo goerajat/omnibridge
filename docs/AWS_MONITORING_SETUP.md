@@ -175,7 +175,7 @@ ssh_cidrs     = ["203.0.113.10/32"]       # Your office IP for SSH
 grafana_cidrs = ["203.0.113.10/32"]       # Your office IP for Grafana access
 
 # Instance types
-trading_instance_type    = "c6in.xlarge"  # 4 vCPU, 8GB - lowest FIX latency measured
+trading_instance_type    = "c6in.2xlarge" # 8 vCPU, 16GB - lowest FIX latency measured
 monitoring_instance_type = "t3.large"     # 2 vCPU, 8GB - sufficient for TSDB
 
 # Monitoring
@@ -196,7 +196,7 @@ slack_webhook_url      = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 | `client_cidrs` | No | `[]` | CIDRs allowed to connect to FIX/OUCH ports |
 | `ssh_cidrs` | No | `[]` | CIDRs allowed SSH access |
 | `grafana_cidrs` | No | `[]` | CIDRs allowed to access Grafana |
-| `trading_instance_type` | No | `c6in.xlarge` | EC2 type for trading apps |
+| `trading_instance_type` | No | `c6in.2xlarge` | EC2 type for trading apps |
 | `monitoring_instance_type` | No | `t3.large` | EC2 type for monitoring |
 | `grafana_admin_password` | **Yes** | -- | Grafana admin password (sensitive) |
 | `slack_webhook_url` | No | `""` | Slack webhook for alert notifications |
