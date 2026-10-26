@@ -68,10 +68,16 @@ export PKG_CONFIG_PATH="$FF_DPDK/lib/x86_64-linux-gnu/pkgconfig:$FF_DPDK/lib/pkg
 # ---------------------------------------------------------------------------
 # The shim the JVM loads (FFM): every ob_* call maps to one ff_* call
 # ---------------------------------------------------------------------------
+# The DPDK shared libraries are under $FF_DPDK, not on the loader's default path: the shim
+# carries an rpath and the directory is registered with ldconfig as well
+DPDK_LIBDIR=$FF_DPDK/lib/x86_64-linux-gnu
 gcc -O2 -fPIC -shared -o $FSTACK_DIR/libomnibridge-fstack.so ~/dpdk/omnibridge_fstack.c \
     -I$FSTACK_DIR -I$SRC/lib $(pkg-config --cflags libdpdk) \
     -Wl,--whole-archive $FSTACK_DIR/libfstack.a -Wl,--no-whole-archive \
-    $(pkg-config --libs libdpdk) -lrt -lm -ldl -lcrypto -lpthread -lnuma
+    $(pkg-config --libs libdpdk) -lrt -lm -ldl -lcrypto -lpthread -lnuma \
+    -Wl,-rpath,$DPDK_LIBDIR
+echo "$DPDK_LIBDIR" | sudo tee /etc/ld.so.conf.d/omnibridge-dpdk.conf >/dev/null && sudo ldconfig
+ldd $FSTACK_DIR/libomnibridge-fstack.so | grep -q "not found" && { echo "shim has unresolved dependencies:"; ldd $FSTACK_DIR/libomnibridge-fstack.so | grep "not found"; exit 1; }
 echo "shim built: $(ls -la $FSTACK_DIR/libomnibridge-fstack.so | awk '{print $5}') bytes"
 nm -D $FSTACK_DIR/libomnibridge-fstack.so | grep -c ' T ob_' | xargs echo "exported ob_ symbols:"
 

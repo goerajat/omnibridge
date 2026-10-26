@@ -51,6 +51,13 @@ public final class FfmFstackNative implements FstackNative {
     private MemorySegment loopStub;
 
     public FfmFstackNative(Path library) {
+        // System.load reports the dynamic loader's own reason (a missing dependency, a TLS
+        // problem); SymbolLookup.libraryLookup only says "cannot open library"
+        try {
+            System.load(library.toAbsolutePath().toString());
+        } catch (UnsatisfiedLinkError e) {
+            throw new IllegalArgumentException("Cannot load the F-Stack shim " + library + ": " + e.getMessage(), e);
+        }
         Linker linker = Linker.nativeLinker();
         SymbolLookup lookup = SymbolLookup.libraryLookup(library, arena);
         Linker.Option critical = Linker.Option.critical(false);
