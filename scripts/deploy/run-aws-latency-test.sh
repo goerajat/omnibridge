@@ -482,6 +482,8 @@ on_ouch "set -o pipefail; cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
     -Dfix-engine.stage-timing.enabled=$STAGES \
     -Xms512m -Xmx1g \
     -XX:+UseZGC \
+    --sun-misc-unsafe-memory-access=allow \
+    --enable-native-access=ALL-UNNAMED \
     --add-opens java.base/java.lang=ALL-UNNAMED \
     --add-opens java.base/java.lang.reflect=ALL-UNNAMED \
     --add-opens java.base/java.io=ALL-UNNAMED \

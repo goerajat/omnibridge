@@ -159,6 +159,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>
+                        --sun-misc-unsafe-memory-access=allow
+                        --enable-native-access=ALL-UNNAMED
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         --add-opens java.base/java.nio=ALL-UNNAMED
                     </argLine>

@@ -49,8 +49,7 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions -->
@@ -58,7 +57,7 @@
         <logback.version>1.4.14</logback.version>
         <junit.version>5.10.1</junit.version>
         <jna.version>5.14.0</jna.version>
-        <chronicle.version>5.24ea23</chronicle.version>
+        <chronicle.version>5.27ea11</chronicle.version>
         <agrona.version>1.20.0</agrona.version>
         <jackson.version>2.16.1</jackson.version>
         <picocli.version>4.7.5</picocli.version>
@@ -312,8 +311,7 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.12.1</version>
                     <configuration>
-                        <source>${maven.compiler.source}</source>
-                        <target>${maven.compiler.target}</target>
+                        <release>${maven.compiler.release}</release>
                     </configuration>
                 </plugin>
                 <plugin>

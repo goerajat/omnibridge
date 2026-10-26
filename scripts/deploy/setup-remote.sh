@@ -218,9 +218,9 @@ ensure_prerequisites() {
 set -e
 NEED_UPDATE=false
 
-# Check Java 17
-if java -version 2>&1 | grep -q 'version "17'; then
-    echo "    Java 17 already installed"
+# Check Java 25
+if java -version 2>&1 | grep -q 'version "25'; then
+    echo "    Java 25 already installed"
 else
     NEED_UPDATE=true
 fi
@@ -237,16 +237,16 @@ if [ "$NEED_UPDATE" = true ]; then
     sudo apt-get update -qq
 fi
 
-# Install Java 17 (Amazon Corretto)
-if ! java -version 2>&1 | grep -q 'version "17'; then
-    echo "    Installing Java 17 (Amazon Corretto)..."
+# Install Java 25 (Amazon Corretto)
+if ! java -version 2>&1 | grep -q 'version "25'; then
+    echo "    Installing Java 25 (Amazon Corretto)..."
     # Import Corretto GPG key and repo
     if [ ! -f /usr/share/keyrings/corretto-keyring.gpg ]; then
         curl -sL https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
         sudo apt-get update -qq
     fi
-    sudo apt-get install -y -qq java-17-amazon-corretto-jdk 2>/dev/null
+    sudo apt-get install -y -qq java-25-amazon-corretto-jdk 2>/dev/null
     echo "    Java installed: $(java -version 2>&1 | head -1)"
 fi
 
@@ -412,6 +412,8 @@ WorkingDirectory=$DEPLOY_DIR
 ExecStart=/usr/bin/java \\
     -Xms2g -Xmx2g \\
     -XX:+UseZGC \\
+    --sun-misc-unsafe-memory-access=allow \\
+    --enable-native-access=ALL-UNNAMED \\
     -XX:+AlwaysPreTouch \\
     --add-opens java.base/java.lang=ALL-UNNAMED \\
     --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
@@ -540,6 +542,8 @@ WorkingDirectory=$DEPLOY_DIR
 ExecStart=/usr/bin/java \\
     -Xms512m -Xmx1g \\
     -XX:+UseZGC \\
+    --sun-misc-unsafe-memory-access=allow \\
+    --enable-native-access=ALL-UNNAMED \\
     --add-opens java.base/java.lang=ALL-UNNAMED \\
     --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
     --add-opens java.base/java.io=ALL-UNNAMED \\
@@ -674,6 +678,8 @@ WorkingDirectory=$DEPLOY_DIR
 ExecStart=/usr/bin/java \\
     -Xms1g -Xmx2g \\
     -XX:+UseZGC \\
+    --sun-misc-unsafe-memory-access=allow \\
+    --enable-native-access=ALL-UNNAMED \\
     -XX:+AlwaysPreTouch \\
     --add-opens java.base/java.lang=ALL-UNNAMED \\
     --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
@@ -782,6 +788,8 @@ WorkingDirectory=$DEPLOY_DIR
 ExecStart=/usr/bin/java \\
     -Xms256m -Xmx512m \\
     -XX:+UseZGC \\
+    --sun-misc-unsafe-memory-access=allow \\
+    --enable-native-access=ALL-UNNAMED \\
     --add-opens java.base/java.lang=ALL-UNNAMED \\
     --add-opens java.base/java.lang.reflect=ALL-UNNAMED \\
     --add-opens java.base/java.io=ALL-UNNAMED \\

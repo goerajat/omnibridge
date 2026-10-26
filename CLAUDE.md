@@ -481,5 +481,5 @@ Claude will:
 - **Model**: Sonnet (default, fast/cheap). Change to `claude-opus-4-6` in the workflow for complex tasks.
 - **Max turns**: 25 (enough for build/test cycles)
 - **Timeout**: 30 minutes
-- **JDK**: 21 (Temurin) with Maven cache pre-configured
+- **JDK**: 25 (Temurin) with Maven cache pre-configured
 - **Project context**: Claude reads this `CLAUDE.md` file for build commands, test scripts, and architecture guidelines.

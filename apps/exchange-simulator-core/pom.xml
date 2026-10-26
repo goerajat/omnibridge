@@ -40,7 +40,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <!-- DefaultOrderBookTest reads ConcurrentHashMap's table to check it never resizes -->
-                    <argLine>--add-opens java.base/java.util.concurrent=ALL-UNNAMED</argLine>
+                    <argLine>--add-opens java.base/java.util.concurrent=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
         </plugins>
