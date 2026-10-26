@@ -407,6 +407,8 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 - The summary and `summary.json` (`read_cap_hits`) show how many reads filled the FIX read cap: initiator during the timed phase, simulator over the whole connection.
 - Logs, `summary.txt` and `summary.json` go to `logs/aws-latency/<time>/`; each run is also appended to `docs/latency-history.jsonl` (commit, instance type, options, percentiles) for comparison across commits.
 
+- DPDK network floor: `scripts/deploy/dpdk/run-dpdk-floor.sh enis|setup|baseline|dpdk|cleanup` on a provisioned stack attaches a second ENI per trading host, binds it to the ENA poll-mode driver and runs `pingpong.c` (reflector on the FIX host, paced sender on the OUCH host, isolated cpu) next to sockperf. Measured 2026-10-26 on c6in.2xlarge: DPDK UDP round trip p50 22.5 µs against sockperf 46–49 (`docs/latency-baseline.md`). Run `cleanup` before `terraform destroy`.
+
 End to end (provision → build → deploy → test → report → destroy): run the `/aws-latency-test [warmup test rate] [--no-tune-simulator] [--keep]` skill in `.claude/skills/aws-latency-test/`. It is pre-approved for `terraform apply`/`destroy` and always destroys the stack after the run unless `--keep` is passed; it stops and asks if a stack already exists.
 
 ### SSH Access & Log Checking

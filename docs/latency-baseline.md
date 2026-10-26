@@ -819,3 +819,39 @@ length-prefixed store would save a few hundred ns at p50 and nothing at the tail
 `msync` thread would not also save; it would add a second on-disk format, its replay and its
 tests. Not worth building now; the pretoucher is the lighter journal's gain at a fraction of
 its cost. The simulator's 11–12 µs store p99.9 is Aeron's, and belongs to the Aeron path.
+
+## AWS: the network floor without the kernel (DPDK ping-pong, one c6in.2xlarge stack), µs
+
+Before deciding on a userspace transport for the engine, the raw path between the two trading
+hosts was measured through DPDK's ENA poll-mode driver, next to sockperf on the kernel path.
+`scripts/deploy/dpdk/run-dpdk-floor.sh` attaches a second ENI to each trading host (same subnet
+and security group, UDP 11111 allowed), installs Ubuntu's DPDK (21.11.9 on this image, kernel
+6.8.0-1066-aws), reserves 1,024 × 2 MB hugepages, binds the second ENI to the kernel's `vfio-pci`
+in no-IOMMU mode (no write-combining: the AWS patched module was not used), and runs
+`pingpong.c`: a reflector on the FIX host that swaps MACs, IPs and UDP ports, and a paced sender
+on the OUCH host that spins for each reply and times it with `rte_rdtsc`. Both run on the
+isolated cpu 3, one Rx and one Tx queue, 200-byte UDP payload, 20,000 warmup + 100,000 packets at
+1,000/s, like the FIX test. sockperf ran on the primary ENIs, 200 B, 30 s (20 s for the repeat).
+
+| Path | min | p50 | p90 | p99 | p99.9 | p99.99 | max |
+|------|----:|----:|----:|----:|------:|-------:|----:|
+| sockperf TCP, kernel | | 49.4 | 55.1 | 93.6 | 111 | 146 | 158 (p99.999) |
+| sockperf UDP, kernel | | 46.2 | 50.0 | 57.8 | 64.8 | 142 | 171 (p99.999) |
+| sockperf UDP, kernel, repeat | | 49.1 | 51.3 | 59.0 | 65.3 | 131 | |
+| **DPDK UDP ping-pong, run 1** | 18.5 | **22.6** | 25.1 | 27.6 | 30.2 | 43.1 | 56.1 |
+| DPDK UDP ping-pong, run 2 | 18.1 | 22.4 | 25.0 | 27.6 | 30.1 | 43.5 | 99.5 |
+
+- **The kernel path costs about 24 to 27 µs of the 46 to 49 µs round trip.** Without it the
+  two hosts exchange a packet in 22.5 µs at p50, with no loss in 200,000 packets. That is the
+  Nitro card, the fabric and the poll-mode driver on both sides; the engine's own ~11 µs would
+  sit on top of it.
+- **The tail is the larger difference**: p99.9 30 against 65–111, p99.99 43 against 131–146,
+  max 56–100 against 158–171 µs. With no interrupt, softirq or scheduler on the path, the
+  distribution is 18 to 30 µs wide at p99.9.
+- Write-combining was not enabled (stock `vfio-pci`), so LLQ ran with uncached PCI writes; the
+  AWS README warns this hurts throughput. At one packet a millisecond it did not show; a run
+  with the patched module may still be a little faster.
+- What this says for the engine: a userspace TCP on DPDK (F-Stack in library mode) could take
+  the FIX round trip from ~49 to roughly 30–35 µs at p50 if its own cost stays near the raw
+  path's, and would flatten the tails below anything the kernel path has shown. The 15 µs
+  threshold set for building the transport is cleared by about 10 µs.
