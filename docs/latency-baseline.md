@@ -855,3 +855,30 @@ isolated cpu 3, one Rx and one Tx queue, 200-byte UDP payload, 20,000 warmup + 1
   the FIX round trip from ~49 to roughly 30–35 µs at p50 if its own cost stays near the raw
   path's, and would flatten the tails below anything the kernel path has shown. The 15 µs
   threshold set for building the transport is cleared by about 10 µs.
+
+## JDK 25 (`b4aa2c2`, local, Windows, 20k + 100k at 1,000/s, busy-spin, persistence on), µs
+
+The whole build moved to `maven.compiler.release` 25 (Corretto 25 on the hosts, Temurin 25 in
+CI) with Chronicle Queue 5.27ea11; `-XX:+UseZGC` is now generational ZGC. Alternating runs of
+the previous commit's jar on Microsoft JDK 17 and the new jar on Corretto 25.0.5, same machine:
+
+| Run | JDK | RTT p50 (intended) | p90 | p99 | p99.9 | p99.99 | max | actual p50 |
+|-----|-----|----:|----:|----:|------:|-------:|----:|----:|
+| 1 | 17 | 114.8 | 222.0 | 1,835 | 28,606 | 84,083 | 92,209 | 113.7 |
+| 2 | 25 | 117.3 | 184.3 | 359.7 | 5,124 | 12,386 | 19,988 | 116.4 |
+| 3 | 17 | 98.6 | 160.0 | 246.0 | 868 | 7,037 | 12,837 | 97.9 |
+| 4 | 25 | 113.7 | 188.9 | 317.2 | 1,062 | 6,787 | 9,667 | 112.8 |
+
+- **No regression this machine can see.** p50 is within the run-to-run spread of the JDK 17 jar
+  itself (98.6 and 114.8); the JDK 25 tails were lower in the first pair and equal in the
+  second. The JDK's own effect on the engine is measured on AWS (one kernel-path run on Corretto
+  25 before the transport A/B).
+- Chronicle core 2.24 looks up `sun.nio.ch.UnixFileDispatcherImpl` on any Java 20+ JVM, which
+  does not exist on Windows (`FileDispatcherImpl`); 2.27 (with Queue 5.27) checks the OS. The
+  AWS hosts were never affected.
+- Found on the way: the session tests fail against an acceptor whose `fix-logs/acceptor` store
+  holds earlier runs. With `reset-on-logon` every run restarts at sequence 1, and
+  `processIncomingResendRequest` replays every stored OUTBOUND entry whose sequence number is in
+  range, across all those runs (2.1 GB here: thousands of resends, the tester's ring fills,
+  the reconnect times out). The replay should be bounded to the current sequence epoch; until
+  then run the session tests on a fresh store.
