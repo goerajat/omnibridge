@@ -1,11 +1,16 @@
 package com.omnibridge.network.config;
 
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigValueType;
 
 /**
  * Configuration for the network event loop.
  */
 public final class NetworkConfig {
+
+    /** The built-in transport: kernel sockets through NIO. */
+    public static final String KERNEL_TRANSPORT = "kernel";
 
     private final String name;
     private final int cpuAffinity;
@@ -14,6 +19,8 @@ public final class NetworkConfig {
     private final int selectTimeoutMs;
     private final boolean busySpinMode;
     private final boolean writeOnLoopCommit;
+    private final String transport;
+    private final Config transportConfig;
 
     private NetworkConfig(Builder builder) {
         this.name = builder.name;
@@ -23,12 +30,21 @@ public final class NetworkConfig {
         this.selectTimeoutMs = builder.selectTimeoutMs;
         this.busySpinMode = builder.busySpinMode;
         this.writeOnLoopCommit = builder.writeOnLoopCommit;
+        this.transport = builder.transport;
+        this.transportConfig = builder.transportConfig;
     }
 
     /**
-     * Create configuration from Typesafe Config.
+     * Create configuration from Typesafe Config. The transport's own settings are the block
+     * named after it ({@code network.fstack { ... }}), passed through untouched.
      */
     public static NetworkConfig fromConfig(Config config) {
+        String transport = config.hasPath("transport") ? config.getString("transport") : KERNEL_TRANSPORT;
+        Config transportConfig = ConfigFactory.empty();
+        if (!KERNEL_TRANSPORT.equals(transport) && config.hasPath(transport)
+                && config.getValue(transport).valueType() == ConfigValueType.OBJECT) {
+            transportConfig = config.getConfig(transport);
+        }
         return builder()
                 .name(config.getString("name"))
                 .cpuAffinity(config.getInt("cpu-affinity"))
@@ -37,6 +53,8 @@ public final class NetworkConfig {
                 .selectTimeoutMs(config.getInt("select-timeout-ms"))
                 .busySpinMode(config.getBoolean("busy-spin-mode"))
                 .writeOnLoopCommit(!config.hasPath("write-on-loop-commit") || config.getBoolean("write-on-loop-commit"))
+                .transport(transport)
+                .transportConfig(transportConfig)
                 .build();
     }
 
@@ -71,6 +89,20 @@ public final class NetworkConfig {
         return writeOnLoopCommit;
     }
 
+    /**
+     * The transport name: {@value #KERNEL_TRANSPORT} or the name of a TransportProvider.
+     */
+    public String getTransport() {
+        return transport;
+    }
+
+    /**
+     * The transport's own configuration block (empty for the kernel transport or when absent).
+     */
+    public Config getTransportConfig() {
+        return transportConfig;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -83,6 +115,8 @@ public final class NetworkConfig {
         private int selectTimeoutMs = 100;
         private boolean busySpinMode = false;
         private boolean writeOnLoopCommit = true;
+        private String transport = KERNEL_TRANSPORT;
+        private Config transportConfig = ConfigFactory.empty();
 
         private Builder() {}
 
@@ -121,6 +155,16 @@ public final class NetworkConfig {
             return this;
         }
 
+        public Builder transport(String transport) {
+            this.transport = transport == null || transport.isEmpty() ? KERNEL_TRANSPORT : transport;
+            return this;
+        }
+
+        public Builder transportConfig(Config transportConfig) {
+            this.transportConfig = transportConfig != null ? transportConfig : ConfigFactory.empty();
+            return this;
+        }
+
         public NetworkConfig build() {
             return new NetworkConfig(this);
         }
@@ -136,6 +180,7 @@ public final class NetworkConfig {
                 ", selectTimeoutMs=" + selectTimeoutMs +
                 ", busySpinMode=" + busySpinMode +
                 ", writeOnLoopCommit=" + writeOnLoopCommit +
+                ", transport='" + transport + '\'' +
                 '}';
     }
 }

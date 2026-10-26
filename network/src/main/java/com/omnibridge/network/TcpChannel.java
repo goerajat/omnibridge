@@ -9,15 +9,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Abstraction over a TCP socket channel providing non-blocking read/write operations.
- * This class is not thread-safe - all operations should be performed on the network I/O thread.
+ * A connection with a ring buffer of outgoing messages in front of its {@link Endpoint}.
+ * The endpoint is the transport's socket (kernel or userspace); this class is what the
+ * protocol engines see. It is not thread-safe except for the ring buffer claim/commit calls:
+ * all other operations should be performed on the network I/O thread.
  */
 public class TcpChannel {
 
@@ -67,7 +68,7 @@ public class TcpChannel {
     private static final int LENGTH_PREFIX_SIZE = 4;
 
     private final long id;
-    private final SocketChannel socketChannel;
+    private final Endpoint endpoint;
     private final String remoteAddress;
     private final String localAddress;
     private final DirectByteBuffer readBuffer;
@@ -95,7 +96,6 @@ public class TcpChannel {
     private IOException drainFailure;
     private final ControlledMessageHandler drainHandler = this::drainRecord;
 
-    private SelectionKey selectionKey;
     // The loop that drains this channel; set at registration, null for channels not on a loop
     private NetworkEventLoop eventLoop;
     private volatile boolean connected;
@@ -103,7 +103,8 @@ public class TcpChannel {
     private Object attachment;
 
     /**
-     * Create a TcpChannel wrapping an existing SocketChannel.
+     * Create a TcpChannel wrapping an existing SocketChannel (kernel transport, no event loop:
+     * the SSL delegate and hand-built test channels).
      *
      * @param socketChannel the underlying socket channel (must be in non-blocking mode)
      * @param readBufferSize size of the read buffer in bytes
@@ -125,8 +126,31 @@ public class TcpChannel {
      */
     public TcpChannel(SocketChannel socketChannel, int readBufferSize, int writeBufferSize,
                       int ringBufferCapacity) throws IOException {
+        this(new NioEndpoint(socketChannel, null), readBufferSize, writeBufferSize, ringBufferCapacity);
+    }
+
+    /**
+     * Create a TcpChannel over a transport endpoint.
+     *
+     * @param endpoint the connected (or connecting) endpoint
+     * @param readBufferSize size of the read buffer in bytes
+     * @param writeBufferSize unused; partial writes resume from the ring buffer (kept for compatibility)
+     */
+    public TcpChannel(Endpoint endpoint, int readBufferSize, int writeBufferSize) {
+        this(endpoint, readBufferSize, writeBufferSize, DEFAULT_RING_BUFFER_CAPACITY);
+    }
+
+    /**
+     * Create a TcpChannel over a transport endpoint with ring buffer.
+     *
+     * @param endpoint the connected (or connecting) endpoint
+     * @param readBufferSize size of the read buffer in bytes
+     * @param writeBufferSize unused; partial writes resume from the ring buffer (kept for compatibility)
+     * @param ringBufferCapacity the ring buffer capacity (must be power of 2)
+     */
+    public TcpChannel(Endpoint endpoint, int readBufferSize, int writeBufferSize, int ringBufferCapacity) {
         this.id = ID_GENERATOR.incrementAndGet();
-        this.socketChannel = socketChannel;
+        this.endpoint = endpoint;
         this.readBuffer = new DirectByteBuffer(readBufferSize);
         this.ringBufferCapacity = ringBufferCapacity;
 
@@ -139,12 +163,9 @@ public class TcpChannel {
         // Create a duplicate view of the ring buffer for zero-copy socket writes
         this.ringBufferDirectView = ringBufferBacking.duplicate();
 
-        InetSocketAddress remote = (InetSocketAddress) socketChannel.getRemoteAddress();
-        InetSocketAddress local = (InetSocketAddress) socketChannel.getLocalAddress();
-
-        this.remoteAddress = remote != null ? remote.getHostString() + ":" + remote.getPort() : "unknown";
-        this.localAddress = local != null ? local.getHostString() + ":" + local.getPort() : "unknown";
-        this.connected = socketChannel.isConnected();
+        this.remoteAddress = endpoint.remoteAddress();
+        this.localAddress = endpoint.localAddress();
+        this.connected = endpoint.isConnected();
     }
 
     /**
@@ -172,7 +193,7 @@ public class TcpChannel {
      * Check if the channel is connected.
      */
     public boolean isConnected() {
-        return connected && !closed && socketChannel.isConnected();
+        return connected && !closed && endpoint.isConnected();
     }
 
     /**
@@ -183,10 +204,17 @@ public class TcpChannel {
     }
 
     /**
-     * Get the underlying SocketChannel.
+     * The transport endpoint under this channel.
+     */
+    Endpoint endpoint() {
+        return endpoint;
+    }
+
+    /**
+     * Get the underlying SocketChannel, or null when the endpoint is not a kernel socket.
      */
     SocketChannel getSocketChannel() {
-        return socketChannel;
+        return endpoint instanceof NioEndpoint nio ? nio.socketChannel() : null;
     }
 
     /**
@@ -206,17 +234,19 @@ public class TcpChannel {
     }
 
     /**
-     * Set the SelectionKey for this channel.
+     * Set the SelectionKey for this channel (kernel endpoints built outside a transport).
      */
     void setSelectionKey(SelectionKey key) {
-        this.selectionKey = key;
+        if (endpoint instanceof NioEndpoint nio) {
+            nio.selectionKey(key);
+        }
     }
 
     /**
-     * Get the SelectionKey for this channel.
+     * Get the SelectionKey for this channel, or null when the endpoint is not a kernel socket.
      */
     SelectionKey getSelectionKey() {
-        return selectionKey;
+        return endpoint instanceof NioEndpoint nio ? nio.selectionKey() : null;
     }
 
     /**
@@ -352,8 +382,8 @@ public class TcpChannel {
             } else {
                 loop.wakeup();
             }
-        } else if (selectionKey != null && selectionKey.selector() != null) {
-            selectionKey.selector().wakeup();
+        } else {
+            endpoint.wakeup();
         }
     }
 
@@ -510,7 +540,7 @@ public class TcpChannel {
         ringBufferDirectView.position(payloadOffset + partialSent);
         try {
             while (ringBufferDirectView.hasRemaining()) {
-                if (socketChannel.write(ringBufferDirectView) == 0) {
+                if (endpoint.write(ringBufferDirectView) == 0) {
                     partialSent = ringBufferDirectView.position() - payloadOffset;
                     return ControlledMessageHandler.Action.ABORT;
                 }
@@ -529,15 +559,7 @@ public class TcpChannel {
     }
 
     private void setWriteInterest(boolean wanted) {
-        SelectionKey key = selectionKey;
-        if (key == null || !key.isValid()) {
-            return;
-        }
-        int ops = key.interestOps();
-        int updated = wanted ? ops | SelectionKey.OP_WRITE : ops & ~SelectionKey.OP_WRITE;
-        if (updated != ops) {
-            key.interestOps(updated);
-        }
+        endpoint.writeInterest(wanted);
     }
 
     /**
@@ -559,15 +581,7 @@ public class TcpChannel {
 
         closed = true;
         connected = false;
-
-        try {
-            if (selectionKey != null) {
-                selectionKey.cancel();
-            }
-            socketChannel.close();
-        } catch (IOException e) {
-            log.debug("Error closing channel {}: {}", id, e.getMessage());
-        }
+        endpoint.close();
 
         log.debug("Channel {} closed: {} -> {}", id, localAddress, remoteAddress);
     }

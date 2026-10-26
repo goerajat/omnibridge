@@ -12,16 +12,12 @@ import org.slf4j.LoggerFactory;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
-import java.util.Arrays;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 
 /**
  * Single-threaded non-blocking network event loop.
@@ -30,10 +26,15 @@ import java.util.function.Consumer;
  *
  * <p>All callbacks are invoked on the event loop thread.</p>
  *
+ * <p>The sockets and the poller belong to a {@link Transport}: the kernel's through NIO
+ * ({@link NioTransport}, the default) or a userspace stack chosen with
+ * {@code network.transport}. The loop talks to it only through {@link Transport} and
+ * {@link Endpoint}.</p>
+ *
  * <p>Supports two modes of operation:</p>
  * <ul>
- *   <li><b>Normal mode</b>: Uses blocking select() with timeout for power efficiency</li>
- *   <li><b>Busy spin mode</b>: Uses selectNow() for minimal latency at cost of CPU usage</li>
+ *   <li><b>Normal mode</b>: Uses a blocking poll with timeout for power efficiency</li>
+ *   <li><b>Busy spin mode</b>: Uses a non-blocking poll for minimal latency at cost of CPU usage</li>
  * </ul>
  */
 @Singleton
@@ -53,24 +54,17 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     private final boolean busySpinMode;
     private volatile boolean writeOnLoopCommit = true;
 
-    private final Selector selector;
+    private final Transport transport;
     private final Queue<Runnable> taskQueue;
     private final AtomicBoolean running;
     private final AtomicBoolean started;
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
-    // Reusable consumer to avoid garbage in busy spin mode
-    private final Consumer<SelectionKey> keyProcessor;
+    // Reusable callbacks so the poll and the loop allocate nothing per iteration
+    private final Transport.ReadyHandler readyHandler = this::onReady;
+    private final BooleanSupplier iteration = this::iterate;
 
-    // Snapshot of selector.keys() for the drain loop, which runs twice per busy-spin iteration:
-    // iterating the key set allocates two iterators per pass. Rebuilt after a registration or
-    // when the key set's size changes (cancelled keys leave it on the next select).
-    // Event loop thread only.
-    private SelectionKey[] drainKeys = new SelectionKey[16];
-    private int drainKeyCount;
-    private boolean drainKeysStale = true;
-
-    // Selector wakeups requested for work queued from outside the loop (commits, tasks)
+    // Poller wakeups requested for work queued from outside the loop (commits, tasks)
     private final LongAdder selectorWakeups = new LongAdder();
 
     private volatile Thread eventLoopThread;
@@ -121,11 +115,12 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     /**
-     * Create a new NetworkEventLoop from NetworkConfig and ComponentProvider.
+     * Create a new NetworkEventLoop from NetworkConfig and ComponentProvider. The transport is
+     * the one named by {@code network.transport} (see {@link Transports}).
      *
      * @param config the network configuration
      * @param provider the component provider (may be null)
-     * @throws IOException if unable to open the selector
+     * @throws IOException if unable to open the transport
      */
     public NetworkEventLoop(NetworkConfig config, ComponentProvider provider) throws IOException {
         this(config.getName(),
@@ -133,7 +128,8 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
              config.getReadBufferSize(),
              config.getWriteBufferSize(),
              config.getSelectTimeoutMs(),
-             config.isBusySpinMode());
+             config.isBusySpinMode(),
+             Transports.create(config));
         this.writeOnLoopCommit = config.isWriteOnLoopCommit();
         this.componentProvider = provider;
     }
@@ -152,7 +148,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     /**
-     * Create a new NetworkEventLoop with full configuration.
+     * Create a new NetworkEventLoop with full configuration on the kernel transport.
      *
      * @param name the name of this event loop
      * @param cpuAffinity the CPU core to bind to (-1 for no affinity)
@@ -164,19 +160,35 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
      */
     public NetworkEventLoop(String name, int cpuAffinity, int readBufferSize, int writeBufferSize,
                             long selectTimeoutMs, boolean busySpinMode) throws IOException {
+        this(name, cpuAffinity, readBufferSize, writeBufferSize, selectTimeoutMs, busySpinMode, new NioTransport());
+    }
+
+    /**
+     * Create a new NetworkEventLoop with full configuration on the given transport.
+     *
+     * @param name the name of this event loop
+     * @param cpuAffinity the CPU core to bind to (-1 for no affinity)
+     * @param readBufferSize the size of read buffers for each channel
+     * @param writeBufferSize the size of write buffers for each channel
+     * @param selectTimeoutMs the poll timeout in milliseconds (normal mode)
+     * @param busySpinMode whether to busy spin (non-blocking polls)
+     * @param transport the transport that owns the sockets and the poller
+     */
+    public NetworkEventLoop(String name, int cpuAffinity, int readBufferSize, int writeBufferSize,
+                            long selectTimeoutMs, boolean busySpinMode, Transport transport) {
         this.name = name;
         this.cpuAffinity = cpuAffinity;
         this.readBufferSize = readBufferSize;
         this.writeBufferSize = writeBufferSize;
         this.selectTimeoutMs = selectTimeoutMs;
         this.busySpinMode = busySpinMode;
-        this.selector = Selector.open();
+        this.transport = transport;
         this.taskQueue = new ConcurrentLinkedQueue<>();
         this.running = new AtomicBoolean(false);
         this.started = new AtomicBoolean(false);
-
-        // Create reusable consumer to avoid garbage in selectNow path
-        this.keyProcessor = this::processKey;
+        if (!busySpinMode && !transport.supportsBlockingPoll()) {
+            throw new IllegalArgumentException("Transport '" + transport.name() + "' requires busy-spin mode");
+        }
     }
 
     /**
@@ -217,6 +229,13 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     /**
+     * The transport this loop runs on.
+     */
+    public Transport getTransport() {
+        return transport;
+    }
+
+    /**
      * Start the event loop in a new thread.
      */
     public void start() {
@@ -225,7 +244,8 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             eventLoopThread = new Thread(this, "NetworkIO-" + name);
             eventLoopThread.setDaemon(true);
             eventLoopThread.start();
-            log.info("NetworkEventLoop '{}' started (busySpinMode={})", name, busySpinMode);
+            log.info("NetworkEventLoop '{}' started (transport={}, busySpinMode={})",
+                    name, transport.name(), busySpinMode);
         }
     }
 
@@ -234,7 +254,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
      */
     public void stop() {
         if (running.compareAndSet(true, false)) {
-            selector.wakeup();
+            transport.wakeup();
             try {
                 if (eventLoopThread != null) {
                     eventLoopThread.join(5000);
@@ -290,19 +310,19 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     /**
-     * Wake the selector so the loop picks up work queued from another thread
+     * Wake the poller so the loop picks up work queued from another thread
      * (a ring buffer commit or a task).
      *
-     * <p>No-op when the loop busy-spins (selectNow() never blocks) or when called on the
-     * loop thread, which drains ring buffers after processing keys and tasks. A wakeup is
-     * a system call plus an extra select() return, once per message otherwise.</p>
+     * <p>No-op when the loop busy-spins (the poll never blocks) or when called on the
+     * loop thread, which drains ring buffers after processing events and tasks. A wakeup is
+     * a system call plus an extra poll return, once per message otherwise.</p>
      */
     void wakeup() {
         if (busySpinMode || Thread.currentThread() == eventLoopThread) {
             return;
         }
         selectorWakeups.increment();
-        selector.wakeup();
+        transport.wakeup();
     }
 
     /**
@@ -321,7 +341,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     /**
-     * Number of selector wakeups requested through {@link #wakeup()} (for tests).
+     * Number of poller wakeups requested through {@link #wakeup()} (for tests).
      */
     long getSelectorWakeupCount() {
         return selectorWakeups.sum();
@@ -330,6 +350,11 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     /**
      * Create a TCP acceptor that listens for incoming connections.
      *
+     * <p>On the kernel transport the socket is bound here, on the caller's thread, so a port in
+     * use is an {@link IOException} to the caller. On a transport that opens sockets on the loop
+     * thread the bind runs there and a failure is reported through
+     * {@link NetworkHandler#onAcceptFailed}.</p>
+     *
      * @param host the host to bind to (null for any)
      * @param port the port to listen on
      * @param handler the handler for connection events
@@ -337,29 +362,49 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
      * @throws IOException if unable to bind
      */
     public TcpAcceptor createAcceptor(String host, int port, NetworkHandler handler) throws IOException {
-        ServerSocketChannel serverChannel = ServerSocketChannel.open();
-        serverChannel.configureBlocking(false);
-
         InetSocketAddress address = host != null ?
                 new InetSocketAddress(host, port) :
                 new InetSocketAddress(port);
-        serverChannel.bind(address);
+        NetworkHandler effectiveHandler = handler != null ? handler : defaultHandler;
 
-        TcpAcceptor acceptor = new TcpAcceptor(serverChannel, handler != null ? handler : defaultHandler,
-                readBufferSize, writeBufferSize);
+        if (transport.opensOnLoopThread()) {
+            TcpAcceptor acceptor = new TcpAcceptor(address, effectiveHandler, readBufferSize, writeBufferSize);
+            execute(() -> {
+                Endpoint listener = null;
+                try {
+                    listener = transport.listen(address);
+                    acceptor.listening(listener);
+                    registerListener(listener, acceptor);
+                } catch (Exception e) {
+                    log.error("Failed to listen on {}: {}", address, e.getMessage());
+                    if (listener != null) {
+                        listener.close();
+                    }
+                    acceptor.close();
+                    effectiveHandler.onAcceptFailed(e);
+                }
+            });
+            return acceptor;
+        }
+
+        Endpoint listener = transport.listen(address);
+        TcpAcceptor acceptor = new TcpAcceptor(listener, effectiveHandler, readBufferSize, writeBufferSize);
 
         execute(() -> {
             try {
-                SelectionKey key = serverChannel.register(selector, SelectionKey.OP_ACCEPT, acceptor);
-                drainKeysStale = true;
-                acceptor.setSelectionKey(key);
-                log.info("TcpAcceptor listening on {}", address);
-            } catch (ClosedChannelException e) {
+                registerListener(listener, acceptor);
+            } catch (IOException e) {
                 log.error("Failed to register acceptor: {}", e.getMessage());
             }
         });
 
         return acceptor;
+    }
+
+    private void registerListener(Endpoint listener, TcpAcceptor acceptor) throws IOException {
+        listener.context(acceptor);
+        transport.register(listener, Endpoint.ACCEPT);
+        log.info("TcpAcceptor listening on {}", listener.localAddress());
     }
 
     /**
@@ -406,6 +451,11 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     /**
      * Connect to a remote host asynchronously with SSL.
      *
+     * <p>The host name is resolved here, on the caller's thread. On the kernel transport the
+     * socket is opened here too, so a failure to start the connect is an {@link IOException}
+     * to the caller; on a transport that opens sockets on the loop thread every failure is
+     * reported through {@link NetworkHandler#onConnectFailed}.</p>
+     *
      * @param host the remote host
      * @param port the remote port
      * @param handler the handler for connection events
@@ -413,64 +463,82 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
      * @throws IOException if unable to initiate connection
      */
     public void connect(String host, int port, NetworkHandler handler, SslConfig sslConfig) throws IOException {
-        SocketChannel socketChannel = SocketChannel.open();
-        socketChannel.configureBlocking(false);
-        socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+        boolean ssl = sslConfig != null && sslConfig.isEnabled();
+        if (ssl && !(transport instanceof NioTransport)) {
+            throw new IOException("SSL connections need the kernel transport (network.transport = kernel), not '"
+                    + transport.name() + "'");
+        }
 
         InetSocketAddress address = new InetSocketAddress(host, port);
-        boolean connected = socketChannel.connect(address);
-
         NetworkHandler effectiveHandler = handler != null ? handler : defaultHandler;
+        String remoteAddress = address.toString();
+
+        if (transport.opensOnLoopThread()) {
+            execute(() -> {
+                Endpoint endpoint = null;
+                try {
+                    endpoint = transport.connect(address);
+                    registerConnect(endpoint, remoteAddress, host, effectiveHandler, sslConfig);
+                } catch (Exception e) {
+                    if (endpoint != null) {
+                        endpoint.close();
+                    }
+                    effectiveHandler.onConnectFailed(remoteAddress, e);
+                }
+            });
+            return;
+        }
+
+        Endpoint endpoint = transport.connect(address);
 
         execute(() -> {
             try {
-                if (connected) {
-                    // Immediate connection (unlikely but possible)
-                    if (sslConfig != null && sslConfig.isEnabled()) {
-                        handleSslConnected(socketChannel, host, effectiveHandler, sslConfig);
-                    } else {
-                        TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
-                        SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ,
-                                new ChannelContext(channel, effectiveHandler));
-                        drainKeysStale = true;
-                        channel.setSelectionKey(key);
-                        channel.setEventLoop(this);
-                        channel.markConnected();
-                        effectiveHandler.onConnected(channel);
-                    }
-                } else {
-                    // Connection in progress
-                    ConnectContext ctx = new ConnectContext(socketChannel, address.toString(), effectiveHandler, host, sslConfig);
-                    socketChannel.register(selector, SelectionKey.OP_CONNECT, ctx);
-                    drainKeysStale = true;
-                }
+                registerConnect(endpoint, remoteAddress, host, effectiveHandler, sslConfig);
             } catch (Exception e) {
-                try {
-                    socketChannel.close();
-                } catch (IOException ignored) {
-                }
-                effectiveHandler.onConnectFailed(address.toString(), e);
+                endpoint.close();
+                effectiveHandler.onConnectFailed(remoteAddress, e);
             }
         });
     }
 
+    /** Loop thread: register a freshly opened endpoint, connected already or still connecting. */
+    private void registerConnect(Endpoint endpoint, String remoteAddress, String host,
+                                 NetworkHandler handler, SslConfig sslConfig) throws Exception {
+        if (endpoint.isConnected()) {
+            // Immediate connection (unlikely but possible)
+            if (sslConfig != null && sslConfig.isEnabled()) {
+                handleSslConnected((NioEndpoint) endpoint, host, handler, sslConfig);
+            } else {
+                TcpChannel channel = new TcpChannel(endpoint, readBufferSize, writeBufferSize);
+                endpoint.context(new ChannelContext(channel, handler));
+                transport.register(endpoint, Endpoint.READ);
+                channel.setEventLoop(this);
+                channel.markConnected();
+                handler.onConnected(channel);
+            }
+        } else {
+            // Connection in progress
+            endpoint.context(new ConnectContext(endpoint, remoteAddress, handler, host, sslConfig));
+            transport.register(endpoint, Endpoint.CONNECT);
+        }
+    }
+
     /**
-     * Handle SSL connection setup after TCP connect completes.
+     * Handle SSL connection setup after TCP connect completes (kernel transport only).
      */
-    private void handleSslConnected(SocketChannel socketChannel, String hostname,
+    private void handleSslConnected(NioEndpoint endpoint, String hostname,
                                      NetworkHandler handler, SslConfig sslConfig) throws Exception {
         SSLContext sslContext = sslConfig.getSSLContext();
-        SslTcpChannel sslChannel = new SslTcpChannel(socketChannel, sslContext, true,
+        SslTcpChannel sslChannel = new SslTcpChannel(endpoint.socketChannel(), sslContext, true,
                 hostname, readBufferSize, writeBufferSize);
 
         // Start SSL handshake
         sslChannel.beginHandshake();
 
         // Register for both read and write during handshake
-        SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE,
-                new SslChannelContext(sslChannel, handler, true));
-        drainKeysStale = true;
-        sslChannel.setSelectionKey(key);
+        endpoint.context(new SslChannelContext(sslChannel, handler, true));
+        transport.register(endpoint, Endpoint.READ | Endpoint.WRITE);
+        sslChannel.setSelectionKey(endpoint.selectionKey());
 
         log.debug("SSL connection initiated to {}", sslChannel.getRemoteAddress());
     }
@@ -482,103 +550,78 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             CpuAffinity.setAffinity(cpuAffinity);
         }
 
-        log.info("NetworkEventLoop '{}' thread started (cpuAffinity={}, busySpinMode={})",
-                name, cpuAffinity, busySpinMode);
+        log.info("NetworkEventLoop '{}' thread started (transport={}, cpuAffinity={}, busySpinMode={})",
+                name, transport.name(), cpuAffinity, busySpinMode);
 
-        if (busySpinMode) {
-            runBusySpinLoop();
-        } else {
-            runNormalLoop();
+        try {
+            transport.start(readyHandler);
+            transport.run(iteration);
+        } catch (Exception e) {
+            log.error("Transport '{}' failed: {}", transport.name(), e.getMessage(), e);
+            running.set(false);
         }
 
         // Cleanup
         closeAllChannels();
         try {
-            selector.close();
+            transport.close();
         } catch (IOException e) {
-            log.debug("Error closing selector: {}", e.getMessage());
+            log.debug("Error closing transport: {}", e.getMessage());
         }
 
         log.info("NetworkEventLoop '{}' thread exited", name);
     }
 
     /**
-     * Normal event loop using blocking select with timeout.
+     * One iteration of the loop: queued tasks, the loop task, a drain of every ring to its
+     * socket, one poll (blocking with the configured timeout in normal mode, non-blocking in
+     * busy-spin mode) dispatching ready endpoints, and a second drain so replies committed
+     * while processing go out in the same iteration.
+     *
+     * @return false once the loop has been stopped
      */
-    private void runNormalLoop() {
-        while (running.get()) {
-            try {
-                // Process any queued tasks
-                processTasks();
-                runLoopTask();
+    private boolean iterate() {
+        if (!running.get()) {
+            return false;
+        }
+        try {
+            // Process any queued tasks
+            processTasks();
+            runLoopTask();
 
-                // Drain ring buffers BEFORE select (for messages from other threads)
-                drainAllChannelRingBuffers();
+            // Drain ring buffers to sockets (for messages from other threads)
+            drainAllChannelRingBuffers();
 
-                // Wait for events
-                int selected = selector.select(selectTimeoutMs);
+            // Wait for or check for events
+            transport.poll(busySpinMode ? 0 : (selectTimeoutMs > 0 ? selectTimeoutMs : -1));
 
-                if (selected > 0) {
-                    processSelectedKeysNormal();
-                }
-
-                // Drain ring buffers AFTER processing (for immediate response sending)
-                // This ensures responses committed during message processing are sent
-                // immediately, not on the next iteration
-                drainAllChannelRingBuffers();
-            } catch (IOException e) {
-                if (running.get()) {
-                    log.error("Error in event loop: {}", e.getMessage(), e);
-                }
+            // Drain again after processing for immediate response sending
+            drainAllChannelRingBuffers();
+        } catch (IOException e) {
+            if (running.get()) {
+                log.error("Error in event loop: {}", e.getMessage(), e);
             }
         }
-    }
-
-    /**
-     * Busy spin event loop using selectNow for minimal latency.
-     * Uses selectNow(Consumer) to avoid Iterator allocation.
-     */
-    private void runBusySpinLoop() {
-        while (running.get()) {
-            try {
-                // Process any queued tasks
-                processTasks();
-                runLoopTask();
-
-                // Drain ring buffers to sockets
-                drainAllChannelRingBuffers();
-
-                // Non-blocking select with consumer to avoid garbage
-                selector.selectNow(keyProcessor);
-
-                // Drain again after processing for immediate response sending
-                drainAllChannelRingBuffers();
-
-            } catch (IOException e) {
-                if (running.get()) {
-                    log.error("Error in event loop: {}", e.getMessage(), e);
-                }
-            }
-        }
+        return running.get();
     }
 
     /**
      * Drain all channel ring buffers to their sockets.
      *
-     * <p>This method iterates through all registered channels and drains
-     * any pending messages from their ring buffers to the sockets.</p>
+     * <p>Walks the transport's registered endpoints and drains any pending messages from
+     * their ring buffers. Endpoints closed from another thread are skipped until the
+     * transport drops them.</p>
      */
     private void drainAllChannelRingBuffers() {
-        refreshDrainKeys();
-        final SelectionKey[] keys = drainKeys;
-        for (int i = 0, n = drainKeyCount; i < n; i++) {
-            SelectionKey key = keys[i];
-            if (!key.isValid()) {
+        final Transport t = transport;
+        for (int i = 0, n = t.endpointCount(); i < n; i++) {
+            Endpoint endpoint = t.endpointAt(i);
+            if (!endpoint.isOpen()) {
                 continue;
             }
 
-            Object attachment = key.attachment();
-            if (attachment instanceof ChannelContext ctx) {
+            Object context = endpoint.context();
+            if (context instanceof ChannelContext ctx) {
                 TcpChannel channel = ctx.channel();
                 if (channel.hasRingBufferMessages()) {
                     try {
@@ -589,7 +632,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                         closeChannel(channel, ctx.handler(), e);
                     }
                 }
-            } else if (attachment instanceof SslChannelContext ctx) {
+            } else if (context instanceof SslChannelContext ctx) {
                 SslTcpChannel sslChannel = ctx.sslChannel();
                 if (sslChannel.isHandshakeComplete() && sslChannel.hasRingBufferMessages()) {
                     try {
@@ -603,63 +646,40 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         }
     }
 
-    private void refreshDrainKeys() {
-        Set<SelectionKey> keys = selector.keys();
-        if (!drainKeysStale && keys.size() == drainKeyCount) {
-            return;
-        }
-        int count = 0;
-        for (SelectionKey key : keys) {
-            if (count == drainKeys.length) {
-                drainKeys = Arrays.copyOf(drainKeys, count * 2);
-            }
-            drainKeys[count++] = key;
-        }
-        Arrays.fill(drainKeys, count, Math.max(drainKeyCount, count), null);
-        drainKeyCount = count;
-        drainKeysStale = false;
-    }
-
     /**
-     * Process a single selection key (used by busy spin mode).
+     * Dispatch one ready endpoint (called by the transport's poll).
      */
-    private void processKey(SelectionKey key) {
-        if (!key.isValid()) {
-            return;
-        }
+    private void onReady(Endpoint endpoint, int readyOps) {
+        Object context = endpoint.context();
 
         try {
-            if (key.isAcceptable()) {
-                handleAccept(key);
-            } else if (key.isConnectable()) {
-                handleConnect(key);
-            } else {
-                Object attachment = key.attachment();
-
+            if ((readyOps & Endpoint.ACCEPT) != 0) {
+                handleAccept(endpoint, (TcpAcceptor) context);
+            } else if ((readyOps & Endpoint.CONNECT) != 0) {
+                handleConnect(endpoint, (ConnectContext) context);
+            } else if (context instanceof SslChannelContext sslCtx) {
                 // Handle SSL channels differently
-                if (attachment instanceof SslChannelContext sslCtx) {
-                    if (key.isReadable() || key.isWritable()) {
-                        handleSslIO(key, sslCtx);
-                    }
-                } else {
-                    if (key.isReadable()) {
-                        handleRead(key);
-                    }
-                    if (key.isValid() && key.isWritable()) {
-                        handleWrite(key);
-                    }
+                if ((readyOps & (Endpoint.READ | Endpoint.WRITE)) != 0) {
+                    handleSslIO((NioEndpoint) endpoint, sslCtx, readyOps);
+                }
+            } else if (context instanceof ChannelContext ctx) {
+                if ((readyOps & Endpoint.READ) != 0) {
+                    handleRead(endpoint, ctx);
+                }
+                if (endpoint.isOpen() && (readyOps & Endpoint.WRITE) != 0) {
+                    handleWrite(ctx);
                 }
             }
         } catch (Exception e) {
-            log.error("Error processing key: {}", e.getMessage(), e);
-            handleError(key, e);
+            log.error("Error processing endpoint: {}", e.getMessage(), e);
+            handleError(endpoint, e);
         }
     }
 
     /**
      * Handle SSL channel I/O.
      */
-    private void handleSslIO(SelectionKey key, SslChannelContext ctx) {
+    private void handleSslIO(NioEndpoint endpoint, SslChannelContext ctx, int readyOps) {
         SslTcpChannel sslChannel = ctx.sslChannel;
 
         try {
@@ -668,7 +688,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                 boolean complete = sslChannel.processHandshake();
                 if (complete) {
                     // Handshake complete - switch to read-only interest
-                    key.interestOps(SelectionKey.OP_READ);
+                    endpoint.interestOps(Endpoint.READ);
                     log.debug("SSL handshake complete for {}", sslChannel.getRemoteAddress());
 
                     // Notify handler (use TcpChannel-compatible wrapper)
@@ -678,13 +698,13 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
             }
 
             // Normal SSL read
-            if (key.isReadable()) {
-                handleSslRead(key, ctx);
+            if ((readyOps & Endpoint.READ) != 0) {
+                handleSslRead(ctx);
             }
 
             // Normal SSL write
-            if (key.isValid() && key.isWritable()) {
-                handleSslWrite(key, ctx);
+            if (endpoint.isOpen() && (readyOps & Endpoint.WRITE) != 0) {
+                handleSslWrite(endpoint, ctx);
             }
 
         } catch (Exception e) {
@@ -696,7 +716,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     /**
      * Handle SSL read.
      */
-    private void handleSslRead(SelectionKey key, SslChannelContext ctx) throws IOException {
+    private void handleSslRead(SslChannelContext ctx) throws IOException {
         SslTcpChannel sslChannel = ctx.sslChannel;
         DirectByteBuffer directBuffer = sslChannel.getReadBuffer();
         ByteBuffer byteBuffer = directBuffer.byteBuffer();
@@ -730,12 +750,10 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     /**
      * Handle SSL write.
      */
-    private void handleSslWrite(SelectionKey key, SslChannelContext ctx) throws IOException {
-        SslTcpChannel sslChannel = ctx.sslChannel;
-
-        if (sslChannel.flush()) {
+    private void handleSslWrite(NioEndpoint endpoint, SslChannelContext ctx) throws IOException {
+        if (ctx.sslChannel.flush()) {
             // All data flushed, remove write interest
-            key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+            endpoint.writeInterest(false);
         }
     }
 
@@ -794,34 +812,12 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         }
     }
 
-    /**
-     * Process selected keys using iterator (normal mode).
-     */
-    private void processSelectedKeysNormal() {
-        var selectedKeys = selector.selectedKeys();
-        var iterator = selectedKeys.iterator();
-
-        while (iterator.hasNext()) {
-            SelectionKey key = iterator.next();
-            iterator.remove();
-            processKey(key);
-        }
-    }
-
-    private void handleAccept(SelectionKey key) throws IOException {
-        TcpAcceptor acceptor = (TcpAcceptor) key.attachment();
-        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
-
-        SocketChannel socketChannel = serverChannel.accept();
-        if (socketChannel != null) {
-            socketChannel.configureBlocking(false);
-            socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-
-            TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
-            SelectionKey channelKey = socketChannel.register(selector, SelectionKey.OP_READ,
-                    new ChannelContext(channel, acceptor.getHandler()));
-            drainKeysStale = true;
-            channel.setSelectionKey(channelKey);
+    private void handleAccept(Endpoint listener, TcpAcceptor acceptor) throws IOException {
+        Endpoint accepted = listener.accept();
+        if (accepted != null) {
+            TcpChannel channel = new TcpChannel(accepted, readBufferSize, writeBufferSize);
+            accepted.context(new ChannelContext(channel, acceptor.getHandler()));
+            transport.register(accepted, Endpoint.READ);
             channel.setEventLoop(this);
             channel.markConnected();
 
@@ -830,27 +826,23 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         }
     }
 
-    private void handleConnect(SelectionKey key) throws IOException {
-        ConnectContext ctx = (ConnectContext) key.attachment();
-        SocketChannel socketChannel = ctx.socketChannel;
-
+    private void handleConnect(Endpoint endpoint, ConnectContext ctx) throws IOException {
         try {
-            if (socketChannel.finishConnect()) {
+            if (endpoint.finishConnect()) {
                 // Check if SSL is enabled
                 if (ctx.sslConfig != null && ctx.sslConfig.isEnabled()) {
                     try {
-                        handleSslConnected(socketChannel, ctx.hostname, ctx.handler, ctx.sslConfig);
-                        key.cancel(); // Re-registered in handleSslConnected
+                        // Re-registers the same endpoint for the handshake (the connect
+                        // registration is updated in place, not cancelled)
+                        handleSslConnected((NioEndpoint) endpoint, ctx.hostname, ctx.handler, ctx.sslConfig);
                     } catch (Exception e) {
-                        key.cancel();
-                        socketChannel.close();
+                        endpoint.close();
                         ctx.handler.onConnectFailed(ctx.remoteAddress, e);
                     }
                 } else {
-                    TcpChannel channel = new TcpChannel(socketChannel, readBufferSize, writeBufferSize);
-                    key.interestOps(SelectionKey.OP_READ);
-                    key.attach(new ChannelContext(channel, ctx.handler));
-                    channel.setSelectionKey(key);
+                    TcpChannel channel = new TcpChannel(endpoint, readBufferSize, writeBufferSize);
+                    endpoint.context(new ChannelContext(channel, ctx.handler));
+                    endpoint.interestOps(Endpoint.READ);
                     channel.setEventLoop(this);
                     channel.markConnected();
 
@@ -859,14 +851,12 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
                 }
             }
         } catch (IOException e) {
-            key.cancel();
-            socketChannel.close();
+            endpoint.close();
             ctx.handler.onConnectFailed(ctx.remoteAddress, e);
         }
     }
 
-    private void handleRead(SelectionKey key) throws IOException {
-        ChannelContext ctx = (ChannelContext) key.attachment();
+    private void handleRead(Endpoint endpoint, ChannelContext ctx) throws IOException {
         TcpChannel channel = ctx.channel;
         DirectByteBuffer directBuffer = channel.getReadBuffer();
         ByteBuffer byteBuffer = directBuffer.byteBuffer();
@@ -881,7 +871,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
 
         int bytesRead;
         try {
-            bytesRead = channel.getSocketChannel().read(byteBuffer);
+            bytesRead = endpoint.read(byteBuffer);
         } catch (IOException e) {
             byteBuffer.limit(originalLimit); // Restore limit before closing
             closeChannel(channel, ctx.handler, e);
@@ -917,8 +907,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         }
     }
 
-    private void handleWrite(SelectionKey key) throws IOException {
-        ChannelContext ctx = (ChannelContext) key.attachment();
+    private void handleWrite(ChannelContext ctx) {
         TcpChannel channel = ctx.channel;
 
         try {
@@ -928,19 +917,17 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
         }
     }
 
-    private void handleError(SelectionKey key, Exception e) {
-        Object attachment = key.attachment();
-        if (attachment instanceof ChannelContext ctx) {
+    private void handleError(Endpoint endpoint, Exception e) {
+        Object context = endpoint.context();
+        if (context instanceof ChannelContext ctx) {
             closeChannel(ctx.channel, ctx.handler, e);
-        } else if (attachment instanceof SslChannelContext ctx) {
+        } else if (context instanceof SslChannelContext ctx) {
             closeSslChannel(ctx.sslChannel, ctx.handler, e);
-        } else if (attachment instanceof ConnectContext ctx) {
-            key.cancel();
-            try {
-                ctx.socketChannel.close();
-            } catch (IOException ignored) {
-            }
+        } else if (context instanceof ConnectContext ctx) {
+            endpoint.close();
             ctx.handler.onConnectFailed(ctx.remoteAddress, e);
+        } else {
+            endpoint.close();
         }
     }
 
@@ -956,11 +943,16 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     }
 
     private void closeAllChannels() {
-        for (SelectionKey key : selector.keys()) {
-            if (key.attachment() instanceof ChannelContext ctx) {
+        final Transport t = transport;
+        for (int i = 0, n = t.endpointCount(); i < n; i++) {
+            Endpoint endpoint = t.endpointAt(i);
+            Object context = endpoint.context();
+            if (context instanceof ChannelContext ctx) {
                 closeChannel(ctx.channel, ctx.handler, null);
-            } else if (key.attachment() instanceof TcpAcceptor acceptor) {
+            } else if (context instanceof TcpAcceptor acceptor) {
                 acceptor.close();
+            } else {
+                endpoint.close();
             }
         }
     }
@@ -1045,10 +1037,7 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
     /**
      * Context for pending connections.
      */
-    private record ConnectContext(SocketChannel socketChannel, String remoteAddress, NetworkHandler handler,
+    private record ConnectContext(Endpoint endpoint, String remoteAddress, NetworkHandler handler,
                                   String hostname, SslConfig sslConfig) {
-        ConnectContext(SocketChannel socketChannel, String remoteAddress, NetworkHandler handler) {
-            this(socketChannel, remoteAddress, handler, null, null);
-        }
     }
 }

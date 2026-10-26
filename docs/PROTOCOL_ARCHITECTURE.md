@@ -834,6 +834,72 @@ SessionConfig config = SessionConfig.builder()
     .build();
 ```
 
+### 4.6 Transport Seam
+
+The event loop does not touch sockets or the selector itself. Everything below the ring
+buffer goes through two interfaces in `com.omnibridge.network`, so the same loop, channel
+and protocol engines run on the kernel's TCP (through NIO) or on a userspace stack:
+
+```java
+public interface Transport extends AutoCloseable {
+    String name();                                   // "kernel", "fstack"
+    void start(ReadyHandler handler);                // loop thread, after CPU affinity
+    void run(BooleanSupplier iteration);             // call iteration until it returns false
+    void poll(long timeoutMs);                       // 0: never block; >0: up to timeout; <0: until an event
+    boolean supportsBlockingPoll();                  // false: the loop must busy-spin
+    boolean opensOnLoopThread();                     // true: connect/listen run on the loop thread
+    Endpoint connect(InetSocketAddress address);     // non-blocking; CONNECT signalled when done
+    Endpoint listen(InetSocketAddress address);
+    void register(Endpoint endpoint, int interestOps);
+    int endpointCount();  Endpoint endpointAt(int i); // the loop drains from this list
+    void wakeup();                                   // interrupt a blocking poll (any thread)
+}
+
+public interface Endpoint {
+    int READ = 1, WRITE = 4, CONNECT = 8, ACCEPT = 16; // same values as SelectionKey
+    int read(ByteBuffer dst);  int write(ByteBuffer src);
+    Endpoint accept();  boolean finishConnect();
+    void interestOps(int ops);  void writeInterest(boolean wanted);
+    void close();  boolean isOpen();  boolean isConnected();
+    String remoteAddress();  String localAddress();  int localPort();
+    void wakeup();                                   // a commit into a channel with no loop
+    Object context();  void context(Object context); // the loop's ChannelContext / TcpAcceptor
+}
+```
+
+- **`NioTransport` / `NioEndpoint`** (built in, `network.transport = kernel`, the default):
+  one `Selector`; `poll(0)` is `selectNow(Consumer)` and `poll(t)` is `select(Consumer, t)`,
+  both garbage-free; an endpoint is a `SocketChannel` or `ServerSocketChannel` with its
+  `SelectionKey`. Registered endpoints live in an array the loop drains from; one closed from
+  another thread (a session's `disconnect()`) only flips a flag and is dropped at the next
+  poll on the loop thread. A `TcpChannel` built by hand over a `SocketChannel` (the SSL
+  delegate, tests) wraps a `NioEndpoint` with no key: write-interest changes are no-ops there.
+- **The loop** keeps its own structure: tasks, loop task, drain, poll, drain, in
+  `iterate()`, which `Transport.run` calls until the loop is stopped. The kernel transport
+  just loops over it; a transport whose stack owns the thread (F-Stack's `ff_run`) calls it
+  from its poll callback, so one NIC poll and one engine iteration share the pinned thread.
+  Readiness arrives through `ReadyHandler.onReady(endpoint, ops)` and is dispatched on the
+  endpoint's context object (`TcpAcceptor`, `ConnectContext`, `ChannelContext`,
+  `SslChannelContext`).
+- **Where sockets are opened.** On the kernel transport `connect` and `listen` run on the
+  caller's thread as before, so a bind failure is an `IOException` to `startAcceptor` and
+  `TcpAcceptor.getPort()` is valid at once. A transport with `opensOnLoopThread()` (every
+  call into a DPDK stack must be made from its lcore thread) has them run inside the queued
+  registration task: failures come back through `onConnectFailed` / `onAcceptFailed`, and
+  `getPort()` is the requested port until the bind completes. Host names are resolved on
+  the caller's thread either way.
+- **Choosing a transport.** `NetworkConfig.transport` names it; `Transports.create` returns
+  `NioTransport` for `kernel` and otherwise looks the name up among the
+  `TransportProvider`s on the class path (`ServiceLoader`), passing the loop's config and the
+  `network.<name> { }` block. A transport that cannot block requires `busy-spin-mode = true`;
+  one that opens on the loop thread requires `cpu-affinity >= 0`. SSL sessions need the
+  kernel transport (`SslTcpChannel` reads and writes the raw `SocketChannel`).
+- **Hot path.** `TcpChannel.drainRecord` writes through `endpoint.write(view)` and the loop
+  reads through `endpoint.read(buffer)`; with only one `Endpoint` class loaded in a kernel-mode
+  JVM these call sites stay monomorphic. `NetworkEventLoopFakeTransportTest` drives the loop
+  through an in-memory transport (connect, accept, read, partial write, close, failures) to
+  show it talks only to the seam.
+
 ---
 
 ## 5. Session Management
