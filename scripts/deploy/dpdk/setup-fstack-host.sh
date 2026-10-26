@@ -5,14 +5,15 @@
 #
 #   setup-fstack-host.sh <eni-mac> <eni-ip> <subnet-cidr> <cpu>
 #
-# DPDK: Ubuntu's dpdk-dev package is tried first (21.11 on jammy); if F-Stack does not
-# build against it, DPDK 22.11 is built from source into /opt/dpdk and used instead.
+# DPDK: F-Stack is built against the DPDK tree it ships (dpdk/ in its repository, the
+# version it is developed on), built here into /opt/dpdk with the ENA, bonding and ring
+# drivers; Ubuntu's dpdk package (21.11 on jammy) only provides the tools (dpdk-devbind).
 set -euo pipefail
 MAC="$1"; IP="$2"; CIDR="$3"; CPU="$4"
 FSTACK_DIR=/opt/fstack
 SRC=/opt/fstack-src
 FSTACK_REF="${FSTACK_REF:-dev}"
-DPDK_SRC_VERSION="${DPDK_SRC_VERSION:-22.11.6}"
+DPDK_PREFIX=/opt/dpdk
 export DEBIAN_FRONTEND=noninteractive
 
 sudo apt-get update -qq
@@ -27,27 +28,36 @@ sudo mkdir -p $FSTACK_DIR && sudo chown "$USER" $FSTACK_DIR
 build_fstack() {   # $1: FF_DPDK (prefix whose lib/pkgconfig has libdpdk.pc)
     local dpdk="$1"
     export PKG_CONFIG_PATH="$dpdk/lib/x86_64-linux-gnu/pkgconfig:$dpdk/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-    (cd $SRC/lib && make clean >/dev/null 2>&1 || true; make -j"$(nproc)" FF_DPDK="$dpdk" >/tmp/fstack-build.log 2>&1)
+    # -fPIC: the library goes into the shim's .so. Its thread-locals (FreeBSD's curthread)
+    # use the initial-exec TLS model, which a dlopen'd library may use while the static TLS
+    # surplus lasts, instead of global-dynamic's __tls_get_addr on every access.
+    # GCC 11 reports a false array-bounds positive in freebsd/kern/sys_generic.c, fatal under
+    # F-Stack's -Werror.
+    (cd $SRC/lib && make clean >/dev/null 2>&1 || true; make -j"$(nproc)" FF_DPDK="$dpdk" \
+        CC="cc -fPIC -ftls-model=initial-exec -Wno-error=array-bounds" >/tmp/fstack-build.log 2>&1)
 }
 if [ ! -f $FSTACK_DIR/libfstack.a ]; then
     [ -d $SRC ] || sudo git clone -q --depth 1 --branch "$FSTACK_REF" https://github.com/F-Stack/f-stack.git $SRC
     sudo chown -R "$USER" $SRC
-    echo "F-Stack $(git -C $SRC describe --always --tags) at $SRC"
-    if build_fstack /usr; then
-        echo "F-Stack built against the packaged DPDK"
-        FF_DPDK=/usr
-    else
-        echo "F-Stack did not build against dpdk $(pkg-config --modversion libdpdk) (see /tmp/fstack-build.log); building DPDK $DPDK_SRC_VERSION"
-        if [ ! -f /opt/dpdk/lib/x86_64-linux-gnu/pkgconfig/libdpdk.pc ]; then
-            cd /tmp && rm -rf dpdk-src && mkdir dpdk-src && cd dpdk-src
-            curl -sSL "https://fast.dpdk.org/rel/dpdk-$DPDK_SRC_VERSION.tar.xz" | tar xJ --strip-components=1
-            meson setup -Dprefix=/opt/dpdk -Dexamples= -Dtests=false -Denable_drivers=net/ena,bus/pci,bus/vdev,mempool/ring build >/tmp/dpdk-meson.log 2>&1
-            ninja -C build >/tmp/dpdk-build.log 2>&1 && sudo ninja -C build install >/dev/null 2>&1
-            sudo ldconfig /opt/dpdk/lib/x86_64-linux-gnu
-        fi
-        build_fstack /opt/dpdk
-        FF_DPDK=/opt/dpdk
+    echo "F-Stack $(git -C $SRC describe --always --tags) at $SRC, bundled DPDK $(cat $SRC/dpdk/VERSION)"
+    if [ ! -f $DPDK_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libdpdk.pc ] \
+       || [ "$(cat $DPDK_PREFIX/VERSION 2>/dev/null)" != "$(cat $SRC/dpdk/VERSION)" ]; then
+        echo "building DPDK $(cat $SRC/dpdk/VERSION) into $DPDK_PREFIX (ENA, bonding, ring)"
+        # no kernel modules: igb_uio does not build on this kernel and vfio-pci is used anyway
+        [ -f $SRC/dpdk/build/build.ninja ] || rm -rf $SRC/dpdk/build
+        (cd $SRC/dpdk && meson setup $([ -f build/build.ninja ] && echo --reconfigure) -Dprefix=$DPDK_PREFIX -Dexamples= -Dtests=false -Denable_kmods=false \
+            -Denable_drivers=net/ena,net/bonding,net/ring,net/tap,net/virtio,bus/pci,bus/vdev,mempool/ring,mempool/stack \
+            build >/tmp/dpdk-meson.log 2>&1 && ninja -C build >/tmp/dpdk-build.log 2>&1 \
+            && sudo ninja -C build install >/tmp/dpdk-install.log 2>&1)
+        sudo cp $SRC/dpdk/VERSION $DPDK_PREFIX/VERSION
+        sudo ldconfig $DPDK_PREFIX/lib/x86_64-linux-gnu
     fi
+    if ! build_fstack $DPDK_PREFIX; then
+        echo "F-Stack build failed; last lines of /tmp/fstack-build.log:"
+        tail -20 /tmp/fstack-build.log
+        exit 1
+    fi
+    FF_DPDK=$DPDK_PREFIX
     cp $SRC/lib/libfstack.a $FSTACK_DIR/
     cp $SRC/lib/ff_api.h $SRC/lib/ff_epoll.h $SRC/lib/ff_config.h $SRC/lib/ff_event.h $SRC/lib/ff_errno.h $FSTACK_DIR/ 2>/dev/null || true
     echo "$FF_DPDK" > $FSTACK_DIR/FF_DPDK
