@@ -17,6 +17,10 @@
 #   run-dpdk-floor.sh fstack    build F-Stack and the omni-bridge shim on both hosts,
 #                               write /opt/fstack/fstack.ini for the second ENI and
 #                               bind it (for run-aws-latency-test.sh --transport fstack)
+#   run-dpdk-floor.sh fstack-echo [count] [warmup] [interval-us] [size]
+#                               TCP echo over F-Stack without a JVM (fstack-echo.c):
+#                               server on the FIX host, paced client on the OUCH host,
+#                               next to the raw ping-pong; needs the fstack phase
 #   run-dpdk-floor.sh cleanup   detach and delete the ENIs (before destroy)
 #
 # State (ENI ids, IPs, MACs, subnet CIDR) is kept in logs/dpdk-floor/state.env.
@@ -92,6 +96,16 @@ dpdk)
     run_on $OUCH "cd ~/dpdk && sudo timeout 600 ./pingpong $EAL -- --mode send --src-ip $OUCH2 --dst-ip $FIX2 --dst-mac $FIX2_MAC -n $N -w $W --interval-us $IV --timeout-ms 100 2>&1 | grep -v '^EAL'" | tee "$OUT/dpdk-$(date +%Y%m%d-%H%M%S).log"
     run_on $FIX "sudo pkill -INT -x pingpong || true; sleep 1; tail -1 /tmp/reflect.log"
     ;;
+fstack-echo)
+    N=${1:-100000}; W=${2:-20000}; IV=${3:-1000}; SZ=${4:-200}
+    BUILD='cd ~/dpdk && export PKG_CONFIG_PATH=$(cat /opt/fstack/FF_DPDK)/lib/x86_64-linux-gnu/pkgconfig:$(cat /opt/fstack/FF_DPDK)/lib/pkgconfig && gcc -O2 -o fstack-echo fstack-echo.c $(pkg-config --cflags libdpdk) -I/opt/fstack -I/opt/fstack-src/lib -Wl,--whole-archive /opt/fstack/libfstack.a -Wl,--no-whole-archive $(pkg-config --static --libs libdpdk) -lrt -lm -ldl -lcrypto -lpthread -lnuma && echo "fstack-echo built on $(hostname)"'
+    for h in $FIX $OUCH; do copy_to $h "$SCRIPT_DIR/fstack-echo.c"; run_on $h "$BUILD" 2>&1 | grep -v "warning:" ; done
+    # the port is TCP 11111 (the sockperf rule between the trading hosts); F-Stack owns the second ENI
+    run_on $FIX "sudo pkill -x fstack-echo || true; cd ~/dpdk && sudo nohup ./fstack-echo --mode server --port 11111 > /tmp/fstack-echo-server.log 2>&1 < /dev/null & sleep 6; grep -v '^EAL\|^\[' /tmp/fstack-echo-server.log | tail -3"
+    echo "=== F-Stack TCP echo: $W warmup + $N x $SZ B every $IV us, $OUCH2 -> $FIX2:11111"
+    run_on $OUCH "cd ~/dpdk && sudo timeout 900 ./fstack-echo --mode client --ip $FIX2 --port 11111 -n $N -w $W --interval-us $IV --size $SZ 2>&1 | grep -v '^EAL\|^\['" | tee "$OUT/fstack-echo-$(date +%Y%m%d-%H%M%S).log"
+    run_on $FIX "sudo pkill -x fstack-echo || true; sleep 1; tail -2 /tmp/fstack-echo-server.log"
+    ;;
 cleanup)
     for eni in $ENI_FIX $ENI_OUCH; do
         att=$(aws ec2 describe-network-interfaces --network-interface-ids $eni --query 'NetworkInterfaces[0].Attachment.AttachmentId' --output text)
@@ -107,5 +121,5 @@ cleanup)
         aws ec2 delete-network-interface --network-interface-id $eni && echo "deleted $eni"
     done
     ;;
-*) echo "usage: $0 enis|setup|baseline|dpdk|fstack|cleanup"; exit 1 ;;
+*) echo "usage: $0 enis|setup|baseline|dpdk|fstack|fstack-echo|cleanup"; exit 1 ;;
 esac
