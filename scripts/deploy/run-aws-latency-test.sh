@@ -242,12 +242,14 @@ OVERRIDE=$INIT_DIR/conf/initiator-latency.conf
 SESSION_URL='http://localhost:8080/api/sessions/EXCH1-%3ECLIENT1'
 # --transport fstack: vfio in no-IOMMU mode needs CAP_SYS_RAWIO, so the simulator service
 # runs as root through this drop-in for the run, and the initiator JVM under sudo. The shim
-# carries ~17 KB of initial-exec thread-local storage (F-Stack's FreeBSD per-thread state),
-# more than glibc reserves for dlopen'd libraries, hence the static-TLS tunable. libjsig
-# chains the signal handlers DPDK and F-Stack install (SIGSEGV/SIGBUS) behind the JVM's,
-# which needs those signals for its implicit null checks and safepoint polls.
+# is preloaded into the JVM rather than dlopen'd by it: it carries ~17 KB of initial-exec
+# thread-local storage (F-Stack's FreeBSD per-thread state), and a JVM that dlopen'd it (with
+# glibc's static-TLS surplus raised to fit) died with SIGSEGV at address 0 on its newest
+# thread, a thread control block clobbered while the TLS was installed into every live
+# thread; preloaded, the TLS is laid out normally at process start. libjsig chains the
+# signal handlers DPDK installs (SIGBUS) behind the JVM's.
 SIM_DROPIN=/etc/systemd/system/exchange-simulator.service.d/latency-fstack.conf
-FSTACK_ENV="GLIBC_TUNABLES=glibc.rtld.optional_static_tls=131072 LD_PRELOAD=/usr/lib/jvm/java-25-amazon-corretto/lib/libjsig.so"
+FSTACK_ENV="LD_PRELOAD=/opt/fstack/libomnibridge-fstack.so:/usr/lib/jvm/java-25-amazon-corretto/lib/libjsig.so"
 SUDO=""
 if [ "$TRANSPORT" = fstack ]; then
     SUDO="sudo env $FSTACK_ENV "
