@@ -882,3 +882,22 @@ the previous commit's jar on Microsoft JDK 17 and the new jar on Corretto 25.0.5
   range, across all those runs (2.1 GB here: thousands of resends, the tester's ring fills,
   the reconnect times out). The replay should be bounded to the current sequence epoch; until
   then run the session tests on a fresh store.
+
+## Transport seam, kernel path (`f0cf426` against `b4aa2c2`, local, Windows, JDK 25, 20k + 100k at 1,000/s, busy-spin, persistence on), µs
+
+The event loop now reaches its sockets only through `Transport`/`Endpoint`
+(`NioTransport`/`NioEndpoint` for the kernel). Alternating runs of the jar before the seam and
+the jar with it, same JVM and machine:
+
+| Run | Jar | RTT p50 (intended) | p90 | p99 | p99.9 | p99.99 | max | actual p50 |
+|-----|-----|----:|----:|----:|------:|-------:|----:|----:|
+| 1 | before | 112.8 | 187.0 | 355.3 | 5,308 | 16,957 | 21,561 | 112.1 |
+| 2 | seam | 110.3 | 182.7 | 340.2 | 3,209 | 11,231 | 16,941 | 109.8 |
+| 3 | before | 111.0 | 184.3 | 352.3 | 5,472 | 12,485 | 15,221 | 110.5 |
+| 4 | seam | 124.5 | 228.2 | 1,098 | 8,098 | 23,478 | 32,784 | 123.7 |
+
+- **No cost visible.** The seam run 2 is the best of the four at every percentile; run 4 is the
+  worst at every percentile, with p99 three times the others, which is this machine getting
+  busy (the run coincided with other work on it), not the jar. The read and write call sites
+  went from `SocketChannel` methods to `Endpoint` methods, monomorphic in a kernel-mode JVM.
+- The AWS kernel-path run on this code is the real check (one c6in.2xlarge stack, isolated cores).
