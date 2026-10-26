@@ -763,3 +763,59 @@ encode, prepare, persist and write under write-on-loop-commit):
   tail, the lighter-journal target. Socket write is 2.3 µs p50 on both sides, encode 0.3 / 0.95.
 - Host checks: all PASS on both hosts in all three runs except the initiator's preemption WARN
   in runs 2 and 3 (1.0/s rounding); steal 0 throughout.
+
+## AWS: Chronicle pretouch (`dabd224`, one c6in.2xlarge stack, three runs), µs
+
+Chronicle Queue maps each journal in 64 MB chunks and writes into a sparse file, so the writer
+took a first-touch page fault every 4 KB (one write in ~20 at our message size, 1–3 µs each)
+and mapped each new chunk itself; the OSS `ExcerptAppender.pretouch()` is a no-op (the
+`PretouchFactoryEmpty` in 5.24). `ChronicleLogStore` now runs a `chronicle-pretouch` daemon
+thread that keeps `persistence.pretouch-ahead` (default 1 MB) faulted in past every stream's
+write position through the queue's own mapping (`MappedFile.acquireByteStore` and a CAS of 0
+for 0 per page, which writes nothing), every `pretouch-interval-ms` (10). `--no-pretouch` on
+the AWS script sets it to 0 on both sides. One stack, three runs four minutes apart:
+
+| Run | TCP p50 | FIX p50 | p90 | p99 | p99.9 | p99.99 | max |
+|-----|------:|----:|----:|----:|------:|-------:|----:|
+| A: pretouch on, `--stages` | 48.7 | 49.7 | 53.2 | 63.4 | 77.9 | 114 | 316 |
+| B: `--no-pretouch --stages` (control) | 48.4 | 49.9 | 55.0 | 69.3 | 98.9 | 126 | 1,030 |
+| C: pretouch on, plain | 49.1 | 48.9 | 52.4 | 62.3 | 80.8 | 115 | 363 |
+
+**Store stages, p50 / p99 / p99.9** (`send.persist` is the outbound journal write,
+`recv.session` holds the inbound one):
+
+| Side, stage | pretouch on (A) | off (B) |
+|-------------|----:|----:|
+| initiator `send.persist` | 0.48 / 1.49 / 4.85 | 0.44 / 3.38 / 34.3 |
+| initiator `recv.session` | 0.43 / 0.65 / 3.18 | 0.39 / 3.34 / 35.4 |
+| initiator `send.total` | 3.45 / 4.93 / 10.3 | 3.42 / 6.57 / 37.6 |
+| initiator `recv.total` | 1.44 / 1.92 / 4.33 | 1.44 / 4.42 / 36.6 |
+| simulator `send.persist` | 0.62 / 1.07 / 11.3 | 0.60 / 5.48 / 42.3 |
+| simulator `recv.session` | 0.81 / 3.69 / 12.4 | 0.73 / 5.92 / 40.6 |
+| simulator `recv.total` | 7.46 / 13.6 / 23.0 | 7.39 / 15.9 / 52.7 |
+
+- **The page faults were the store tail.** With the pretoucher the two journal writes lose
+  their p99 step (3.3–5.9 µs → 0.7–1.5 on the initiator, 1.1–3.7 on the simulator) and their
+  p99.9 (34–42 µs → 3–5 on the initiator, 11–12 on the simulator). The p50 is unchanged, as
+  expected: Chronicle's own write was never the cost.
+- **Round trip**: p99 −6 µs, p99.9 −21, p99.99 −12, max 1,030 → 316, p50 unchanged (49.7 vs
+  49.9). The simulator's remaining p99.9 of 11–12 µs on the store stages is its Aeron
+  publication plus the local Chronicle cache; the initiator's 3–5 is the kernel's writeback
+  on the active page, which neither design removes (an `msync` on the pretouch thread, or the
+  host's dirty-page settings, would).
+- **Verified running**: the simulator journal logged `Chronicle pretouch started` for its
+  streams and `ps` showed the `chronicle-pretouch` thread; the initiator's run log had the
+  same line. The thread is a plain daemon, so `isolcpus` keeps it off the event-loop core.
+- Run C's send slip (p99.9 7.3 µs, p99.99 37, max 59; 0.35 / 0.8 / 10–92 in A and B) is a
+  sender hiccup of ~100 orders out of 100k; one occurrence, not seen in A, worth watching
+  for a pretouch-thread interaction with the writer's chunk lock on later runs.
+- Host checks: all PASS on both hosts except the initiator's preemption WARN (1.0/s rounding)
+  in run B. Run A's stack had already shown that `--stages` costs ~1 µs at p50 here (A 49.7 vs
+  C 48.9).
+
+**Lighter journal, reviewed against this.** The remaining store cost is p50 0.4–0.8 µs per
+write and a p99.9 of 3–5 µs (initiator) that is writeback, not Chronicle. A preallocated,
+length-prefixed store would save a few hundred ns at p50 and nothing at the tail that an
+`msync` thread would not also save; it would add a second on-disk format, its replay and its
+tests. Not worth building now; the pretoucher is the lighter journal's gain at a fraction of
+its cost. The simulator's 11–12 µs store p99.9 is Aeron's, and belongs to the Aeron path.
