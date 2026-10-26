@@ -901,3 +901,51 @@ the jar with it, same JVM and machine:
   busy (the run coincided with other work on it), not the jar. The read and write call sites
   went from `SocketChannel` methods to `Endpoint` methods, monomorphic in a kernel-mode JVM.
 - The AWS kernel-path run on this code is the real check (one c6in.2xlarge stack, isolated cores).
+
+## AWS: F-Stack transport against the kernel path (`6f88b15`, one c6in.2xlarge stack, persistence on, isolated, 20k + 100k at 1,000/s), µs
+
+`--transport fstack`: both engines on FreeBSD TCP over DPDK (F-Stack in library mode behind the
+transport seam) through a second ENI per host, the initiator's session connecting to the
+simulator's second-ENI address; `kernel`: NIO sockets on the primary ENI as before. Same JVM
+(Corretto 25, generational ZGC), same cores, sockperf on the kernel path in every run. FIX round
+trip from the intended send (CO-corrected):
+
+| Run | Transport | min | p50 | p90 | p99 | p99.9 | p99.99 | max | slip p99 | TCP p50 / p99 |
+|-----|-----------|----:|----:|----:|----:|------:|-------:|----:|---------:|--------------:|
+| 1 | kernel | 38.9 | 45.8 | 50.0 | 62.1 | 80.5 | 122.9 | 389 | 0.35 | 47.3 / 63.2 |
+| 2 | fstack, loop every 100 µs | 36.6 | 91.0 | 130.9 | 140.5 | 145.7 | 186.5 | 568 | 99.1 | 48.9 / 84.6 |
+| 3 | fstack | 35.9 | 40.4 | 43.1 | 46.8 | 63.6 | 138.0 | 499 | 0.28 | 46.2 / 62.1 |
+| 4 | fstack | 36.0 | **40.0** | 42.6 | **46.7** | 64.4 | 130.8 | 487 | 0.30 | 48.4 / 63.7 |
+| 5 | kernel | 38.7 | 45.8 | 49.9 | 61.7 | 78.1 | 111.5 | 1,271 | 0.35 | 47.4 / 62.8 |
+
+- **5.8 µs at p50, 15 µs at p99.** The kernel path reproduces to 0.03 µs between runs 1 and 5
+  (45.76 and 45.79), and F-Stack to 0.4 µs between runs 3 and 4 (40.4 and 40.0). The kernel's
+  p99 (62) is above its p90 by 12 µs; F-Stack's (46.7) by 4 µs: the p90–p99 band that the
+  kernel's receive path, wakeups and softirqs used to fill is gone. p99.9 moves from ~79 to ~64;
+  p99.99 and max do not move (~130 and ~490: those are the host, not the stack).
+- **Not the 22.5 µs floor.** The DPDK UDP ping-pong between these hosts (previous section) is
+  22.5 µs at p50; the FIX round trip on F-Stack is 40.0, so F-Stack's TCP and the engines
+  together cost 17.5 µs over the raw packet path, against ~23 µs for the kernel's TCP plus the
+  same engines. The engines were measured at ~11 µs on the kernel path (stage timing), which
+  leaves about 6–7 µs for F-Stack's TCP per round trip: the FreeBSD stack is not free, and the
+  remaining gap to the floor is it, not the kernel.
+- **Run 2 is the loop interval.** F-Stack calls the application's loop only every
+  `idle_loop_interval` (100 µs by default) while the NIC is idle; the engine's paced sender
+  lives in that loop, so sends slipped by a uniform 0–100 µs (slip p50 50, p99 99) and the
+  intended-send histogram shows the slip, not the network. `idle_loop_interval = 0` in
+  `fstack.ini` (runs 3 and 4) calls it on every pass; from the actual send, run 2 already
+  measured 40.4 at p50.
+- **What it took to run a JVM on F-Stack** (all in `run-aws-latency-test.sh` and
+  `setup-fstack-host.sh`): F-Stack's bundled DPDK 24.11 built on the host, F-Stack compiled
+  `-fPIC` with initial-exec TLS, the shim linked with DPDK static (F-Stack patches DPDK's
+  timer library without exporting the symbol from the shared one); the shim preloaded into the
+  JVM (dlopen'd, its 17 KB of static TLS left the simulator dead with SIGSEGV at address 0 on
+  its newest thread), `libjsig` chained, root for vfio in no-IOMMU mode, the loop thread pinned
+  by `rte_eal_init` rather than before it (EAL's helper threads otherwise landed on the
+  measured core), and the stack never stopped (F-Stack's shutdown double-frees its config; the
+  initiator exited 134 until `ob_stop` became a no-op).
+- **Host checks.** Affinity, busy-spin (99–100 %), isolation and NIC IRQs PASS on both hosts
+  in every run. The initiator reports one involuntary context switch per second with no other
+  runnable task on the core in runs 3, 4 and 5 (kernel too), so it is this stack's tick, not
+  the transport; `--require-isolation` turns it into exit 1, the numbers stand.
+- **Run 2's exit code 134** was the shutdown abort above; its histograms are complete.

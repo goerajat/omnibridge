@@ -900,6 +900,24 @@ public interface Endpoint {
   through an in-memory transport (connect, accept, read, partial write, close, failures) to
   show it talks only to the seam.
 
+**The F-Stack transport** (`network-dpdk`, `network.transport = fstack`): FreeBSD's TCP/IP on
+DPDK, linked as a library. A C shim (`network-dpdk/src/main/c/omnibridge_fstack.c`) exposes
+one `ob_*` function per `ff_*` call the transport needs, so the Java side (`FfmFstackNative`,
+FFM downcalls; `critical` for read, write and `epoll_wait`) carries no struct layouts beyond
+`(fd, events)` pairs. `FstackTransport.start` runs `ff_init` on the loop thread, which
+`rte_eal_init` pins to the lcore in `fstack.ini` (the loop leaves the thread unpinned for it:
+EAL's helper threads take the rest of that affinity). F-Stack owns the poll loop, so
+`Transport.run` hands the loop's `iterate()` to `ff_run` as an upcall, one engine iteration
+per NIC poll on the one thread (`idle_loop_interval = 0` in the ini, or F-Stack calls it only
+every 100 µs while idle). `poll` is `ff_epoll_wait` with a zero timeout; endpoints are
+`ff_` sockets in an fd table; a close from another thread is flagged and the fd released at
+the next poll. The shim is preloaded into the JVM rather than dlopen'd (its 17 KB of
+initial-exec thread-local storage), the JVM runs as root for vfio in no-IOMMU mode, and the
+stack is never stopped (F-Stack's shutdown path double-frees), so the loop thread lives until
+the process exits. `FstackTransportTest` runs the real loop over an in-memory `FakeFstackNative`.
+On AWS c6in.2xlarge the FIX round trip went from 45.8 µs (kernel) to 40.0 µs at p50 and from
+62 to 47 at p99 (`docs/latency-baseline.md`).
+
 ---
 
 ## 5. Session Management
