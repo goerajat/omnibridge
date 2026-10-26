@@ -109,9 +109,13 @@ promiscuous=0
 numa_on=1
 tso=0
 vlan_strip=1
-# Never sleep and never batch: the loop busy-polls and every packet goes out at once
+# Never sleep and never batch: the loop busy-polls and every packet goes out at once.
+# idle_loop_interval (default 100 us) is how often F-Stack calls the application's loop
+# while the NIC is idle; the engine's own iteration (the paced sender, ring drains) must
+# run on every pass or sends slip by up to that interval.
 idle_sleep=0
 pkt_tx_delay=0
+idle_loop_interval=0
 symmetric_rss=0
 port_list=0
 nb_vdev=0

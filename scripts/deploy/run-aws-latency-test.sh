@@ -356,7 +356,8 @@ cleanup() {
     if [ "$TRANSPORT" = fstack ]; then
         # the run's JVMs were root: hand their files back to the service user
         on_ouch "sudo chown -R $SSH_USER:$SSH_USER $INIT_DIR/data 2>/dev/null; true"
-        on_fix "sudo rm -f $SIM_DROPIN; sudo systemctl daemon-reload; sudo chown -R $SSH_USER:$SSH_USER $SIM_DIR/data 2>/dev/null; true"
+        # the embedded Aeron driver's directory too, or the service user's restart cannot recreate it
+        on_fix "sudo rm -f $SIM_DROPIN; sudo systemctl daemon-reload; sudo chown -R $SSH_USER:$SSH_USER $SIM_DIR/data $SIM_DIR/logs /dev/shm/aeron-simulator 2>/dev/null; true"
     fi
 
     if [ "$NIC_TUNED" = true ]; then
