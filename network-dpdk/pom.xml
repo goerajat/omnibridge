@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.omnibridge</groupId>
+        <artifactId>connectivity</artifactId>
+        <version>1.0.2-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>network-dpdk</artifactId>
+    <name>Network I/O - DPDK (F-Stack transport)</name>
+    <description>
+        network.transport = fstack: FreeBSD TCP on DPDK (F-Stack, library mode) driven from the
+        event loop's own thread through the FFM API. The native shim in src/main/c is built on the
+        host (see scripts/deploy/dpdk/setup-fstack-host.sh); this module holds the Java bindings
+        and the TransportProvider, loaded only when the transport is configured.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>network</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>config</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.agrona</groupId>
+            <artifactId>agrona</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

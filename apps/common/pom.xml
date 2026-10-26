@@ -13,6 +13,12 @@
     <description>Common base classes and utilities for sample applications</description>
 
     <dependencies>
+        <!-- network.transport = fstack (loaded only when configured) -->
+        <dependency>
+            <groupId>com.omnibridge</groupId>
+            <artifactId>network-dpdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Core modules -->
         <dependency>
             <groupId>com.omnibridge</groupId>

@@ -30,6 +30,7 @@
         <!-- Core infrastructure modules -->
         <module>config</module>
         <module>network</module>
+        <module>network-dpdk</module>
         <module>persistence</module>
         <module>persistence-aeron</module>
         <!-- Admin API (Javalin-based) -->
