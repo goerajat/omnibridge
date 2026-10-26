@@ -243,9 +243,11 @@ SESSION_URL='http://localhost:8080/api/sessions/EXCH1-%3ECLIENT1'
 # --transport fstack: vfio in no-IOMMU mode needs CAP_SYS_RAWIO, so the simulator service
 # runs as root through this drop-in for the run, and the initiator JVM under sudo. The shim
 # carries ~17 KB of initial-exec thread-local storage (F-Stack's FreeBSD per-thread state),
-# more than glibc reserves for dlopen'd libraries, hence the static-TLS tunable.
+# more than glibc reserves for dlopen'd libraries, hence the static-TLS tunable. libjsig
+# chains the signal handlers DPDK and F-Stack install (SIGSEGV/SIGBUS) behind the JVM's,
+# which needs those signals for its implicit null checks and safepoint polls.
 SIM_DROPIN=/etc/systemd/system/exchange-simulator.service.d/latency-fstack.conf
-FSTACK_ENV="GLIBC_TUNABLES=glibc.rtld.optional_static_tls=131072"
+FSTACK_ENV="GLIBC_TUNABLES=glibc.rtld.optional_static_tls=131072 LD_PRELOAD=/usr/lib/jvm/java-25-amazon-corretto/lib/libjsig.so"
 SUDO=""
 if [ "$TRANSPORT" = fstack ]; then
     SUDO="sudo env $FSTACK_ENV "
