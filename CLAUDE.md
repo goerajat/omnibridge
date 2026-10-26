@@ -388,6 +388,7 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 ./scripts/deploy/run-aws-latency-test.sh --skip-baseline       # FIX run only
 ./scripts/deploy/run-aws-latency-test.sh --nic-tuning          # ENA moderation off, busy polling on
 ./scripts/deploy/run-aws-latency-test.sh --sender main         # orders sent from the main thread (default: the event loop)
+./scripts/deploy/run-aws-latency-test.sh --no-pretouch         # Chronicle pretouch off on both sides (A/B)
 ```
 
 - Stops `fix-initiator` and runs `SampleInitiator --latency` with an override conf (busy-spin, `--initiator-cpu`, `log-messages = true, trace-messages = false`, `reset-on-logon = true`, separate persistence path). The service is always restarted on exit.
@@ -401,6 +402,7 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 - Core isolation: the FIX and OUCH hosts isolate the event-loop cpu (Terraform `latency_cpu`, default 3, matching `--initiator-cpu`/`--simulator-cpu`; 0 disables) and its hyperthread sibling at first boot and reboot once (`scripts/deploy/latency-host-tuning.sh`: `isolcpus`, `nohz_full`, `rcu_nocbs`, IRQs to the other cpus, irqbalance off). On a host, `sudo /usr/local/sbin/latency-host-tuning.sh status|remove|apply <cpu>` plus a reboot shows or toggles it (for a before/after on one stack). With it in place, pass `--require-isolation`.
 - `--nic-tuning` sets, on both trading hosts for the whole run, `ethtool -C <iface> adaptive-rx off rx-usecs 0` and `net.core.busy_read = busy_poll = 50`, restoring the values found afterwards; recorded as `options.nic_tuning`. Busy polling also speeds up sockperf's blocking receive, so in such a run FIX − TCP is not engine time; compare `nic_tuning: true` lines with each other.
 - `--sender loop` (default) sends the latency orders from the initiator's event-loop thread (`NetworkEventLoop.setLoopTask`: the paced send, the encode and the socket write on the one busy-spinning thread); `--sender main` is the older form, the main thread spinning on the schedule and committing to the ring. Recorded as `options.sender`; history lines without it were `main`.
+- `--no-pretouch` sets `persistence.pretouch-ahead = 0` on both sides, so the Chronicle writer takes its own page faults (one per 4 KB written) and chunk mappings; the default keeps 1 MB faulted in ahead of the write position from a background thread. Recorded as `options.pretouch`; history lines without it had no pretoucher.
 - `--stages` turns on per-stage engine timestamps on both sides; the simulator's report is taken from its journal into `simulator-stages.txt` and printed in the summary. Costs a few µs per message, so leave it off for headline numbers.
 - The summary and `summary.json` (`read_cap_hits`) show how many reads filled the FIX read cap: initiator during the timed phase, simulator over the whole connection.
 - Logs, `summary.txt` and `summary.json` go to `logs/aws-latency/<time>/`; each run is also appended to `docs/latency-history.jsonl` (commit, instance type, options, percentiles) for comparison across commits.

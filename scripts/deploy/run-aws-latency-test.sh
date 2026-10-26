@@ -66,6 +66,9 @@
 #                         (net.core.busy_read = busy_poll = 50). Restored afterwards.
 #                         Note: busy polling also speeds up sockperf's blocking
 #                         receive, so FIX - TCP is not engine time in such a run.
+#   --no-pretouch         Chronicle pretouch off on both sides (persistence.pretouch-ahead
+#                         = 0): the writer takes its own page faults, as before 4428f77.
+#                         Recorded as options.pretouch.
 #   --sender              Thread the initiator sends the orders from: loop (the
 #                         event loop's own thread, the default) or main (the
 #                         calling thread, which spins on the schedule and commits
@@ -108,6 +111,7 @@ PERSIST=true
 STAGES=false
 NIC_TUNING=false
 SENDER=loop
+PRETOUCH=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -136,6 +140,7 @@ while [[ $# -gt 0 ]]; do
         --stages)         STAGES=true;        shift ;;
         --nic-tuning)     NIC_TUNING=true;    shift ;;
         --sender)         SENDER="$2";        shift 2 ;;
+        --no-pretouch)    PRETOUCH=false;     shift ;;
         -h|--help)        sed -n '2,80p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
@@ -213,6 +218,7 @@ echo "  OUCH host (initiator):  $OUCH_IP"
 echo "  Orders:                 warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
 echo "  Initiator core:         $INITIATOR_CPU"
 echo "  Sender:                 $SENDER"
+echo "  Chronicle pretouch:     $PRETOUCH"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
 echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off)"
 echo "  Stage timing:           $STAGES"
@@ -386,6 +392,7 @@ network {
     cpu-affinity = $SIM_CPU
 }
 
+$([ "$PRETOUCH" = true ] || printf 'persistence {\n    pretouch-ahead = 0\n}\n')
 # The demo order tracker records every order (and its ClOrdID index in the order book)
 # on the event loop; the deployed config turns it on for the demo UI
 demo {
@@ -434,6 +441,7 @@ set -e
     echo '}'
     echo 'persistence {'
     echo '    base-path = "$INIT_DIR/data/latency-logs"'
+    [ "$PRETOUCH" = true ] || echo '    pretouch-ahead = 0'
     echo '}'
     tr -d '\r' < $INIT_DIR/conf/initiator-aws.conf | sed -n '/^fix-engine {/,\$p' \
         | sed 's/^\( *\)initiator = true.*/&\n\1reset-on-logon = true\n\1$MSG_CFG/'
@@ -653,7 +661,7 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
         tr -d '\r' < "$OUT_DIR/simulator-stages.txt" 2>/dev/null | sed 's/^/  /'
         echo "================================================================"
     fi
-    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; NIC tuning: $NIC_TUNING; sender: $SENDER; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; NIC tuning: $NIC_TUNING; sender: $SENDER; pretouch: $PRETOUCH; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
@@ -666,7 +674,7 @@ DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/nu
 jq -nc \
     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
-    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson nic "$NIC_TUNING" --arg sender "$SENDER" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
+    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson nic "$NIC_TUNING" --arg sender "$SENDER" --argjson pretouch "$PRETOUCH" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
     --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" \
@@ -677,7 +685,7 @@ jq -nc \
     def hist: if . == "" then null
               else split(" ") | map(select(contains("=")) | split("=") | {(.[0]): (.[1] | tonumber? // .)}) | add end;
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
-     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, nic_tuning: $nic, sender: $sender, warmup: $warmup, test_orders: $orders, rate: $rate,
+     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, nic_tuning: $nic, sender: $sender, pretouch: $pretouch, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),

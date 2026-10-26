@@ -11,11 +11,15 @@ import com.omnibridge.persistence.LogStore;
 import com.omnibridge.persistence.config.PersistenceConfig;
 import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.bytes.BytesStore;
+import net.openhft.chronicle.bytes.MappedBytesStore;
+import net.openhft.chronicle.bytes.MappedFile;
 import net.openhft.chronicle.bytes.PointerBytesStore;
+import net.openhft.chronicle.core.io.ReferenceOwner;
 import net.openhft.chronicle.queue.ExcerptAppender;
 import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
+import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueStore;
 import net.openhft.chronicle.wire.DocumentContext;
 import org.agrona.DirectBuffer;
 import org.slf4j.Logger;
@@ -62,6 +66,12 @@ public class ChronicleLogStore implements LogStore, Component {
     private ComponentProvider componentProvider;
     private volatile ComponentState componentState = ComponentState.UNINITIALIZED;
 
+    // Pretouch: a background thread faults the journal in ahead of the writer
+    private static final long PAGE = 4096;
+    private final ReferenceOwner touchOwner = ReferenceOwner.temporary("pretouch");
+    private volatile long pretouchAhead;
+    private volatile Thread pretouchThread;
+
     public ChronicleLogStore(String basePath) {
         this(new File(basePath));
     }
@@ -82,6 +92,72 @@ public class ChronicleLogStore implements LogStore, Component {
     public ChronicleLogStore(PersistenceConfig config, ComponentProvider provider) {
         this(new File(config.getBasePath()));
         this.componentProvider = provider;
+        startPretoucher(config.getPretouchAhead(), config.getPretouchIntervalMs());
+    }
+
+    // ==================== Pretouch ====================
+
+    /**
+     * Starts a daemon thread that, every {@code intervalMs}, keeps {@code aheadBytes} of every
+     * stream's journal faulted in past its write position (and the next chunk mapped), so the
+     * writer never takes a first-touch page fault or an mmap on its own thread. Pages are
+     * touched through the queue's own mapping (a CAS of 0 for 0, which writes nothing), so the
+     * page-table entry the writer will use is the one installed here. No-op when
+     * {@code aheadBytes <= 0} or already running.
+     */
+    public synchronized void startPretoucher(long aheadBytes, long intervalMs) {
+        if (aheadBytes <= 0 || pretouchThread != null) {
+            return;
+        }
+        pretouchAhead = aheadBytes;
+        long interval = Math.max(1, intervalMs);
+        Thread t = new Thread(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    pretouchRound();
+                    Thread.sleep(interval);
+                } catch (InterruptedException e) {
+                    return;
+                } catch (Throwable e) {
+                    log.warn("Chronicle pretouch failed; retrying next round", e);
+                }
+            }
+        }, "chronicle-pretouch");
+        t.setDaemon(true);
+        pretouchThread = t;
+        t.start();
+        log.info("Chronicle pretouch started: {} bytes ahead every {} ms", aheadBytes, interval);
+    }
+
+    private synchronized void stopPretoucher() {
+        Thread t = pretouchThread;
+        if (t == null) {
+            return;
+        }
+        pretouchThread = null;
+        t.interrupt();
+        try {
+            t.join(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    Thread pretouchThreadForTest() {
+        return pretouchThread;
+    }
+
+    /**
+     * One pass over every stream. Package-private so tests can drive it without the thread.
+     *
+     * @return pages touched in this pass
+     */
+    int pretouchRound() throws IOException {
+        int touched = 0;
+        for (StreamState state : streams.values()) {
+            touched += state.pretouch(pretouchAhead, touchOwner);
+        }
+        return touched;
     }
 
     public ComponentProvider getComponentProvider() {
@@ -373,6 +449,7 @@ public class ChronicleLogStore implements LogStore, Component {
 
     @Override
     public void close() throws IOException {
+        stopPretoucher();
         for (StreamState state : streams.values()) {
             state.close();
         }
@@ -502,6 +579,10 @@ public class ChronicleLogStore implements LogStore, Component {
         final SingleChronicleQueue queue;
         final ExcerptAppender appender;
         final AtomicLong entryCount;
+        // Pretouch state, used by the pretouch thread only
+        private SingleChronicleQueueStore touchStore;
+        private int touchCycle = Integer.MIN_VALUE;
+        private long touchedTo;
 
         StreamState(String name, File dir) {
             this.name = name;
@@ -525,7 +606,57 @@ public class ChronicleLogStore implements LogStore, Component {
             return count;
         }
 
+        /**
+         * Faults in the pages from the write position to {@code ahead} bytes past it that this
+         * thread has not touched before. The store lookup happens once per roll cycle; the
+         * per-page work is a chunk lookup on the queue's {@link MappedFile} (which maps the
+         * next chunk when the window crosses into it) and one CAS per page.
+         */
+        int pretouch(long ahead, ReferenceOwner owner) throws IOException {
+            int cycle = queue.cycle();
+            if (touchStore == null || cycle != touchCycle) {
+                SingleChronicleQueueStore next = queue.storeForCycle(cycle, queue.epoch(), false, touchStore);
+                if (next == null) {
+                    return 0;   // no file for this cycle yet: nothing has been written
+                }
+                touchStore = next;
+                touchCycle = cycle;
+                touchedTo = 0;
+            }
+            long pos = touchStore.writePosition();
+            long from = Math.max(touchedTo, pos & -PAGE);          // page-aligned: touchedTo is
+            long to = (pos + ahead + PAGE - 1) & -PAGE;           // and so is this
+            if (from >= to) {
+                return 0;
+            }
+            MappedFile file = touchStore.bytes().mappedFile();
+            int touched = 0;
+            MappedBytesStore bs = null;
+            try {
+                for (long page = from; page < to; page += PAGE) {
+                    if (bs == null || !bs.inside(page, 8)) {
+                        if (bs != null) {
+                            bs.release(owner);
+                        }
+                        bs = file.acquireByteStore(owner, page);
+                    }
+                    bs.compareAndSwapLong(page, 0L, 0L);   // a write access; changes nothing
+                    touched++;
+                }
+            } finally {
+                if (bs != null) {
+                    bs.release(owner);
+                }
+            }
+            touchedTo = to;
+            return touched;
+        }
+
         void close() {
+            if (touchStore != null) {
+                queue.closeStore(touchStore);
+                touchStore = null;
+            }
             appender.close();
             queue.close();
         }

@@ -23,6 +23,8 @@ public final class PersistenceConfig {
     private final long maxFileSize;
     private final boolean syncOnWrite;
     private final int maxStreams;
+    private final long pretouchAhead;
+    private final long pretouchIntervalMs;
 
     private PersistenceConfig(Builder builder) {
         this.enabled = builder.enabled;
@@ -31,6 +33,8 @@ public final class PersistenceConfig {
         this.maxFileSize = builder.maxFileSize;
         this.syncOnWrite = builder.syncOnWrite;
         this.maxStreams = builder.maxStreams;
+        this.pretouchAhead = builder.pretouchAhead;
+        this.pretouchIntervalMs = builder.pretouchIntervalMs;
     }
 
     /**
@@ -44,6 +48,12 @@ public final class PersistenceConfig {
                 .maxFileSize(config.getBytes("max-file-size"))
                 .syncOnWrite(config.getBoolean("sync-on-write"))
                 .maxStreams(config.getInt("max-streams"));
+        if (config.hasPath("pretouch-ahead")) {
+            builder.pretouchAhead(config.getBytes("pretouch-ahead"));
+        }
+        if (config.hasPath("pretouch-interval-ms")) {
+            builder.pretouchIntervalMs(config.getLong("pretouch-interval-ms"));
+        }
         return builder.build();
     }
 
@@ -67,6 +77,16 @@ public final class PersistenceConfig {
         return syncOnWrite;
     }
 
+    /** Bytes of journal the Chronicle store keeps faulted in ahead of the write position; 0 turns the pretoucher off. */
+    public long getPretouchAhead() {
+        return pretouchAhead;
+    }
+
+    /** How often the pretouch thread runs. */
+    public long getPretouchIntervalMs() {
+        return pretouchIntervalMs;
+    }
+
     public int getMaxStreams() {
         return maxStreams;
     }
@@ -82,6 +102,8 @@ public final class PersistenceConfig {
         private long maxFileSize = 256 * 1024 * 1024; // 256MB
         private boolean syncOnWrite = false;
         private int maxStreams = 100;
+        private long pretouchAhead = 1024 * 1024;
+        private long pretouchIntervalMs = 10;
 
         private Builder() {}
 
@@ -107,6 +129,16 @@ public final class PersistenceConfig {
 
         public Builder syncOnWrite(boolean syncOnWrite) {
             this.syncOnWrite = syncOnWrite;
+            return this;
+        }
+
+        public Builder pretouchAhead(long pretouchAhead) {
+            this.pretouchAhead = pretouchAhead;
+            return this;
+        }
+
+        public Builder pretouchIntervalMs(long pretouchIntervalMs) {
+            this.pretouchIntervalMs = pretouchIntervalMs;
             return this;
         }
 

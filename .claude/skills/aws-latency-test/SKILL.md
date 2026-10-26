@@ -1,7 +1,7 @@
 ---
 name: aws-latency-test
 description: Provision the AWS stack with Terraform, deploy the current code, run the FIX latency test with its sockperf network baseline, summarize the results against earlier runs, and destroy the stack.
-argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main] [--instance-type <type>] [--keep]"
+argument-hint: "[warmup test-orders rate] [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main] [--no-pretouch] [--instance-type <type>] [--keep]"
 allowed-tools:
   - Bash(./scripts/deploy/terraform-deploy.sh:*)
   - Bash(./scripts/deploy/deploy-pipeline.sh:*)
@@ -35,7 +35,7 @@ Arguments: `$ARGUMENTS`
 
 - Up to three numbers: warmup orders, test orders, rate (defaults 10000 1000 100).
   Keep the defaults unless the user gives others, so runs stay comparable.
-- `--no-tune-simulator`, `--no-persistence`, `--skip-baseline`, `--nic-tuning`, `--sender`: passed through to
+- `--no-tune-simulator`, `--no-persistence`, `--skip-baseline`, `--nic-tuning`, `--sender`, `--no-pretouch`: passed through to
   the test script. One run, persistence on: by default the measured sessions
   write every message to their store without log tracing. Do not run the
   non-persistence variant unless the user asks for it.
@@ -47,7 +47,9 @@ Arguments: `$ARGUMENTS`
   time there (busy polling also speeds up sockperf's blocking receive). `--sender main`
   sends the orders from the initiator's main thread as before the loop sender (the
   default, `loop`, sends them from the event loop's own thread); recorded as
-  `options.sender`. Lines without `options.sender` were `main`.
+  `options.sender`. Lines without `options.sender` were `main`. `--no-pretouch` turns the
+  Chronicle pretouch thread off on both sides (recorded as `options.pretouch`; lines without
+  it had no pretoucher).
 - `--instance-type <type>`: trading hosts of that EC2 type instead of the
   `terraform.tfvars` default (c6in.2xlarge since abf2185, c6in.xlarge from a303017, c5.xlarge before): passed to `terraform-deploy.sh -t` on
   both the apply and the destroy. `summary.json` records the type; compare only
@@ -96,7 +98,7 @@ otherwise go to step 6 with the diagnosis.
 
 ## 4. Test
 
-`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> --require-isolation [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main]`
+`./scripts/deploy/run-aws-latency-test.sh -w <warmup> -n <test-orders> -r <rate> --require-isolation [--no-tune-simulator] [--no-persistence] [--skip-baseline] [--nic-tuning] [--sender loop|main] [--no-pretouch]`
 
 The trading hosts isolate the event-loop cpu at boot, so `--require-isolation` fails
 the run if that did not take effect.
