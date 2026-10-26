@@ -241,11 +241,14 @@ SIM_BACKUP=$SIM_CONF.latency-backup
 OVERRIDE=$INIT_DIR/conf/initiator-latency.conf
 SESSION_URL='http://localhost:8080/api/sessions/EXCH1-%3ECLIENT1'
 # --transport fstack: vfio in no-IOMMU mode needs CAP_SYS_RAWIO, so the simulator service
-# runs as root through this drop-in for the run, and the initiator JVM under sudo
+# runs as root through this drop-in for the run, and the initiator JVM under sudo. The shim
+# carries ~17 KB of initial-exec thread-local storage (F-Stack's FreeBSD per-thread state),
+# more than glibc reserves for dlopen'd libraries, hence the static-TLS tunable.
 SIM_DROPIN=/etc/systemd/system/exchange-simulator.service.d/latency-fstack.conf
+FSTACK_ENV="GLIBC_TUNABLES=glibc.rtld.optional_static_tls=131072"
 SUDO=""
 if [ "$TRANSPORT" = fstack ]; then
-    SUDO="sudo "
+    SUDO="sudo env $FSTACK_ENV "
     for h in fix ouch; do
         if ! on_$h "test -f /opt/fstack/libomnibridge-fstack.so -a -f /opt/fstack/fstack.ini"; then
             echo "Error: /opt/fstack is not set up on the $h host (run scripts/deploy/dpdk/run-dpdk-floor.sh fstack)"
@@ -469,7 +472,7 @@ fix-engine {
 }
 CONF
     if [ "$TRANSPORT" = fstack ]; then
-        on_fix "sudo mkdir -p $(dirname $SIM_DROPIN) && printf '[Service]\nUser=root\nLimitMEMLOCK=infinity\n' | sudo tee $SIM_DROPIN >/dev/null && sudo systemctl daemon-reload"
+        on_fix "sudo mkdir -p $(dirname $SIM_DROPIN) && printf '[Service]\nUser=root\nLimitMEMLOCK=infinity\nEnvironment=$FSTACK_ENV\n' | sudo tee $SIM_DROPIN >/dev/null && sudo systemctl daemon-reload"
     fi
     on_fix "sudo systemctl restart exchange-simulator"
     SIM_STOPPED=false
