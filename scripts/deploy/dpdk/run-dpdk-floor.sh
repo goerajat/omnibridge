@@ -14,9 +14,12 @@
 #   run-dpdk-floor.sh dpdk [count] [warmup] [interval-us]
 #                               reflector on the FIX host, paced sender on
 #                               the OUCH host, both on the isolated cpu 3
+#   run-dpdk-floor.sh fstack    build F-Stack and the omni-bridge shim on both hosts,
+#                               write /opt/fstack/fstack.ini for the second ENI and
+#                               bind it (for run-aws-latency-test.sh --transport fstack)
 #   run-dpdk-floor.sh cleanup   detach and delete the ENIs (before destroy)
 #
-# State (ENI ids, IPs, MACs) is kept in logs/dpdk-floor/state.env.
+# State (ENI ids, IPs, MACs, subnet CIDR) is kept in logs/dpdk-floor/state.env.
 set -euo pipefail
 PHASE="${1:-}"; shift || true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,9 +52,24 @@ enis)
     Q='NetworkInterfaces[0].[PrivateIpAddress,MacAddress]'
     read FIX2 FIX2_MAC < <(aws ec2 describe-network-interfaces --network-interface-ids $ENI_FIX --query "$Q" --output text)
     read OUCH2 OUCH2_MAC < <(aws ec2 describe-network-interfaces --network-interface-ids $ENI_OUCH --query "$Q" --output text)
-    printf 'SG=%s\nENI_FIX=%s\nENI_OUCH=%s\nFIX2=%s\nFIX2_MAC=%s\nOUCH2=%s\nOUCH2_MAC=%s\n' \
-        "$SG" "$ENI_FIX" "$ENI_OUCH" "$FIX2" "$FIX2_MAC" "$OUCH2" "$OUCH2_MAC" > "$STATE"
+    CIDR=$(aws ec2 describe-subnets --subnet-ids $SUBNET --query 'Subnets[0].CidrBlock' --output text)
+    printf 'SG=%s\nENI_FIX=%s\nENI_OUCH=%s\nFIX2=%s\nFIX2_MAC=%s\nOUCH2=%s\nOUCH2_MAC=%s\nCIDR=%s\n' \
+        "$SG" "$ENI_FIX" "$ENI_OUCH" "$FIX2" "$FIX2_MAC" "$OUCH2" "$OUCH2_MAC" "$CIDR" > "$STATE"
     cat "$STATE"
+    ;;
+fstack)
+    # F-Stack on both trading hosts; the engines then run with network.transport = fstack
+    if [ -z "${CIDR:-}" ]; then
+        SUBNET=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_FIX --query 'NetworkInterfaces[0].SubnetId' --output text)
+        CIDR=$(aws ec2 describe-subnets --subnet-ids $SUBNET --query 'Subnets[0].CidrBlock' --output text)
+        echo "CIDR=$CIDR" >> "$STATE"
+    fi
+    SHIM="$PROJECT_DIR/network-dpdk/src/main/c/omnibridge_fstack.c"
+    for h in $FIX $OUCH; do run_on $h "mkdir -p ~/dpdk"; copy_to $h "$SHIM" "$SCRIPT_DIR/setup-fstack-host.sh"; done
+    echo "=== FIX host ($FIX2 on $FIX2_MAC, cpu $CPU)"
+    run_on $FIX  "bash ~/dpdk/setup-fstack-host.sh $FIX2_MAC $FIX2 $CIDR $CPU" 2>&1 | grep -v debconf
+    echo "=== OUCH host ($OUCH2 on $OUCH2_MAC, cpu $CPU)"
+    run_on $OUCH "bash ~/dpdk/setup-fstack-host.sh $OUCH2_MAC $OUCH2 $CIDR $CPU" 2>&1 | grep -v debconf
     ;;
 setup)
     for h in $FIX $OUCH; do run_on $h "mkdir -p ~/dpdk"; copy_to $h "$SCRIPT_DIR/pingpong.c" "$SCRIPT_DIR/setup-dpdk-host.sh"; done
@@ -89,5 +107,5 @@ cleanup)
         aws ec2 delete-network-interface --network-interface-id $eni && echo "deleted $eni"
     done
     ;;
-*) echo "usage: $0 enis|setup|baseline|dpdk|cleanup"; exit 1 ;;
+*) echo "usage: $0 enis|setup|baseline|dpdk|fstack|cleanup"; exit 1 ;;
 esac

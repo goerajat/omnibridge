@@ -389,6 +389,7 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 ./scripts/deploy/run-aws-latency-test.sh --nic-tuning          # ENA moderation off, busy polling on
 ./scripts/deploy/run-aws-latency-test.sh --sender main         # orders sent from the main thread (default: the event loop)
 ./scripts/deploy/run-aws-latency-test.sh --no-pretouch         # Chronicle pretouch off on both sides (A/B)
+./scripts/deploy/run-aws-latency-test.sh --transport fstack    # both engines on F-Stack (DPDK) over the second ENIs
 ```
 
 - Stops `fix-initiator` and runs `SampleInitiator --latency` with an override conf (busy-spin, `--initiator-cpu`, `log-messages = true, trace-messages = false`, `reset-on-logon = true`, separate persistence path). The service is always restarted on exit.
@@ -407,7 +408,8 @@ Measures the FIX round trip (initiator on the OUCH host → simulator on the FIX
 - The summary and `summary.json` (`read_cap_hits`) show how many reads filled the FIX read cap: initiator during the timed phase, simulator over the whole connection.
 - Logs, `summary.txt` and `summary.json` go to `logs/aws-latency/<time>/`; each run is also appended to `docs/latency-history.jsonl` (commit, instance type, options, percentiles) for comparison across commits.
 
-- DPDK network floor: `scripts/deploy/dpdk/run-dpdk-floor.sh enis|setup|baseline|dpdk|cleanup` on a provisioned stack attaches a second ENI per trading host, binds it to the ENA poll-mode driver and runs `pingpong.c` (reflector on the FIX host, paced sender on the OUCH host, isolated cpu) next to sockperf. Measured 2026-10-26 on c6in.2xlarge: DPDK UDP round trip p50 22.5 µs against sockperf 46–49 (`docs/latency-baseline.md`). Run `cleanup` before `terraform destroy`.
+- DPDK network floor: `scripts/deploy/dpdk/run-dpdk-floor.sh enis|setup|baseline|dpdk|fstack|cleanup` on a provisioned stack attaches a second ENI per trading host, binds it to the ENA poll-mode driver and runs `pingpong.c` (reflector on the FIX host, paced sender on the OUCH host, isolated cpu) next to sockperf. Measured 2026-10-26 on c6in.2xlarge: DPDK UDP round trip p50 22.5 µs against sockperf 46–49 (`docs/latency-baseline.md`). Run `cleanup` before `terraform destroy`.
+- `--transport fstack`: both engines run FreeBSD TCP on DPDK (F-Stack in library mode, `network.transport = fstack`, module `network-dpdk`, the shim in `network-dpdk/src/main/c`) over the second ENIs. Needs `run-dpdk-floor.sh enis` then `run-dpdk-floor.sh fstack` (builds F-Stack and the shim on both hosts into `/opt/fstack`, writes `fstack.ini` with `pkt_tx_delay = 0`, binds the ENI) and the simulator tuning. The measured session connects to the simulator's second-ENI address; sockperf, the admin ports and Aeron stay on the kernel ENI. Recorded as `options.transport` (history lines without it were `kernel`).
 
 End to end (provision → build → deploy → test → report → destroy): run the `/aws-latency-test [warmup test rate] [--no-tune-simulator] [--keep]` skill in `.claude/skills/aws-latency-test/`. It is pre-approved for `terraform apply`/`destroy` and always destroys the stack after the run unless `--keep` is passed; it stops and asks if a stack already exists.
 

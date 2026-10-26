@@ -73,6 +73,14 @@
 #                         event loop's own thread, the default) or main (the
 #                         calling thread, which spins on the schedule and commits
 #                         to the ring). Recorded as options.sender.
+#   --transport           kernel (the default: NIO sockets on the primary ENI) or
+#                         fstack: both engines run FreeBSD TCP on DPDK (F-Stack,
+#                         network.transport = fstack) over the second ENI of each
+#                         host; the measured session connects to the simulator's
+#                         second-ENI address. Needs run-dpdk-floor.sh enis + fstack
+#                         (logs/dpdk-floor/state.env, /opt/fstack on both hosts) and
+#                         the simulator tuning. sockperf stays on the kernel path.
+#                         Recorded as options.transport (lines without it: kernel).
 #
 # Examples:
 #   ./run-aws-latency-test.sh
@@ -80,6 +88,7 @@
 #   ./run-aws-latency-test.sh --no-tune-simulator          # simulator as deployed
 #   ./run-aws-latency-test.sh --nic-tuning                 # moderation off, busy polling on
 #   ./run-aws-latency-test.sh --sender main                # the older sender, for an A/B
+#   ./run-aws-latency-test.sh --transport fstack           # F-Stack on both sides
 # =============================================================================
 
 set -uo pipefail
@@ -112,6 +121,7 @@ STAGES=false
 NIC_TUNING=false
 SENDER=loop
 PRETOUCH=true
+TRANSPORT=kernel
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -141,6 +151,7 @@ while [[ $# -gt 0 ]]; do
         --nic-tuning)     NIC_TUNING=true;    shift ;;
         --sender)         SENDER="$2";        shift 2 ;;
         --no-pretouch)    PRETOUCH=false;     shift ;;
+        --transport)      TRANSPORT="$2";     shift 2 ;;
         -h|--help)        sed -n '2,80p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
@@ -151,9 +162,35 @@ done
 # -----------------------------------------------------------------------------
 
 case "$SENDER" in loop|main) ;; *) echo "Error: --sender must be loop or main"; exit 1 ;; esac
+case "$TRANSPORT" in kernel|fstack) ;; *) echo "Error: --transport must be kernel or fstack"; exit 1 ;; esac
 if [ "$STAGES" = true ] && [ "$TUNE_SIM" = false ]; then
     echo "Error: --stages needs the simulator tuning (drop --no-tune-simulator)"
     exit 1
+fi
+# F-Stack: both engines on the second ENIs (run-dpdk-floor.sh enis + fstack), simulator
+# re-configured with the tuning block
+FSTACK_HOCON=""
+SESSION_EXTRA=""
+FIX2=""; OUCH2=""
+if [ "$TRANSPORT" = fstack ]; then
+    if [ "$TUNE_SIM" = false ]; then
+        echo "Error: --transport fstack needs the simulator tuning (drop --no-tune-simulator)"
+        exit 1
+    fi
+    FSTACK_STATE="$PROJECT_DIR/logs/dpdk-floor/state.env"
+    if [ ! -f "$FSTACK_STATE" ]; then
+        echo "Error: --transport fstack needs $FSTACK_STATE (run scripts/deploy/dpdk/run-dpdk-floor.sh enis, then fstack)"
+        exit 1
+    fi
+    # shellcheck disable=SC1090
+    source "$FSTACK_STATE"
+    if [ -z "${FIX2:-}" ] || [ -z "${OUCH2:-}" ]; then
+        echo "Error: $FSTACK_STATE has no FIX2/OUCH2 addresses"
+        exit 1
+    fi
+    FSTACK_HOCON=$'    transport = fstack\n    fstack {\n        conf = "/opt/fstack/fstack.ini"\n        library = "/opt/fstack/libomnibridge-fstack.so"\n    }'
+    # the measured session connects to the simulator's second ENI (last host wins in HOCON)
+    SESSION_EXTRA='\n\1host = "'"$FIX2"'"'
 fi
 
 if [ ! -f "$TF_OUTPUTS" ]; then
@@ -203,6 +240,19 @@ SIM_CONF=$SIM_DIR/exchange-simulator.conf
 SIM_BACKUP=$SIM_CONF.latency-backup
 OVERRIDE=$INIT_DIR/conf/initiator-latency.conf
 SESSION_URL='http://localhost:8080/api/sessions/EXCH1-%3ECLIENT1'
+# --transport fstack: vfio in no-IOMMU mode needs CAP_SYS_RAWIO, so the simulator service
+# runs as root through this drop-in for the run, and the initiator JVM under sudo
+SIM_DROPIN=/etc/systemd/system/exchange-simulator.service.d/latency-fstack.conf
+SUDO=""
+if [ "$TRANSPORT" = fstack ]; then
+    SUDO="sudo "
+    for h in fix ouch; do
+        if ! on_$h "test -f /opt/fstack/libomnibridge-fstack.so -a -f /opt/fstack/fstack.ini"; then
+            echo "Error: /opt/fstack is not set up on the $h host (run scripts/deploy/dpdk/run-dpdk-floor.sh fstack)"
+            exit 1
+        fi
+    done
+fi
 # Session settings for the measured sessions: store writes on or off, never traced
 if [ "$PERSIST" = true ]; then
     MSG_CFG='log-messages = true, trace-messages = false'
@@ -218,6 +268,7 @@ echo "  OUCH host (initiator):  $OUCH_IP"
 echo "  Orders:                 warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
 echo "  Initiator core:         $INITIATOR_CPU"
 echo "  Sender:                 $SENDER"
+echo "  Transport:              $([ "$TRANSPORT" = fstack ] && echo "fstack (simulator $FIX2, initiator $OUCH2 on the second ENIs)" || echo kernel)"
 echo "  Chronicle pretouch:     $PRETOUCH"
 echo "  Simulator tuning:       $([ "$TUNE_SIM" = true ] && echo "on, core $SIM_CPU" || echo off)"
 echo "  Persistence:            $([ "$PERSIST" = true ] && echo "on (store writes, no tracing)" || echo off)"
@@ -276,7 +327,8 @@ wait_for_simulator() {
     on_fix "bash -s" <<REMOTE
 for i in \$(seq 1 90); do
     code=\$(curl -s -o /dev/null -w '%{http_code}' '$SESSION_URL' 2>/dev/null)
-    if [ "\$code" = 200 ] && ss -ltn 2>/dev/null | grep -q ':9876 '; then exit 0; fi
+    # an F-Stack listener is not in the kernel's socket table: the admin API has to do
+    if [ "\$code" = 200 ] && { [ "$TRANSPORT" = fstack ] || ss -ltn 2>/dev/null | grep -q ':9876 '; }; then exit 0; fi
     sleep 2
 done
 echo "  simulator not ready after 180s"
@@ -291,9 +343,14 @@ cleanup() {
     echo ""
     echo "[cleanup] Restoring services"
 
-    # A latency run cut short by Ctrl-C would keep its session open
-    on_ouch "pkill -f '[o]mnibridge.latency-test'; pkill -f '[l]atency-host-check'; true" 2>/dev/null
+    # A latency run cut short by Ctrl-C would keep its session open (root under --transport fstack)
+    on_ouch "sudo pkill -f '[o]mnibridge.latency-test'; pkill -f '[l]atency-host-check'; true" 2>/dev/null
     on_fix "pkill -x sockperf; pkill -f '[l]atency-host-check'; true" 2>/dev/null
+    if [ "$TRANSPORT" = fstack ]; then
+        # the run's JVMs were root: hand their files back to the service user
+        on_ouch "sudo chown -R $SSH_USER:$SSH_USER $INIT_DIR/data 2>/dev/null; true"
+        on_fix "sudo rm -f $SIM_DROPIN; sudo systemctl daemon-reload; sudo chown -R $SSH_USER:$SSH_USER $SIM_DIR/data 2>/dev/null; true"
+    fi
 
     if [ "$NIC_TUNED" = true ]; then
         echo "[cleanup] Restoring NIC settings"
@@ -390,6 +447,7 @@ if [ "$TUNE_SIM" = true ]; then
 network {
     busy-spin-mode = true
     cpu-affinity = $SIM_CPU
+$FSTACK_HOCON
 }
 
 $([ "$PRETOUCH" = true ] || printf 'persistence {\n    pretouch-ahead = 0\n}\n')
@@ -410,6 +468,9 @@ fix-engine {
     ]
 }
 CONF
+    if [ "$TRANSPORT" = fstack ]; then
+        on_fix "sudo mkdir -p $(dirname $SIM_DROPIN) && printf '[Service]\nUser=root\nLimitMEMLOCK=infinity\n' | sudo tee $SIM_DROPIN >/dev/null && sudo systemctl daemon-reload"
+    fi
     on_fix "sudo systemctl restart exchange-simulator"
     SIM_STOPPED=false
 elif [ "$SIM_STOPPED" = true ]; then
@@ -438,16 +499,17 @@ set -e
     echo 'network {'
     echo '    busy-spin-mode = true'
     echo '    cpu-affinity = $INITIATOR_CPU'
+    printf '%s\n' '$FSTACK_HOCON'
     echo '}'
     echo 'persistence {'
     echo '    base-path = "$INIT_DIR/data/latency-logs"'
     [ "$PRETOUCH" = true ] || echo '    pretouch-ahead = 0'
     echo '}'
     tr -d '\r' < $INIT_DIR/conf/initiator-aws.conf | sed -n '/^fix-engine {/,\$p' \
-        | sed 's/^\( *\)initiator = true.*/&\n\1reset-on-logon = true\n\1$MSG_CFG/'
+        | sed 's/^\( *\)initiator = true.*/&\n\1reset-on-logon = true\n\1$MSG_CFG$SESSION_EXTRA/'
 } > $OVERRIDE
 grep -q 'reset-on-logon = true' $OVERRIDE
-rm -rf $INIT_DIR/data/latency-logs
+sudo rm -rf $INIT_DIR/data/latency-logs
 REMOTE
 then
     echo "  FAIL: could not write $OVERRIDE from initiator-aws.conf"
@@ -477,7 +539,7 @@ if [ "$HOST_CHECK" = true ]; then
 fi
 
 # JVM flags match the fix-initiator systemd unit in setup-remote.sh
-on_ouch "set -o pipefail; cd $INIT_DIR && timeout $RUN_TIMEOUT /usr/bin/java \
+on_ouch "set -o pipefail; cd $INIT_DIR && ${SUDO}timeout $RUN_TIMEOUT /usr/bin/java \
     -Domnibridge.latency-test=true \
     -Dfix-engine.stage-timing.enabled=$STAGES \
     -Xms512m -Xmx1g \
@@ -663,7 +725,7 @@ hc_row() { printf "  %-26s %-28s %-28s\n" "$@"; }
         tr -d '\r' < "$OUT_DIR/simulator-stages.txt" 2>/dev/null | sed 's/^/  /'
         echo "================================================================"
     fi
-    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; NIC tuning: $NIC_TUNING; sender: $SENDER; pretouch: $PRETOUCH; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
+    echo "  Simulator tuning: $TUNE_SIM; stage timing: $STAGES; persistence: $PERSIST; NIC tuning: $NIC_TUNING; sender: $SENDER; pretouch: $PRETOUCH; transport: $TRANSPORT; orders: warmup $WARMUP, test $TEST_ORDERS at $RATE/s"
     echo "  Logs: $OUT_DIR"
 } | tee "$OUT_DIR/summary.txt"
 
@@ -676,7 +738,7 @@ DIRTY=$([ -n "$(git -C "$PROJECT_DIR" status --porcelain -- . ':!logs' 2>/dev/nu
 jq -nc \
     --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg commit "$COMMIT" --arg branch "$BRANCH" \
     --argjson dirty "$DIRTY" --arg instance "${INSTANCE_TYPE:-unknown}" \
-    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson nic "$NIC_TUNING" --arg sender "$SENDER" --argjson pretouch "$PRETOUCH" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
+    --argjson tune "$TUNE_SIM" --argjson persist "$PERSIST" --argjson stages "$STAGES" --argjson nic "$NIC_TUNING" --arg sender "$SENDER" --argjson pretouch "$PRETOUCH" --arg transport "$TRANSPORT" --argjson warmup "$WARMUP" --argjson orders "$TEST_ORDERS" --argjson rate "$RATE" \
     --argjson icpu "$INITIATOR_CPU" --argjson scpu "$SIM_CPU" --argjson spsize "$SP_SIZE" --argjson rc "$FIX_RC" \
     --arg sp "${SP_ROW[*]}" --arg fx "${FX_ROW[*]}" \
     --arg hi "$HIST_INTENDED" --arg ha "$HIST_ACTUAL" --arg hs "$HIST_SLIP" \
@@ -687,7 +749,7 @@ jq -nc \
     def hist: if . == "" then null
               else split(" ") | map(select(contains("=")) | split("=") | {(.[0]): (.[1] | tonumber? // .)}) | add end;
     {time: $time, commit: $commit, branch: $branch, dirty: $dirty, instance_type: $instance,
-     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, nic_tuning: $nic, sender: $sender, pretouch: $pretouch, warmup: $warmup, test_orders: $orders, rate: $rate,
+     options: {tune_simulator: $tune, persistence: $persist, stage_timing: $stages, nic_tuning: $nic, sender: $sender, pretouch: $pretouch, transport: $transport, warmup: $warmup, test_orders: $orders, rate: $rate,
                initiator_cpu: $icpu, simulator_cpu: (if $tune then $scpu else null end)},
      tcp_rtt_us: ($sp | stats) + {size_bytes: $spsize},
      fix_rtt_us: ($fx | stats), fix_rtt_intended_us: ($hi | hist), fix_rtt_actual_us: ($ha | hist),
