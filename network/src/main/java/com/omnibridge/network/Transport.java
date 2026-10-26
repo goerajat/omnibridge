@@ -56,6 +56,16 @@ public interface Transport extends AutoCloseable {
     boolean supportsBlockingPoll();
 
     /**
+     * Whether {@link #start} pins the loop thread to its core itself. The loop then leaves the
+     * thread's affinity alone before calling it: a stack such as DPDK derives the affinity of
+     * its own helper threads from the calling thread's at initialisation, minus the lcore, and
+     * a thread already confined to that one core would put the helpers on it.
+     */
+    default boolean pinsLoopThread() {
+        return false;
+    }
+
+    /**
      * Whether {@link #connect} and {@link #listen} must run on the loop thread. When true the
      * loop calls them from a queued task and reports failures through the handler callbacks
      * instead of a synchronous exception.

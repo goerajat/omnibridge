@@ -46,8 +46,14 @@ void ob_run(void (*cb)(void)) {
     ff_run(ob_loop, NULL);
 }
 
+/*
+ * Asked to stop: deliberately does nothing. ff_stop_run() makes ff_dpdk_run() return through
+ * ff_unload_config() and rte_eal_cleanup(), and in this F-Stack revision ff_unload_config()
+ * frees a config string twice ("free(): double free detected in tcache 2"), aborting the
+ * process at exit. The stack keeps polling on its lcore until the process exits, which
+ * releases the NIC; the event loop's stop() gives up joining the thread after its timeout.
+ */
 void ob_stop(void) {
-    ff_stop_run();
 }
 
 int ob_errno(void) {

@@ -90,6 +90,12 @@ public final class FstackTransport implements Transport {
         log.info("F-Stack initialised from {} on thread {}", conf, loopThread.getName());
     }
 
+    /**
+     * Once the loop is stopped the stack is asked to stop; the shim leaves it polling (its
+     * shutdown path aborts the process in this F-Stack revision), so {@code ff_run} does not
+     * return and the loop thread lives until the process exits. The engines' sessions are
+     * disconnected before the loop is stopped, so nothing is left to close here.
+     */
     @Override
     public void run(BooleanSupplier iteration) {
         n.run(() -> {
@@ -159,6 +165,16 @@ public final class FstackTransport implements Transport {
     @Override
     public boolean supportsBlockingPoll() {
         return false;
+    }
+
+    /**
+     * rte_eal_init pins the calling thread to the main lcore (fstack.ini's lcore_mask, which
+     * setup-fstack-host.sh writes from network.cpu-affinity) and gives EAL's control threads
+     * the rest of the thread's affinity at that moment, so the loop must arrive unpinned.
+     */
+    @Override
+    public boolean pinsLoopThread() {
+        return true;
     }
 
     @Override

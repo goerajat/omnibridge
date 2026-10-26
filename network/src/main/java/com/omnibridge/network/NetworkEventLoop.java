@@ -545,8 +545,8 @@ public class NetworkEventLoop implements Runnable, AutoCloseable, Component {
 
     @Override
     public void run() {
-        // Set CPU affinity if configured
-        if (cpuAffinity >= 0) {
+        // Set CPU affinity if configured (a transport that pins the thread itself is left to it)
+        if (cpuAffinity >= 0 && !transport.pinsLoopThread()) {
             CpuAffinity.setAffinity(cpuAffinity);
         }
 
