@@ -1053,3 +1053,46 @@ ping-pong 22.7, echo 33.9):
   minutes including the isolation reboot; F-Stack and DPDK built in 75 s on 96 threads.
 - Logs: `logs/aws-latency/20261026-222510` (kernel), `-222810` and `-223120` (fstack), `-223431`
   (kernel); `logs/dpdk-floor/dpdk-20261026-223801.log`, `fstack-echo-20261026-224040.log`.
+
+## AWS: AMD metal floor (`f32d227`, one m8azn.metal-12xl stack, no JVM, 20k + 100k at 1,000/s), µs
+
+Both trading hosts on m8azn.metal-12xl (AMD EPYC 9R05, 48 cores at up to 5.0 GHz, no SMT, one
+NUMA node, 100 Gb network, $4.96 per host-hour; `trading_instance_type` in `terraform.tfvars`,
+nothing else changed: the same AMI, core 3 isolated at first boot, no sibling to isolate). Only
+the two C-only floor measurements, to put the fast-NIC metal next to c6in.2xlarge (hypervisor,
+200 Gb card) and c7i.metal-24xl (no hypervisor, 37.5 Gb card). The engines were not deployed.
+
+| Path | min | p50 | p90 | p99 | p99.9 | p99.99 | max |
+|------|----:|----:|----:|----:|------:|-------:|----:|
+| DPDK UDP ping-pong (C) | 16.0 | **17.2** | 17.9 | 18.9 | 20.6 | 21.1 | 22.5 |
+| F-Stack TCP echo (C) | 22.1 | **23.5** | 24.3 | 25.3 | 26.1 | 26.8 | 33.7 |
+
+Against the other two hosts (ping-pong / echo at p50, and the difference, which is F-Stack's
+TCP per round trip):
+
+| Host | ping-pong | echo | F-Stack TCP | ping-pong p99.99 |
+|------|----------:|-----:|------------:|-----------------:|
+| c6in.2xlarge (hypervisor, 200 Gb card) | 22.7 | 33.9 | 11.2 | ~33 |
+| c7i.metal-24xl (metal, 37.5 Gb card) | 31.9 | 43.6 | 11.7 | 41.0 |
+| m8azn.metal-12xl (metal, 100 Gb card, 5 GHz) | 17.2 | 23.5 | 6.3 | 21.1 |
+
+- **The network floor is 17.2, 5.5 µs under c6in's and 14.7 under c7i metal's.** With the
+  hypervisor gone and a current-generation card, the raw DPDK round trip between two hosts is
+  17 µs, and the tail is flat: p99.99 is 4 µs above p50 (c6in: ~10, c7i metal: 9), max 22.5.
+  This is the lowest network number measured on AWS so far.
+- **F-Stack's TCP costs 6.3 µs here against 11–12 on the Intel hosts.** The stack is the same
+  build and configuration; the 5 GHz Zen 5 core runs the four FreeBSD crossings in a little over
+  half the time of Ice Lake at 3.5 or Sapphire Rapids at 3.8. So the per-crossing cost is
+  ~1.6 µs here, still several times a from-scratch stack's, but the gap to the floor is smaller.
+- **Projected FIX round trip**: the engines took ~5 µs on Sapphire Rapids metal and ~7.5 on
+  c6in; at 5 GHz expect ~4. On F-Stack that puts FIX near 23.5 + 4 ≈ 27–28 µs, against 40.0 on
+  c6in.2xlarge and 48.5 on c7i metal. The kernel path was not measured here (no sockperf, no
+  engines); on c7i metal it beat F-Stack because the floor was slow, which is not the case on
+  this host, so the ordering is likely F-Stack first. A full `run-aws-latency-test.sh` pair on
+  this type (kernel and `--transport fstack`) would settle it at about $15 of instance time.
+- Method: `terraform-deploy.sh` with the type in `terraform.tfvars`, `wait-for-hosts.sh`, then
+  `run-dpdk-floor.sh enis`, `setup`, `dpdk 100000 20000 1000`, `fstack`,
+  `fstack-echo 100000 20000 1000 200`, `cleanup`, destroy. DPDK
+  24.11 and F-Stack built in under two minutes on 48 cores. No ssh hangs this time (every
+  phase launch bounded by the script's `timeout`/`setsid` and the local `timeout`).
+- Logs: `logs/dpdk-floor/dpdk-20261027-115041.log`, `fstack-echo-20261027-115452.log`.
