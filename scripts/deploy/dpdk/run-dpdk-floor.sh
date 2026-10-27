@@ -91,7 +91,9 @@ baseline)
     ;;
 dpdk)
     N=${1:-100000}; W=${2:-20000}; IV=${3:-1000}
-    run_on $FIX "sudo pkill -x pingpong || true; cd ~/dpdk && sudo nohup ./pingpong $EAL -- --mode reflect > /tmp/reflect.log 2>&1 < /dev/null & sleep 4; grep -v '^EAL' /tmp/reflect.log"
+    # bounded: the Windows ssh client sometimes never returns from a session whose command left a
+    # detached process behind, although the command's output has arrived
+    timeout 30 ssh $SSH_OPTS -o "ProxyCommand=$PROXY" "ubuntu@$FIX" "sudo pkill -x pingpong || true; cd ~/dpdk && sudo setsid nohup ./pingpong $EAL -- --mode reflect > /tmp/reflect.log 2>&1 < /dev/null & sleep 4; grep -v '^EAL' /tmp/reflect.log" < /dev/null || true
     echo "=== DPDK ping-pong: $W warmup + $N at every $IV us, $OUCH2 -> $FIX2"
     run_on $OUCH "cd ~/dpdk && sudo timeout 600 ./pingpong $EAL -- --mode send --src-ip $OUCH2 --dst-ip $FIX2 --dst-mac $FIX2_MAC -n $N -w $W --interval-us $IV --timeout-ms 100 2>&1 | grep -v '^EAL'" | tee "$OUT/dpdk-$(date +%Y%m%d-%H%M%S).log"
     run_on $FIX "sudo pkill -INT -x pingpong || true; sleep 1; tail -1 /tmp/reflect.log"
@@ -101,9 +103,11 @@ fstack-echo)
     BUILD='cd ~/dpdk && export PKG_CONFIG_PATH=$(cat /opt/fstack/FF_DPDK)/lib/x86_64-linux-gnu/pkgconfig:$(cat /opt/fstack/FF_DPDK)/lib/pkgconfig && gcc -O2 -o fstack-echo fstack-echo.c $(pkg-config --cflags libdpdk) -I/opt/fstack -I/opt/fstack-src/lib -Wl,--whole-archive /opt/fstack/libfstack.a -Wl,--no-whole-archive $(pkg-config --static --libs libdpdk) -lrt -lm -ldl -lcrypto -lpthread -lnuma && echo "fstack-echo built on $(hostname)"'
     for h in $FIX $OUCH; do copy_to $h "$SCRIPT_DIR/fstack-echo.c"; run_on $h "$BUILD" 2>&1 | grep -v "warning:" ; done
     # the port is TCP 11111 (the sockperf rule between the trading hosts); F-Stack owns the second ENI
-    run_on $FIX "sudo pkill -x fstack-echo || true; cd ~/dpdk && sudo nohup ./fstack-echo --mode server --port 11111 > /tmp/fstack-echo-server.log 2>&1 < /dev/null & sleep 6; grep -v '^EAL\|^\[' /tmp/fstack-echo-server.log | tail -3"
+    timeout 30 ssh $SSH_OPTS -o "ProxyCommand=$PROXY" "ubuntu@$FIX" "sudo pkill -x fstack-echo || true; cd ~/dpdk && sudo setsid nohup ./fstack-echo --mode server --port 11111 > /tmp/fstack-echo-server.log 2>&1 < /dev/null & sleep 6; grep -v '^EAL\|^\[' /tmp/fstack-echo-server.log | tail -3" < /dev/null || true
     echo "=== F-Stack TCP echo: $W warmup + $N x $SZ B every $IV us, $OUCH2 -> $FIX2:11111"
-    run_on $OUCH "cd ~/dpdk && sudo timeout 900 ./fstack-echo --mode client --ip $FIX2 --port 11111 -n $N -w $W --interval-us $IV --size $SZ 2>&1 | grep -v '^EAL\|^\['" | tee "$OUT/fstack-echo-$(date +%Y%m%d-%H%M%S).log"
+    # stdin from /dev/null and a KILL timeout: the client run from a background shell with an
+    # open stdin hung its ssh session for good without ever connecting
+    run_on $OUCH "cd ~/dpdk && sudo timeout -s KILL 900 ./fstack-echo --mode client --ip $FIX2 --port 11111 -n $N -w $W --interval-us $IV --size $SZ < /dev/null 2>&1 | grep -v '^EAL\|^\['" < /dev/null | tee "$OUT/fstack-echo-$(date +%Y%m%d-%H%M%S).log"
     run_on $FIX "sudo pkill -x fstack-echo || true; sleep 1; tail -2 /tmp/fstack-echo-server.log"
     ;;
 cleanup)

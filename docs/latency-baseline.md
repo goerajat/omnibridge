@@ -949,3 +949,57 @@ trip from the intended send (CO-corrected):
   runnable task on the core in runs 3, 4 and 5 (kernel too), so it is this stack's tick, not
   the transport; `--require-isolation` turns it into exit 1, the numbers stand.
 - **Run 2's exit code 134** was the shutdown abort above; its histograms are complete.
+
+## AWS: where F-Stack's time goes (`f8eac02`, one fresh c6in.2xlarge stack, persistence on, isolated, 20k + 100k at 1,000/s), µs
+
+The four measurements that split the F-Stack round trip, in order of what they add: the raw
+DPDK UDP ping-pong (`pingpong.c`, no stack), a TCP echo over F-Stack with no JVM
+(`fstack-echo.c`: `ff_epoll_wait` / `ff_read` / `ff_write` on the same `fstack.ini`), and the
+FIX round trip on F-Stack and on the kernel path, both with `--stages`. Same hosts, same cores,
+same second ENIs, 200 B payloads, one message every 1,000 µs, from the intended send.
+
+| Path | min | p50 | p90 | p99 | p99.9 | p99.99 | max | lost | slip p99 |
+|------|----:|----:|----:|----:|------:|-------:|----:|-----:|---------:|
+| DPDK UDP ping-pong (C) | 18.5 | **22.7** | 25.1 | 27.5 | 29.7 | 32.4 | 137 | 0 | — |
+| F-Stack TCP echo (C) | 29.1 | **33.9** | 36.2 | 38.4 | 40.4 | 51.2 | 97 | 0 | 0.21 |
+| FIX on F-Stack, `--stages` | 37.5 | **41.4** | 44.1 | 48.5 | 67.3 | 165.4 | 378 | 0 | 0.30 |
+| FIX on the kernel, `--stages` | 40.8 | **48.3** | 53.2 | 66.1 | 83.3 | 143.6 | 2,187 | 0 | 0.39 |
+
+(sockperf on the kernel ENI during the two FIX runs: 49.1 / 66.1 and 46.8 / 61.6 at p50 / p99.)
+
+- **The split at p50: 22.7 network + 11.2 F-Stack TCP + 7.5 engines = 41.4.** F-Stack's
+  FreeBSD TCP costs 11.2 µs per round trip over the raw packet path (33.9 against 22.7: two
+  `tcp_output` and two `tcp_input` traversals, the mbuf copies on the way in and out, the kqueue
+  wake-up and the deferred `send_burst`), about 2.8 µs per traversal. The two engines add 7.5 on
+  top (41.4 against 33.9), which is what their own stage clocks sum to (below). The earlier
+  estimate of 6–7 µs for F-Stack's TCP was too low: the engines are cheaper on F-Stack than the
+  11 µs measured on the kernel path, so more of the 17.5 µs over the floor is the stack.
+- **The tails are the stack, not the engines.** The echo's p99 is 4.5 µs above its p50 and its
+  p99.9 6.5 above; the ping-pong's 4.8 and 7.0. The FIX round trip on F-Stack adds 7 µs at p99
+  (48.5) and 26 at p99.9 (67): the JVM's share of the tail (safepoints, the persistence write's
+  page cache, the host's 1 Hz tick on the core) is the part above the echo line.
+- **The engines by stage, p50, F-Stack against kernel.** Initiator: send claim → written 1.92
+  against 3.81, of which the socket write 0.76 against 2.49; receive read → done 1.35 against
+  1.49. Simulator: receive read → ack written 4.12 against 7.04, of which the ack's socket write
+  0.76 against 2.45 and the rest of the callback 2.1 against 2.9. In-process total 7.4 against
+  12.3 µs per round trip: 3.4 of the 4.9 µs saved are the two socket writes (`ff_write` queues
+  an mbuf; the kernel write runs the whole TCP output path under the syscall), the remainder is
+  spread over every stage by a few hundred ns (no syscalls evicting the engine's cache lines).
+  The F-Stack `send.write` at 0.76 is the cost of `m_uiotombuf` plus `tcp_output` down to the
+  per-lcore TX table; the NIC write happens in F-Stack's loop afterwards.
+- **Stage timing itself costs ~1.5 µs** at p50 (41.4 here against 40.0 in runs 3 and 4 above
+  without it; 48.3 against 45.8 on the kernel), so the headline numbers stay the earlier ones;
+  this section is for the split.
+- **Where the next microseconds are.** Below the engines' 7.5, nothing is left of the kernel's
+  socket cost; the 11 µs of F-Stack TCP is the next target: `ff_zc_*` would remove the two
+  copies (sub-µs), the rest is FreeBSD's TCP code path and its mbuf handling. Write-combining
+  for the ENA LLQ (not enabled; stock vfio-pci) would shift all four rows together.
+- **Method.** `run-dpdk-floor.sh dpdk` (reflector on the FIX host, paced sender on the OUCH
+  host), `run-dpdk-floor.sh fstack-echo` (server on the FIX host's second ENI, client on the
+  OUCH host's; both the F-Stack primary on core 3), `run-aws-latency-test.sh --transport
+  fstack --stages` and `--stages`. On this stack the Windows ssh client repeatedly failed to
+  return from sessions that had left a detached DPDK process behind, so the echo client was in
+  the end started with `setsid` and read back from its log; the script's launches are now
+  bounded by a local timeout. `logs/dpdk-floor/dpdk-20261026-211058.log`,
+  `fstack-echo-20261026-211754.log`, `logs/aws-latency/20261026-191424` (fstack) and
+  `20261026-191737` (kernel).
