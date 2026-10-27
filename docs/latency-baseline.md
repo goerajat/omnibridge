@@ -1003,3 +1003,53 @@ same second ENIs, 200 B payloads, one message every 1,000 µs, from the intended
   bounded by a local timeout. `logs/dpdk-floor/dpdk-20261026-211058.log`,
   `fstack-echo-20261026-211754.log`, `logs/aws-latency/20261026-191424` (fstack) and
   `20261026-191737` (kernel).
+
+## AWS: bare metal (`a71643b`, one c7i.metal-24xl stack, persistence on, isolated, 20k + 100k at 1,000/s), µs
+
+Both trading hosts on c7i.metal-24xl (one socket of Xeon Platinum 8488C, 48 cores at up to 3.8
+GHz, 96 threads, one NUMA node, both ENA devices on it, 37.5 Gb network; `-t c7i.metal-24xl` on
+`terraform-deploy.sh`, nothing else changed: the same AMI, core 3 and its sibling 51 isolated
+at first boot, the hosts ready seven minutes after the apply). The same six measurements as on
+c6in.2xlarge, in the same order, on one stack. FIX round trip from the intended send:
+
+| Run | Path | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 / p99 |
+|-----|------|----:|----:|----:|----:|------:|-------:|----:|--------------:|
+| 1 | FIX, kernel | 41.2 | 44.9 | 47.5 | **51.5** | 78.9 | 92.8 | 347 | 53.2 / 64.4 |
+| 2 | FIX, fstack | 44.6 | 48.9 | 51.4 | 54.1 | 59.2 | 99.3 | 956 | 54.6 / 60.0 |
+| 3 | FIX, fstack | 44.4 | 48.5 | 51.0 | 53.6 | 58.1 | 103.6 | 382 | 52.1 / 60.6 |
+| 4 | FIX, kernel | 41.5 | 45.6 | 48.2 | 52.1 | 89.4 | 107.3 | 471 | 52.4 / 63.7 |
+| — | DPDK UDP ping-pong (C) | 28.5 | **31.9** | 34.3 | 36.7 | 38.8 | 41.0 | 46 | |
+| — | F-Stack TCP echo (C) | 39.7 | **43.6** | 46.1 | 49.0 | 52.1 | 54.1 | 58 | |
+
+Against c6in.2xlarge (previous sections: kernel 45.8 / 62 at p50 / p99, F-Stack 40.0 / 46.7,
+ping-pong 22.7, echo 33.9):
+
+- **Metal takes the tail out of the kernel path and nothing out of its median.** p99 goes from
+  62 to 51.5, 4 µs above p90 instead of 12, p99.99 from ~115 to ~100; p50 stays at 45 (44.9 and
+  45.6 against 45.76 and 45.79). The 12 µs the hypervisor used to put between p90 and p99 on the
+  kernel path is gone, which is what metal was expected to buy.
+- **The c7i network is 9 µs slower than c6in's at the floor.** The raw DPDK ping-pong is 31.9
+  against 22.7 and the F-Stack echo 43.6 against 33.9 (the same 9.7 µs on top of a stack that
+  costs the same 11.7); sockperf's kernel TCP round trip is 52–55 against 47–49. c7i is the
+  non-"n" family on a 37.5 Gb Nitro card; c6in's 200 Gb card and fabric are faster at the
+  packet level, and that difference is larger than anything the hypervisor adds at the median.
+  So this run compares two things at once: no hypervisor, and a slower NIC generation.
+- **F-Stack loses to the kernel on this host, 48.5 against 45.** F-Stack's own cost is unchanged
+  (11.7 over the floor) and the engines are cheaper here (4.9 against 7.5: Sapphire Rapids at
+  3.8 GHz against Ice Lake at 3.5), but both sit on the slower floor, while the kernel path has
+  something the DPDK path does not: on metal the kernel driver's LLQ with write-combining and
+  no virtualised interrupt path makes a kernel socket round trip (45) faster than the raw DPDK
+  UDP ping-pong plus FreeBSD TCP (43.6) plus engines. The kernel's p50 is also below sockperf's
+  (52–53), as on c6in: sockperf blocks in `recv`, the engines spin.
+- **Engines on metal: ~5 µs per round trip** (48.5 − 43.6), against 7.5 on c6in.2xlarge and 12.3
+  on the kernel path there. Stage timing was not on in these runs.
+- **What would separate the two effects**: c6in.metal (the same 200 Gb Nitro card as the
+  2xlarge, no hypervisor; $7.26 per host-hour) would show whether the kernel p50 drops below 45
+  when the fast NIC and bare metal are combined, and whether F-Stack's 40.0 moves at all. Not
+  run.
+- **Host checks**: affinity, busy-spin (99–100 %), isolation and NIC IRQs PASS on both hosts in
+  all four runs; the initiator's one involuntary context switch per second (its WARN, exit 1
+  under `--require-isolation`) is the same as on every c6in stack. Metal booted in seven
+  minutes including the isolation reboot; F-Stack and DPDK built in 75 s on 96 threads.
+- Logs: `logs/aws-latency/20261026-222510` (kernel), `-222810` and `-223120` (fstack), `-223431`
+  (kernel); `logs/dpdk-floor/dpdk-20261026-2237*.log`, `fstack-echo-20261026-2240*.log`.
