@@ -1052,4 +1052,4 @@ ping-pong 22.7, echo 33.9):
   under `--require-isolation`) is the same as on every c6in stack. Metal booted in seven
   minutes including the isolation reboot; F-Stack and DPDK built in 75 s on 96 threads.
 - Logs: `logs/aws-latency/20261026-222510` (kernel), `-222810` and `-223120` (fstack), `-223431`
-  (kernel); `logs/dpdk-floor/dpdk-20261026-2237*.log`, `fstack-echo-20261026-2240*.log`.
+  (kernel); `logs/dpdk-floor/dpdk-20261026-223801.log`, `fstack-echo-20261026-224040.log`.
