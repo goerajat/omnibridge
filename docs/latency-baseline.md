@@ -1096,3 +1096,56 @@ TCP per round trip):
   24.11 and F-Stack built in under two minutes on 48 cores. No ssh hangs this time (every
   phase launch bounded by the script's `timeout`/`setsid` and the local `timeout`).
 - Logs: `logs/dpdk-floor/dpdk-20261027-115041.log`, `fstack-echo-20261027-115452.log`.
+
+## AWS: AMD metal, FIX on both transports (`1cb61c8`, one m8azn.metal-12xl stack, persistence on, isolated, 20k + 100k at 1,000/s), µs
+
+The same host type as the floor section above (EPYC 9R05 at up to 5.0 GHz, no SMT, 100 Gb
+card), this time with the engines deployed and the four FIX runs in the usual order. FIX round
+trip from the intended send; TCP is sockperf on the kernel ENI:
+
+| Run | Path | min | p50 | p90 | p99 | p99.9 | p99.99 | max | TCP p50 / p99 |
+|-----|------|----:|----:|----:|----:|------:|-------:|----:|--------------:|
+| 1 | FIX, kernel | 30.9 | 34.1 | 35.3 | 38.6 | 70.3 | 208 | 1149 | 261 / 264 (see below) |
+| 2 | FIX, fstack | 25.9 | **27.6** | 28.6 | **30.7** | 38.2 | 81.3 | 247 | 21.3 / 32.0 |
+| 3 | FIX, fstack | 25.8 | **27.6** | 28.7 | 31.1 | 39.9 | 132 | 3492 | 21.7 / 28.1 |
+| 4 | FIX, kernel | 33.7 | 37.6 | 39.3 | 42.9 | 86.3 | 189 | 1059 | 21.3 / 27.3 |
+
+With the floor rows from the previous section (ping-pong 17.2, F-Stack echo 23.5), and against
+the other hosts:
+
+| Host | FIX kernel p50 / p99 | FIX fstack p50 / p99 | ping-pong | echo | sockperf TCP |
+|------|---------------------:|---------------------:|----------:|-----:|-------------:|
+| c6in.2xlarge | 45.8 / 62 | 40.0 / 46.7 | 22.7 | 33.9 | 47–49 |
+| c7i.metal-24xl | 45 / 51.5 | 48.5 / 54 | 31.9 | 43.6 | 52–55 |
+| m8azn.metal-12xl | 34–38 / 39–43 | 27.6 / 31 | 17.2 | 23.5 | 21.3 |
+
+- **FIX on F-Stack: 27.6 µs at p50, 31 at p99**, both runs within 0.1 and 0.4 of each other.
+  That is 12.4 µs under c6in.2xlarge's 40.0 and the lowest FIX round trip measured on AWS. The
+  engines take 4.1 (27.6 − 23.5), as projected from the clock: 7.5 on Ice Lake at 3.5 GHz, ~5
+  on Sapphire Rapids at 3.8, 4.1 on Zen 5 at 5.0.
+- **The kernel path is 34–38 at p50, 39–43 at p99.** The two kernel runs differ by 3.4 µs at
+  every percentile (run 1 34.1, run 4 37.6; min 30.9 against 33.7), more than the usual
+  run-to-run spread; the F-Stack pair in between agrees to 0.1. Either way F-Stack wins by 7–10
+  at p50 and 8–12 at p99 on this host, the reverse of c7i metal, because here the DPDK floor is
+  fast.
+- **Kernel TCP is fast on this metal: sockperf 21.3 at p50**, against 47–49 on c6in.2xlarge and
+  52–55 on c7i metal, and only 4 µs above the raw DPDK ping-pong (17.2). With no hypervisor,
+  direct interrupts and the ENA driver's LLQ with write-combining, a blocking kernel socket
+  round trip costs about what the poll-mode driver does. The FIX kernel path is then 13–16 over
+  sockperf, where the engines are 4: the rest is the kernel socket calls per message (the
+  `send.write` 2.5 µs and the read side measured with `--stages` on c6in) and the epoll pass.
+- **Run 1's sockperf read 261 µs at p50 with a 2.8 µs standard deviation**, then 21 in runs
+  2–4 with nothing changed; the FIX run in the same window was normal (34.1). A constant
+  ~240 µs with no spread looks like a moderation timer on the first use of the kernel ENI after
+  boot rather than the network; not investigated, the line is kept as it was recorded
+  (`tcp_rtt_us` of the first `m8azn.metal-12xl` history line), compare the other three.
+- **Tails**: F-Stack p99.9 is 38–40 and p99.99 81–132; the kernel path's p99.9 is 70–86 and
+  p99.99 ~200. Both have single outliers over 1 ms (max 1149 and 1059 on the kernel runs, 3492
+  on fstack run 3), as on every stack.
+- **Host checks**: affinity, busy-spin (100 %), isolation and NIC IRQs PASS on both hosts; the
+  initiator's one involuntary context switch per second (WARN, exit 1 under
+  `--require-isolation`) in runs 1–3 and none in run 4. No SMT on this host, so nothing to
+  isolate beside the core.
+- **Cost**: $4.96 per host-hour; the whole stack from apply to destroy ran about 45 minutes.
+- Logs: `logs/aws-latency/20261027-123439` (kernel), `-123741` and `-124052` (fstack), `-124404`
+  (kernel).
