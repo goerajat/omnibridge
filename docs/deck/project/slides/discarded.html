@@ -1,0 +1,14 @@
+<section id="discarded" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Tried and not kept, part 1: kernel and thread tuning</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:27%;text-align:left">Approach</th><th style="width:33%;text-align:left">What was measured</th><th style="width:40%;text-align:left">Why it was dropped</th></tr>
+<tr><td>NIC interrupt moderation off</td><td>p50 65.2 against 63.6; tails within run spread</td><td>The spinning engine reads as soon as the driver has the packet</td></tr>
+<tr style="background:#ecebe4"><td>Kernel busy polling</td><td>sockperf −13 µs, FIX 0</td><td>The engine never blocks in receive; nothing for the kernel to speed up</td></tr>
+<tr><td>Sender thread on its own isolated cpu</td><td>Slip p99.99 2.7 ms → 7 µs, but p50 +2.6</td><td>Cost a core; superseded by sending from the event loop</td></tr>
+<tr style="background:#ecebe4"><td>Simulator journal without Aeron publish</td><td>Within 0.5 µs of the Aeron run to p99.99</td><td>The publish is an encode and a copy; the media driver sends elsewhere</td></tr>
+<tr><td>Journal write off the critical path</td><td>Not run</td><td>Rejected on principle: durability must precede the send</td></tr>
+<tr style="background:#ecebe4"><td>A lighter journal format than Chronicle</td><td>Reviewed, not built: ~1 µs at p50</td><td>No tail gain beyond the pretoucher; a second format to maintain</td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Each row kept its flag or history line so the experiment can be repeated; details in docs/latency-baseline.md</p>
+<aside>A buyer should know what did not work and why. Several of these are the first things a reviewer would suggest, such as kernel busy polling or turning interrupt moderation off, and both measured zero because the engine already spins. Two were rejected on principle rather than numbers: moving the journal write off the critical path, and a second journal format for a microsecond.</aside>
+</section>

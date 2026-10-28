@@ -1,0 +1,14 @@
+<section id="closing" data-transition="fade" style="background:#0f1b2d;color:#f6f5f0;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#4fc3b0">In one slide</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;width:1500px">A measured engine: every design choice has a number behind it, and every number has a script that reproduces it</h2>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">≈ 13.8 µs</p><p style="font-size:24px;color:#c9d3de">FIX order one way at p50, two AWS hosts, journaling on</p><p style="font-size:24px;color:#8fa0b3">half the measured 27.6 µs round trip</p></div>
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">≈ 15.5 µs</p><p style="font-size:24px;color:#c9d3de">one way at p99; the slowest one in a thousand is under 2 µs behind the median</p><p style="font-size:24px;color:#8fa0b3">31 µs round trip</p></div>
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">0 bytes</p><p style="font-size:24px;color:#c9d3de">allocated per message on the hot path, asserted by a test</p></div>
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">5 families</p><p style="font-size:24px;color:#c9d3de">FIX, OUCH, iLink 3, Optiq, Pillar on one engine and one simulator; the sixth is a module</p></div>
+</div>
+<p style="font-size:26px;color:#8fa0b3">Sources: docs/latency-baseline.md, docs/latency-history.jsonl (56 runs), docs/PROTOCOL_ARCHITECTURE.md; the deck's numbers are from runs of 23 to 27 October 2026; one way is half the measured round trip</p>
+<aside>Close on the four numbers. The one-way latency and its tail on the best host measured, the allocation guarantee, and the protocol coverage. Everything in this deck is reproducible from the repository with one command on a fresh AWS stack.</aside>
+</section>

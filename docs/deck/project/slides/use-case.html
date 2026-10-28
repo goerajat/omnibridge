@@ -1,0 +1,30 @@
+<section id="use-case" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:20px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">Where it fits</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">When the venue's matching engine is in the cloud, the region is the colocation</h2>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:22px 26px">
+<h3 style="font-size:28px;font-weight:600">Crypto spot and derivatives</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Coinbase runs its US spot exchange in AWS us-east-1 and tells FIX clients to deploy there; Binance's FIX endpoints sit in AWS Tokyo. Kraken: about 200 µs over a cross-connect, about 2 ms from AWS London.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:22px 26px">
+<h3 style="font-size:28px;font-weight:600">Prediction markets</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Kalshi offers FIX order entry with AWS PrivateLink into its environment. Market making there is dozens of sessions across markets and sub-accounts on one box, run from an admin API.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:22px 26px">
+<h3 style="font-size:28px;font-weight:600">Cloud-native regulated venues</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Aquis runs its equities exchange on AWS; Nasdaq moved MRX and GEMX onto AWS Outposts in its own data centre. The matching engine is becoming a cloud tenant, and the firms connecting to it follow.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:22px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">What the engine buys there</p>
+<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px 28px">
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Tails, not medians.</b> Inside a region the fabric is tens to hundreds of µs; what matters is that a GC pause or page fault never becomes a 2 ms stale quote.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Durability without a trade-off.</b> Every message journaled before it leaves and copied to another host, at no cost to the round trip.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Many sessions, few cores.</b> One loop thread serves many sessions on one port, with metrics, alerts and a console.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">A test rig that matches production.</b> The simulator and the scripted AWS run measure a firm's own stack before it pays for a cross-connect.</p>
+</div>
+</div>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4"><b>Not the target:</b> latency-sensitive trading on CME, Eurex, NYSE or Nasdaq's classic books stays in Aurora, Frankfurt, Mahwah and Carteret on overclocked hosts with FPGA cards. There the engine competes on its kernel path; the AWS numbers show the engineering, not the deployment.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Sources: <a href="https://docs.cdp.coinbase.com/exchange/introduction/systems-operations" style="color:#4a7fb5">Coinbase Exchange systems operations</a>; <a href="https://docs.kraken.com/exchange/guides/general/colocation.md" style="color:#4a7fb5">Kraken colocation guide</a>; <a href="https://docs.kalshi.com/fix-margin/connectivity" style="color:#4a7fb5">Kalshi FIX connectivity</a>; <a href="https://latency.glassnode.com/cex/about" style="color:#4a7fb5">Glassnode latency monitor</a> (Binance); <a href="https://www.amazonaws.cn/blog-selection/how-aquis-created-a-cloud-native-exchange-to-meet-the-highest-regulatory-requirements-on-aws/" style="color:#4a7fb5">Aquis on AWS</a></p>
+<aside>The question every buyer asks: why a low-latency FIX engine in the cloud when the fast money sits in a cage next to the exchange? Because a growing set of venues have their matching engine in a cloud region: most crypto exchanges, the prediction markets, and now some regulated equities venues. For those, the region is the colocation, and the firm's own engine is the part it controls. The engine's contribution there is less its median than its tail, its durability and the number of sessions one box can run. For CME, Eurex or the NYSE this is a conventional kernel-path FIX engine with an unusually well-measured tail, not a colocation replacement.</aside>
+</section>

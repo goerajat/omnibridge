@@ -1,0 +1,31 @@
+<section id="what-it-is" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:28px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">One engine between your applications and the exchanges, built so it is never the slow part</h2>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon name="Globe" style="width:48px;height:48px;color:#1b9e8a"></x-icon>
+<h3 style="font-size:30px;font-weight:600">Connectivity</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Initiator and acceptor sessions for FIX, OUCH and three binary exchange protocols; logon, heartbeats, sequence recovery and resend handled by the engine. The next protocol is a module.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon name="Lightning" style="width:48px;height:48px;color:#1b9e8a"></x-icon>
+<h3 style="font-size:30px;font-weight:600">Latency by design</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A single busy-spinning thread per event loop, flyweight messages over direct buffers, lock-free ring buffers, and zero bytes allocated per message, enforced by tests.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon name="Database" style="width:48px;height:48px;color:#1b9e8a"></x-icon>
+<h3 style="font-size:30px;font-weight:600">Durable sessions</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Every message journaled before it is sent, on Chronicle Queue, a memory-mapped log, and optionally copied over Aeron, a UDP messaging library, to another host. Resend and restart recover from the log.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon name="Activity" style="width:48px;height:48px;color:#1b9e8a"></x-icon>
+<h3 style="font-size:30px;font-weight:600">Operable</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Admin REST and WebSocket API, Prometheus metrics with Grafana dashboards and alerts, and OmniView, a web console for session health and control across every engine.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:28px 36px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;color:#f6f5f0;line-height:1">Java 25</p>
+<p style="font-size:26px;color:#c9d3de;line-height:1.4">Plain JVM, no custom runtime. HOCON configuration, components with a managed lifecycle and active/standby states, a multi-protocol exchange simulator, and a kernel-bypass transport (the network card driven from the engine's own thread, no operating system in the data path) as a switch.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Maven multi-module project; engines, persistence, admin, metrics and tooling are separate modules</p>
+<aside>Omni-Bridge is an exchange connectivity engine. It handles the session layer of the venue protocols so applications only deal with orders and executions. It is written to be fast by construction rather than tuned afterwards, it journals everything, and it ships with the monitoring and console that operations teams need.</aside>
+</section>

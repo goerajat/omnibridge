@@ -1,0 +1,18 @@
+<section id="protocols" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Five protocol families on one engine today, with the versions the venues run; the sixth is a module</h2>
+<table style="font-size:24px;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:17%;text-align:left">Protocol</th><th style="width:25%;text-align:left">Versions</th><th style="width:38%;text-align:left">Session layer handled by the engine</th><th style="width:20%;text-align:left">Typical venues</th></tr>
+<tr><td><b>FIX</b></td><td>4.2, 4.4, 5.0, 5.0 SP1, 5.0 SP2 over FIXT 1.1</td><td>Logon, heartbeats, gap detection, resend from the journal, GapFill, PossDup, schedules, TLS</td><td>Brokers, exchanges, routers</td></tr>
+<tr style="background:#ecebe4"><td><b>OUCH</b></td><td>4.2 and 5.0 with appendages</td><td>SoupBinTCP login and sequencing; order token or UserRefNum by version</td><td>Nasdaq family</td></tr>
+<tr><td><b>CME iLink 3</b></td><td>SBE binary</td><td>Negotiate, establish, sequence, retransmit</td><td>CME Globex</td></tr>
+<tr style="background:#ecebe4"><td><b>Euronext Optiq</b></td><td>SBE binary</td><td>Order entry gateway session</td><td>Euronext</td></tr>
+<tr><td><b>NYSE Pillar</b></td><td>Binary</td><td>Stream open and sequencing</td><td>NYSE group</td></tr>
+</table>
+<div style="display:flex;gap:28px">
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Shared core.</b> One event loop, ring buffer, persistence layer, session service and admin API serve every protocol; a new one adds its codec and state machine.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Many sessions, one port.</b> Routed by CompID pair, OUCH user or SBE session id.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>A simulator for all of them,</b> with an order book and symbol-pattern fill rules.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Modules under protocols/: fix, ouch, sbe (ilink3, optiq, pillar); sample applications for each under apps/; FIX tested against QuickFIX/J</p>
+<aside>FIX is the broadest, with all the common versions and the full session recovery story. OUCH comes in both versions in use today. The three binary protocols share an SBE base. The point of the table is the third column: the session layer is the engine's job in every case, and the application sees orders and executions. A protocol module adds its codec, its state machine and its listener callbacks; everything underneath is shared.</aside>
+</section>

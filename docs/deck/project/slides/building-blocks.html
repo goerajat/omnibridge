@@ -1,0 +1,31 @@
+<section id="building-blocks" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">The four technologies the engine builds on, in plain terms</h2>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#e8762b">Journal</p>
+<h3 style="font-size:30px;font-weight:600">Chronicle Queue</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">An open-source Java library that appends records to a memory-mapped file. A write is a memory copy; the operating system flushes the page to disk. It is the engine's per-session journal.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#e8762b">Replication</p>
+<h3 style="font-size:30px;font-weight:600">Aeron</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">An open-source low-latency messaging library. It sends over UDP with its own reliability and flow control, from a media driver on a separate thread. The engine uses it to copy each journal entry to another host.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">Kernel bypass</p>
+<h3 style="font-size:30px;font-weight:600">DPDK</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">The Data Plane Development Kit: libraries that let a user-space program own a network card and poll it directly, skipping the kernel's network stack and its interrupts. It moves raw packets and has no TCP of its own.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">TCP on bypass</p>
+<h3 style="font-size:30px;font-weight:600">F-Stack</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">FreeBSD's TCP/IP stack packaged as a library on top of DPDK, giving a program sockets on a card the kernel never touches. The engine's optional bypass transport runs it on its own pinned thread.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:24px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">Also in this deck</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">SBE</b>, Simple Binary Encoding, the FIX community's binary codec behind iLink 3 and Optiq. <b style="color:#f6f5f0">SoupBinTCP</b>, Nasdaq's framing and sequencing layer under OUCH. <b style="color:#f6f5f0">HOCON</b>, a typed configuration format. <b style="color:#f6f5f0">FFM</b>, Java's foreign function interface, which calls C code without JNI.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Licences: Chronicle Queue and Aeron are Apache 2.0; DPDK and F-Stack are BSD. The engine links to them; none is modified</p>
+<aside>Four names come up throughout the deck, so here is what each one is. Chronicle Queue is the on-disk journal. Aeron is how a copy of that journal reaches another host. DPDK is how a program takes a network card away from the operating system, and F-Stack is the TCP that runs on top of it, so the engine still talks sockets. The first two are in every deployment; the last two are an optional transport.</aside>
+</section>

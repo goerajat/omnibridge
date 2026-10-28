@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Omni-Bridge Overview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style id="deckcss">
+html,body{margin:0;height:100%;background:#1a1a1a;overflow:hidden;font-family:'IBM Plex Sans',Arial,sans-serif}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:0 0}
+section{position:absolute;left:0;top:0;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;visibility:hidden;flex-direction:column}
+section.on{visibility:visible}
+section *{box-sizing:border-box}
+h1,h2,h3,p,ul,ol{margin:0}
+h1{font-size:96px;font-weight:600;line-height:1.1}
+h2{font-size:64px;font-weight:600;line-height:1.15}
+h3{font-size:44px;font-weight:600;line-height:1.2}
+p,li{font-size:32px;line-height:1.4}
+section div{display:flex;flex-direction:column}
+a{color:inherit}
+table{width:100%;border-collapse:collapse}
+th,td{padding:0.35em 0.6em;border:1px solid #d5d2c8;vertical-align:top;text-align:left}
+th{font-weight:600}
+hr{border:0;border-top:1px solid currentColor;width:100%}
+x-icon{display:inline-flex;align-items:center;justify-content:center}
+x-icon svg{width:100%;height:100%}
+svg.x-connector{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+aside{display:none}
+#hud{position:fixed;right:16px;bottom:12px;color:#8fa0b3;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
+body.hud #hud{opacity:1}
+#notes{position:fixed;left:0;right:0;bottom:0;max-height:38%;overflow:auto;background:#0f1b2dee;color:#f6f5f0;font-size:16px;line-height:1.5;padding:16px 24px;display:none;border-top:2px solid #4fc3b0}
+body.notes #notes{display:block}
+#grid{position:fixed;inset:0;overflow:auto;background:#1a1a1a;display:none;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;padding:16px}
+body.grid #grid{display:grid}
+#grid .thumb{position:relative;aspect-ratio:16/9;overflow:hidden;cursor:pointer;border:2px solid transparent;border-radius:4px}
+#grid .thumb.cur{border-color:#4fc3b0}
+#grid .thumb iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;pointer-events:none;transform-origin:0 0}
+#grid .thumb span{position:absolute;left:6px;bottom:4px;color:#f6f5f0;font-size:12px;background:#0f1b2dcc;padding:1px 6px;border-radius:3px}
+@media print{
+  html,body{overflow:visible;background:#fff;height:auto}
+  #stage{position:static;transform:none!important;width:auto;height:auto}
+  section{position:relative;visibility:visible;page-break-after:always;break-after:page}
+  #hud,#notes,#grid{display:none!important}
+  @page{size:1920px 1080px;margin:0}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+<section id="cover" data-transition="fade" style="background:#0f1b2d;color:#f6f5f0;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#4fc3b0">Exchange connectivity engine</p>
+<h1 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:140px;font-weight:700;line-height:1;letter-spacing:-3px">Omni-Bridge</h1>
+<p style="font-size:40px;line-height:1.3;color:#c9d3de;width:1300px">A Java exchange connectivity engine built for microseconds: five protocol families on one extensible core, an allocation-free message path, journaled sessions, remote persistence, and a measured ≈ 13.8 µs one way for an order on AWS (27.6 µs round trip).</p>
+</div>
+<div style="display:flex;gap:64px;align-items:flex-end">
+<div style="display:flex;flex-direction:column;gap:4px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:96px;font-weight:600;line-height:1;color:#f6f5f0">≈ 140 → 13.8 µs</p>
+<p style="font-size:26px;color:#c9d3de">FIX order one way at p50, first measured run to today on AWS</p>
+<p style="font-size:24px;color:#8fa0b3">Half the measured round trip, which went from 280 µs to 27.6</p>
+</div>
+<div style="flex:1"></div>
+<p style="font-size:26px;color:#8fa0b3;text-align:right">Technical overview for engineering leadership and prospective adopters<br>October 2026</p>
+</div>
+<aside>Omni-Bridge is an exchange connectivity engine written in Java. This deck covers what it does, how it is built and why, how it is deployed and monitored, and the latency programme that took the order round trip from 280 microseconds to under 28 on AWS, about 14 one way, including what we tried and discarded along the way.</aside>
+</section>
+<section id="what-it-is" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:28px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">One engine between your applications and the exchanges, built so it is never the slow part</h2>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon style="width:48px;height:48px;color:#1b9e8a" aria-label="Globe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></x-icon>
+<h3 style="font-size:30px;font-weight:600">Connectivity</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Initiator and acceptor sessions for FIX, OUCH and three binary exchange protocols; logon, heartbeats, sequence recovery and resend handled by the engine. The next protocol is a module.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon style="width:48px;height:48px;color:#1b9e8a" aria-label="Lightning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></x-icon>
+<h3 style="font-size:30px;font-weight:600">Latency by design</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A single busy-spinning thread per event loop, flyweight messages over direct buffers, lock-free ring buffers, and zero bytes allocated per message, enforced by tests.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon style="width:48px;height:48px;color:#1b9e8a" aria-label="Database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></x-icon>
+<h3 style="font-size:30px;font-weight:600">Durable sessions</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Every message journaled before it is sent, on Chronicle Queue, a memory-mapped log, and optionally copied over Aeron, a UDP messaging library, to another host. Resend and restart recover from the log.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:32px">
+<x-icon style="width:48px;height:48px;color:#1b9e8a" aria-label="Activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></x-icon>
+<h3 style="font-size:30px;font-weight:600">Operable</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Admin REST and WebSocket API, Prometheus metrics with Grafana dashboards and alerts, and OmniView, a web console for session health and control across every engine.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:28px 36px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;color:#f6f5f0;line-height:1">Java 25</p>
+<p style="font-size:26px;color:#c9d3de;line-height:1.4">Plain JVM, no custom runtime. HOCON configuration, components with a managed lifecycle and active/standby states, a multi-protocol exchange simulator, and a kernel-bypass transport (the network card driven from the engine's own thread, no operating system in the data path) as a switch.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Maven multi-module project; engines, persistence, admin, metrics and tooling are separate modules</p>
+<aside>Omni-Bridge is an exchange connectivity engine. It handles the session layer of the venue protocols so applications only deal with orders and executions. It is written to be fast by construction rather than tuned afterwards, it journals everything, and it ships with the monitoring and console that operations teams need.</aside>
+</section>
+<section id="use-case" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:20px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">Where it fits</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">When the venue's matching engine is in the cloud, the region is the colocation</h2>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:22px 26px">
+<h3 style="font-size:28px;font-weight:600">Crypto spot and derivatives</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Coinbase runs its US spot exchange in AWS us-east-1 and tells FIX clients to deploy there; Binance's FIX endpoints sit in AWS Tokyo. Kraken: about 200 µs over a cross-connect, about 2 ms from AWS London.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:22px 26px">
+<h3 style="font-size:28px;font-weight:600">Prediction markets</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Kalshi offers FIX order entry with AWS PrivateLink into its environment. Market making there is dozens of sessions across markets and sub-accounts on one box, run from an admin API.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:22px 26px">
+<h3 style="font-size:28px;font-weight:600">Cloud-native regulated venues</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Aquis runs its equities exchange on AWS; Nasdaq moved MRX and GEMX onto AWS Outposts in its own data centre. The matching engine is becoming a cloud tenant, and the firms connecting to it follow.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:22px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">What the engine buys there</p>
+<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px 28px">
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Tails, not medians.</b> Inside a region the fabric is tens to hundreds of µs; what matters is that a GC pause or page fault never becomes a 2 ms stale quote.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Durability without a trade-off.</b> Every message journaled before it leaves and copied to another host, at no cost to the round trip.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Many sessions, few cores.</b> One loop thread serves many sessions on one port, with metrics, alerts and a console.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">A test rig that matches production.</b> The simulator and the scripted AWS run measure a firm's own stack before it pays for a cross-connect.</p>
+</div>
+</div>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4"><b>Not the target:</b> latency-sensitive trading on CME, Eurex, NYSE or Nasdaq's classic books stays in Aurora, Frankfurt, Mahwah and Carteret on overclocked hosts with FPGA cards. There the engine competes on its kernel path; the AWS numbers show the engineering, not the deployment.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Sources: <a href="https://docs.cdp.coinbase.com/exchange/introduction/systems-operations" style="color:#4a7fb5">Coinbase Exchange systems operations</a>; <a href="https://docs.kraken.com/exchange/guides/general/colocation.md" style="color:#4a7fb5">Kraken colocation guide</a>; <a href="https://docs.kalshi.com/fix-margin/connectivity" style="color:#4a7fb5">Kalshi FIX connectivity</a>; <a href="https://latency.glassnode.com/cex/about" style="color:#4a7fb5">Glassnode latency monitor</a> (Binance); <a href="https://www.amazonaws.cn/blog-selection/how-aquis-created-a-cloud-native-exchange-to-meet-the-highest-regulatory-requirements-on-aws/" style="color:#4a7fb5">Aquis on AWS</a></p>
+<aside>The question every buyer asks: why a low-latency FIX engine in the cloud when the fast money sits in a cage next to the exchange? Because a growing set of venues have their matching engine in a cloud region: most crypto exchanges, the prediction markets, and now some regulated equities venues. For those, the region is the colocation, and the firm's own engine is the part it controls. The engine's contribution there is less its median than its tail, its durability and the number of sessions one box can run. For CME, Eurex or the NYSE this is a conventional kernel-path FIX engine with an unusually well-measured tail, not a colocation replacement.</aside>
+</section>
+<section id="building-blocks" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">The four technologies the engine builds on, in plain terms</h2>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#e8762b">Journal</p>
+<h3 style="font-size:30px;font-weight:600">Chronicle Queue</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">An open-source Java library that appends records to a memory-mapped file. A write is a memory copy; the operating system flushes the page to disk. It is the engine's per-session journal.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#e8762b">Replication</p>
+<h3 style="font-size:30px;font-weight:600">Aeron</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">An open-source low-latency messaging library. It sends over UDP with its own reliability and flow control, from a media driver on a separate thread. The engine uses it to copy each journal entry to another host.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">Kernel bypass</p>
+<h3 style="font-size:30px;font-weight:600">DPDK</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">The Data Plane Development Kit: libraries that let a user-space program own a network card and poll it directly, skipping the kernel's network stack and its interrupts. It moves raw packets and has no TCP of its own.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">TCP on bypass</p>
+<h3 style="font-size:30px;font-weight:600">F-Stack</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">FreeBSD's TCP/IP stack packaged as a library on top of DPDK, giving a program sockets on a card the kernel never touches. The engine's optional bypass transport runs it on its own pinned thread.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:24px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">Also in this deck</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">SBE</b>, Simple Binary Encoding, the FIX community's binary codec behind iLink 3 and Optiq. <b style="color:#f6f5f0">SoupBinTCP</b>, Nasdaq's framing and sequencing layer under OUCH. <b style="color:#f6f5f0">HOCON</b>, a typed configuration format. <b style="color:#f6f5f0">FFM</b>, Java's foreign function interface, which calls C code without JNI.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Licences: Chronicle Queue and Aeron are Apache 2.0; DPDK and F-Stack are BSD. The engine links to them; none is modified</p>
+<aside>Four names come up throughout the deck, so here is what each one is. Chronicle Queue is the on-disk journal. Aeron is how a copy of that journal reaches another host. DPDK is how a program takes a network card away from the operating system, and F-Stack is the TCP that runs on top of it, so the engine still talks sockets. The first two are in every deployment; the last two are an optional transport.</aside>
+</section>
+<section id="protocols" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Five protocol families on one engine today, with the versions the venues run; the sixth is a module</h2>
+<table style="font-size:24px;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:17%;text-align:left">Protocol</th><th style="width:25%;text-align:left">Versions</th><th style="width:38%;text-align:left">Session layer handled by the engine</th><th style="width:20%;text-align:left">Typical venues</th></tr>
+<tr><td><b>FIX</b></td><td>4.2, 4.4, 5.0, 5.0 SP1, 5.0 SP2 over FIXT 1.1</td><td>Logon, heartbeats, gap detection, resend from the journal, GapFill, PossDup, schedules, TLS</td><td>Brokers, exchanges, routers</td></tr>
+<tr style="background:#ecebe4"><td><b>OUCH</b></td><td>4.2 and 5.0 with appendages</td><td>SoupBinTCP login and sequencing; order token or UserRefNum by version</td><td>Nasdaq family</td></tr>
+<tr><td><b>CME iLink 3</b></td><td>SBE binary</td><td>Negotiate, establish, sequence, retransmit</td><td>CME Globex</td></tr>
+<tr style="background:#ecebe4"><td><b>Euronext Optiq</b></td><td>SBE binary</td><td>Order entry gateway session</td><td>Euronext</td></tr>
+<tr><td><b>NYSE Pillar</b></td><td>Binary</td><td>Stream open and sequencing</td><td>NYSE group</td></tr>
+</table>
+<div style="display:flex;gap:28px">
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Shared core.</b> One event loop, ring buffer, persistence layer, session service and admin API serve every protocol; a new one adds its codec and state machine.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Many sessions, one port.</b> Routed by CompID pair, OUCH user or SBE session id.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>A simulator for all of them,</b> with an order book and symbol-pattern fill rules.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Modules under protocols/: fix, ouch, sbe (ilink3, optiq, pillar); sample applications for each under apps/; FIX tested against QuickFIX/J</p>
+<aside>FIX is the broadest, with all the common versions and the full session recovery story. OUCH comes in both versions in use today. The three binary protocols share an SBE base. The point of the table is the third column: the session layer is the engine's job in every case, and the application sees orders and executions. A protocol module adds its codec, its state machine and its listener callbacks; everything underneath is shared.</aside>
+</section>
+<section id="extensibility" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">Extensible by design</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">The next venue's protocol is a module: it brings a codec and a state machine, and inherits everything else</h2>
+<div style="display:flex;gap:28px">
+<div style="flex:2;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:28px;font-weight:600;color:#4a7fb5">A protocol module adds</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4"><b>Messages:</b> flyweights over the wire bytes, with a reader, a pool and a factory per version.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4"><b>A session:</b> the venue's logon, heartbeat and sequencing rules as a state machine.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4"><b>An engine class</b> that creates sessions on the loop, the store and the scheduler.</p>
+</div>
+<div style="flex:3;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:2px solid #1b9e8a;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:28px;font-weight:600;color:#1b9e8a">It inherits unchanged</h3>
+<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px 28px">
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Event loop, ring buffers, zero allocation</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Kernel TCP with TLS, or F-Stack</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Journal and Aeron remote store</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Enable, disable, sequence numbers</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Schedules; many sessions, one port</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Admin API, metrics, OmniView</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Configuration and lifecycle</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Simulator and test scripts</p>
+</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:24px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">Proof</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">The three binary protocols went in this way: iLink 3, Optiq and Pillar share one SBE engine and message base, with one small module per venue. Every session, whatever its protocol, is the same managed session to the admin API, OmniView and the alerts.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">docs/PROTOCOL_ARCHITECTURE.md is written as the template for a new protocol: module layout, checklist, metrics and test script conventions</p>
+<aside>This is the slide for a buyer whose venue list will grow. A protocol is a module: its message layouts, its session rules and a small engine class. The loop, the transports, the journal, the remote store, the admin surface, monitoring, configuration and the test harness are all shared and all unchanged. The three binary protocols are the evidence: they went in on a common SBE base, and operations sees them exactly as it sees a FIX session.</aside>
+</section>
+<section id="architecture" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">Architecture</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Layered so the hot path is one thread, one buffer and one write; everything else stays off it</h2>
+<div style="position:relative;width:1664px;height:560px">
+
+<div style="position:absolute;left:0;top:0;width:1664px;height:80px;background:#0f1b2d;border-radius:12px;display:flex;align-items:center;justify-content:center"><p style="font-size:28px;font-weight:600;color:#f6f5f0">Your application: order and execution listeners, strategy, risk</p></div>
+<div style="position:absolute;left:0;top:120px;width:380px;height:90px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:26px;font-weight:600">FIX engine</p><p style="font-size:22px;color:#3f4a5a">4.2 to 5.0 SP2, dictionaries</p></div>
+<div style="position:absolute;left:428px;top:120px;width:380px;height:90px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:26px;font-weight:600">OUCH engine</p><p style="font-size:22px;color:#3f4a5a">4.2 and 5.0, SoupBinTCP</p></div>
+<div style="position:absolute;left:856px;top:120px;width:380px;height:90px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:26px;font-weight:600">SBE engines</p><p style="font-size:22px;color:#3f4a5a">iLink 3, Optiq, Pillar</p></div>
+<div style="position:absolute;left:1284px;top:120px;width:380px;height:90px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:26px;font-weight:600">Session management</p><p style="font-size:22px;color:#3f4a5a">state machines, scheduler</p></div>
+<div style="position:absolute;left:0;top:250px;width:1024px;height:90px;background:#1b9e8a;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 24px"><p style="font-size:26px;font-weight:600;color:#f6f5f0">Network event loop: one busy-spinning thread, pinned</p><p style="font-size:22px;color:#dff5ef">per-connection ring buffer (claim, encode in place, commit), flyweight decode, no allocation</p></div>
+<div style="position:absolute;left:1072px;top:250px;width:592px;height:90px;background:#ffffff;border:2px solid #e8762b;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:26px;font-weight:600">Persistence</p><p style="font-size:22px;color:#3f4a5a">journal on the critical path, before the send</p></div>
+<div style="position:absolute;left:0;top:380px;width:1024px;height:70px;background:#ffffff;border:2px solid #1b9e8a;border-radius:12px;display:flex;align-items:center;padding:0 24px"><p style="font-size:26px;font-weight:600">Transport seam: Transport and Endpoint interfaces</p></div>
+<div style="position:absolute;left:1072px;top:380px;width:280px;height:70px;background:#ffffff;border:1px solid #8fa0b3;border-radius:12px;display:flex;align-items:center;padding:0 20px"><p style="font-size:24px;font-weight:600">Admin API</p></div>
+<div style="position:absolute;left:1384px;top:380px;width:280px;height:70px;background:#ffffff;border:1px solid #8fa0b3;border-radius:12px;display:flex;align-items:center;padding:0 20px"><p style="font-size:24px;font-weight:600">Prometheus metrics</p></div>
+<div style="position:absolute;left:0;top:490px;width:500px;height:70px;background:#ecebe4;border-radius:12px;display:flex;align-items:center;justify-content:center"><p style="font-size:24px;color:#3f4a5a">Kernel TCP (Java NIO), TLS</p></div>
+<div style="position:absolute;left:524px;top:490px;width:500px;height:70px;background:#ecebe4;border-radius:12px;display:flex;align-items:center;justify-content:center"><p style="font-size:24px;color:#3f4a5a">F-Stack on DPDK (optional)</p></div>
+<div style="position:absolute;left:1072px;top:490px;width:592px;height:70px;background:#ecebe4;border-radius:12px;display:flex;align-items:center;justify-content:center"><p style="font-size:24px;color:#3f4a5a">Chronicle Queue local; Aeron to a remote store</p></div>
+<svg class="x-connector" aria-hidden="true"><line x1="832" y1="90.5" x2="832" y2="109.5" stroke="#0f1b2d" stroke-width="3"/><polygon points="832,120 827.275,109.5 836.725,109.5" fill="#0f1b2d"/><polygon points="832,80 836.725,90.5 827.275,90.5" fill="#0f1b2d"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="512" y1="220.5" x2="512" y2="239.5" stroke="#4a7fb5" stroke-width="3"/><polygon points="512,250 507.275,239.5 516.725,239.5" fill="#4a7fb5"/><polygon points="512,210 516.725,220.5 507.275,220.5" fill="#4a7fb5"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="1368" y1="210" x2="1368" y2="250" stroke="#e8762b" stroke-width="3"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="512" y1="350.5" x2="512" y2="369.5" stroke="#1b9e8a" stroke-width="3"/><polygon points="512,380 507.275,369.5 516.725,369.5" fill="#1b9e8a"/><polygon points="512,340 516.725,350.5 507.275,350.5" fill="#1b9e8a"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="1368" y1="340" x2="1368" y2="380" stroke="#8fa0b3" stroke-width="3" stroke-dasharray="12 9"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="250" y1="460.5" x2="250" y2="479.5" stroke="#1b9e8a" stroke-width="3"/><polygon points="250,490 245.275,479.5 254.725,479.5" fill="#1b9e8a"/><polygon points="250,450 254.725,460.5 245.275,460.5" fill="#1b9e8a"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="774" y1="460.5" x2="774" y2="479.5" stroke="#1b9e8a" stroke-width="3"/><polygon points="774,490 769.275,479.5 778.725,479.5" fill="#1b9e8a"/><polygon points="774,450 778.725,460.5 769.275,460.5" fill="#1b9e8a"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="1600" y1="450" x2="1600" y2="490" stroke="#e8762b" stroke-width="3"/></svg>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Top to bottom: application, protocol engines and session management, event loop and persistence, transport seam, admin and metrics, then the kernel or DPDK path and the stores. Source: docs/PROTOCOL_ARCHITECTURE.md</p>
+<aside>Read it top down. The application registers listeners. A protocol engine owns the codec and the session state machine. Under them, one network event loop runs each connection's ring buffer on a single pinned thread, and the persistence layer journals every message before it leaves. The transport seam is where the kernel socket path and the DPDK path meet the same loop. Admin and metrics sit beside the hot path, never in it.</aside>
+</section>
+<section id="rationale" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Six design decisions, each made for a measured reason</h2>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">One spinning thread per loop</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A blocking read pays a 5 to 20 µs kernel wake-up that varies run to run. Spinning removes it. The price is one core per loop.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Pinned to an isolated core</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Ticks, interrupts and other threads are moved off the core at boot. Little at the median, a lot at the tail, and it makes runs comparable.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Flyweights over direct buffers</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A message is a view over the bytes where they arrived; fields are read and encoded in place. No parse tree, no copies, no objects.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Lock-free ring per connection</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Any thread claims, encodes and commits; the loop drains to the socket. A commit from the loop thread is written at once.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Zero allocation, enforced by tests</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A test asserts 0 bytes per order on the acceptor with the journal on, and at most 320 on the simulator. GC is a non-event.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Journal first, on the critical path</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Durability before the send was never traded away. The work went into making the write cheap: 0.4 to 0.8 µs, page faults taken ahead.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Also: HOCON configuration with a component lifecycle (initialize, active, standby, stop), so latency-sensitive deployments can switch off admin, persistence or the scheduler</p>
+<aside>These are the reasons the engine is shaped the way it is. Each one was chosen against a measurement rather than a preference. The first two are about the host and are where the tail latency went. The middle two are about memory and are where the median went. The last two are the principles that were not negotiable: no garbage, and no send before the journal.</aside>
+</section>
+<section id="message-path" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">One order, one ack</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Twelve stages on one thread each side; the engines' share is ≈ 2 to 3.7 µs per direction (4 to 7.5 per round trip)</h2>
+<div style="position:relative;width:1664px;height:520px">
+
+<div style="position:absolute;left:0;top:0;width:1664px;height:150px;background:#e4e9f1;border-radius:12px"></div>
+<p style="position:absolute;left:24px;top:14px;width:600px;font-size:22px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4a7fb5">Send path (initiator), 1.9 µs on F-Stack, 3.8 on the kernel</p>
+<div style="position:absolute;left:24px;top:60px;width:240px;height:80px;background:#ffffff;border:2px solid #4a7fb5;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">1 claim ring space</p></div>
+<div style="position:absolute;left:300px;top:60px;width:240px;height:80px;background:#ffffff;border:2px solid #4a7fb5;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">2 encode in place</p></div>
+<div style="position:absolute;left:576px;top:60px;width:240px;height:80px;background:#ffffff;border:2px solid #4a7fb5;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">3 commit</p></div>
+<div style="position:absolute;left:852px;top:60px;width:240px;height:80px;background:#ffffff;border:2px solid #e8762b;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">4 journal write</p></div>
+<div style="position:absolute;left:1128px;top:60px;width:240px;height:80px;background:#ffffff;border:2px solid #4a7fb5;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">5 socket write</p></div>
+<div style="position:absolute;left:1404px;top:60px;width:240px;height:80px;background:#0f1b2d;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px;color:#f6f5f0">6 on the wire</p></div>
+<div style="position:absolute;left:0;top:290px;width:1664px;height:150px;background:#dff5ef;border-radius:12px"></div>
+<p style="position:absolute;left:24px;top:304px;width:700px;font-size:22px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">Receive to ack (simulator), 4.1 µs on F-Stack, 7.0 on the kernel</p>
+<div style="position:absolute;left:24px;top:350px;width:240px;height:80px;background:#0f1b2d;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px;color:#f6f5f0">7 socket read</p></div>
+<div style="position:absolute;left:300px;top:350px;width:240px;height:80px;background:#ffffff;border:2px solid #1b9e8a;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">8 frame and parse</p></div>
+<div style="position:absolute;left:576px;top:350px;width:240px;height:80px;background:#ffffff;border:2px solid #1b9e8a;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">9 session checks</p></div>
+<div style="position:absolute;left:852px;top:350px;width:240px;height:80px;background:#ffffff;border:2px solid #e8762b;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">10 journal inbound</p></div>
+<div style="position:absolute;left:1128px;top:350px;width:240px;height:80px;background:#ffffff;border:2px solid #1b9e8a;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">11 handler, book</p></div>
+<div style="position:absolute;left:1404px;top:350px;width:240px;height:80px;background:#ffffff;border:2px solid #1b9e8a;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center"><p style="font-size:24px">12 ack: 1 to 5 again</p></div>
+<p style="position:absolute;left:24px;top:190px;width:1616px;font-size:24px;color:#3f4a5a;line-height:1.4">The order is sent from the loop thread, so stages 1 to 5 run back to back with no hand-off. The socket write is the largest fixed cost: 2.5 µs per message on the kernel, 0.76 on F-Stack. The journal writes cost 0.4 to 0.8 µs each after the page-fault fix.</p>
+<p style="position:absolute;left:24px;top:460px;width:1616px;font-size:24px;color:#3f4a5a;line-height:1.4">On receive, up to 2,048 bytes are read in one call, the flyweight is pointed at them, sequence and session state are checked, the bytes are journaled, and the handler writes the ExecutionReport through the same five send stages. No object is created on either side.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Stage times from the per-stage timestamps on c6in.2xlarge; in-process total ≈ 3.7 µs per direction on F-Stack, 6.2 on the kernel (7.4 and 12.3 per round trip)</p>
+<aside>This is the life of one order and its acknowledgement. Each side runs its stages on the one event-loop thread. The orange boxes are the journal writes, which stay on the critical path by design. The dark boxes are where the bytes meet the transport, and that is where the F-Stack transport saves most of its time.</aside>
+</section>
+<section id="persistence" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Persistence: every message on disk before it is sent, under a microsecond per write</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">What is stored</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">One Chronicle Queue stream per session: an append-only memory-mapped file, daily rolling, found again at startup. Each entry: timestamp, direction, sequence number, raw bytes.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">What it is for</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">ResendRequests are answered from the journal with PossDup set. On restart, sequence numbers come back from the latest entries. Replay by sequence or by time.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Tooling on the journal</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A log viewer, a validator that compares local and remote copies entry by entry, and an MCP server so an assistant can query messages and session status.</p>
+</div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px;background:#0f1b2d;border-radius:12px;padding:28px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0">Cost on the hot path</p>
+<div style="display:flex;gap:40px;align-items:flex-end">
+<div><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1;color:#f6f5f0">0.4 to 0.8</p><p style="font-size:24px;color:#c9d3de">µs per journal write at p50</p></div>
+<div><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1;color:#f6f5f0">0 B</p><p style="font-size:24px;color:#c9d3de">allocated per message, store on</p></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #e8762b;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">The page-fault finding</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">The first write to each 4 KB page of the mapped file cost a 1 to 3 µs fault on the loop. A helper thread now faults 1 MB ahead: the write's p99.9 fell from 34 to 42 µs to 3 to 5, the round trip's max from 1,030 µs to 316.</p>
+</div>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4;padding:0 8px">Store type per session: Chronicle, plain memory-mapped, Aeron replication, or none.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Modules persistence and persistence-aeron; the pretouch thread is persistence.pretouch-ahead, default 1 MB</p>
+<aside>The journal is the part a risk officer cares about. Nothing leaves the engine before it is on disk, and the session can be rebuilt from the log. The engineering effort went into making that write cost less than a microsecond and allocate nothing. The page-fault story is a good example of the method: a stage timestamp showed a tail on the write, the cause was in how the file was mapped, and a background thread removed it without touching the format. Inbound messages are logged on receive, outbound at drain with the sequence number read from the ring. Logging and tracing are separate per-session switches.</aside>
+</section>
+<section id="aeron" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">Remote persistence</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">The Aeron remote store: a second copy of every journal on another host, at no cost to the round trip</h2>
+<div style="position:relative;width:1664px;height:540px">
+
+<div style="position:absolute;left:0;top:0;width:700px;height:300px;background:#e4e9f1;border-radius:12px"></div>
+<p style="position:absolute;left:24px;top:16px;width:650px;font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4a7fb5">Trading host: the engine</p>
+<div style="position:absolute;left:40px;top:60px;width:620px;height:70px;background:#ffffff;border:2px solid #4a7fb5;border-radius:10px;display:flex;align-items:center;padding:0 20px"><p style="font-size:24px;font-weight:600">1 journal write to local Chronicle, synchronous</p></div>
+<div style="position:absolute;left:40px;top:160px;width:620px;height:110px;background:#ffffff;border:2px solid #e8762b;border-radius:10px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:24px;font-weight:600">2 SBE-encode and publish over Aeron UDP</p><p style="font-size:24px;color:#3f4a5a">Aeron: a reliable UDP messaging library; its media driver sends on its own thread</p></div>
+<div style="position:absolute;left:964px;top:0;width:700px;height:300px;background:#dff5ef;border-radius:12px"></div>
+<p style="position:absolute;left:988px;top:16px;width:650px;font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">Persistence host: remote store</p>
+<div style="position:absolute;left:1004px;top:60px;width:620px;height:70px;background:#ffffff;border:2px solid #1b9e8a;border-radius:10px;display:flex;align-items:center;padding:0 20px"><p style="font-size:24px;font-weight:600">3 single-threaded poll of data and control</p></div>
+<div style="position:absolute;left:1004px;top:160px;width:620px;height:110px;background:#ffffff;border:2px solid #1b9e8a;border-radius:10px;display:flex;flex-direction:column;justify-content:center;padding:0 20px"><p style="font-size:24px;font-weight:600">4 written to its own Chronicle, per publisher</p><p style="font-size:24px;color:#3f4a5a">status, publishers and streams on its admin API</p></div>
+<svg class="x-connector" aria-hidden="true"><line x1="660" y1="215" x2="990" y2="215" stroke="#e8762b" stroke-width="4"/><polygon points="1004,215 990,221.3 990,208.7" fill="#e8762b"/></svg>
+<p style="position:absolute;left:700px;top:232px;width:264px;font-size:24px;color:#3f4a5a;text-align:center">entries, 40456</p>
+<svg class="x-connector" aria-hidden="true"><line x1="1004" y1="95" x2="670.5" y2="95" stroke="#1b9e8a" stroke-width="3" stroke-dasharray="12 9"/><polygon points="660,95 670.5,90.275 670.5,99.725" fill="#1b9e8a"/></svg>
+<p style="position:absolute;left:700px;top:52px;width:264px;font-size:24px;color:#3f4a5a;text-align:center">catch-up, 40457</p>
+<div style="position:absolute;left:0;top:340px;width:532px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;display:flex;flex-direction:column;gap:8px;padding:20px 24px"><p style="font-size:26px;font-weight:600">Why it costs nothing</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">An encode and a copy into a shared buffer. Removing the publish changed the round trip by under 0.5 µs up to p99.99.</p></div>
+<div style="position:absolute;left:566px;top:340px;width:532px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;display:flex;flex-direction:column;gap:8px;padding:20px 24px"><p style="font-size:26px;font-weight:600">How gaps are closed</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">On start or activation the store asks each engine for entries after its last position; the engine replays them off the hot path.</p></div>
+<div style="position:absolute;left:1132px;top:340px;width:532px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;display:flex;flex-direction:column;gap:8px;padding:20px 24px"><p style="font-size:26px;font-weight:600">What operations gets</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">Full session history off the trading host, a validator proving both copies match, and the MCP server reading from it.</p></div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Module persistence-aeron; reads are always served from the local copy; replay from the remote store back to an engine exists in the API</p>
+<aside>Every write goes to the local Chronicle journal first and synchronously, then the same bytes are published over Aeron to a store on another host. The engine's round trip does not see the publish, which we verified by removing it. If the store falls behind or restarts, it asks each engine for the entries it is missing and the engine replays them from its local journal off the hot path. The result is a full copy of every session's history on a host that is not in the trading path.</aside>
+</section>
+<section id="deployment" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#1b9e8a">Reference deployment</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Four hosts in one AWS VPC, provisioned by Terraform in about seven minutes, torn down after every test</h2>
+<div style="position:relative;width:1664px;height:540px">
+
+<div style="position:absolute;left:0;top:0;width:520px;height:230px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;gap:6px;padding:20px 24px"><p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4a7fb5">FIX host, private</p><p style="font-size:26px;font-weight:600">Exchange simulator</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">FIX 9876, OUCH 9200, iLink3, Optiq, Pillar; admin 8080. Publishes its journal to the store.</p></div>
+<div style="position:absolute;left:572px;top:0;width:520px;height:230px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;gap:6px;padding:20px 24px"><p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4a7fb5">OUCH host, private</p><p style="font-size:26px;font-weight:600">FIX initiator</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">The client under test; admin 8082. Both trading hosts in one placement group, loop core isolated.</p></div>
+<div style="position:absolute;left:0;top:300px;width:520px;height:230px;background:#ffffff;border:2px solid #e8762b;border-radius:12px;display:flex;flex-direction:column;gap:6px;padding:20px 24px"><p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#e8762b">Persistence host, private</p><p style="font-size:26px;font-weight:600">Aeron store, MCP server</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">Data 40456, control 40457, replay 40458; admin 8083; MCP 8090; 200 GB volume.</p></div>
+<div style="position:absolute;left:572px;top:300px;width:520px;height:230px;background:#ffffff;border:2px solid #1b9e8a;border-radius:12px;display:flex;flex-direction:column;gap:6px;padding:20px 24px"><p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1b9e8a">Monitoring host, public</p><p style="font-size:26px;font-weight:600">Prometheus, Grafana, OmniView</p><p style="font-size:24px;color:#3f4a5a;line-height:1.4">Scrapes 8080, 8082, 8083; Grafana 3001, OmniView 3000; SSH bastion.</p></div>
+<svg class="x-connector" aria-hidden="true"><line x1="534" y1="115" x2="558" y2="115" stroke="#0f1b2d" stroke-width="4"/><polygon points="572,115 558,121.3 558,108.7" fill="#0f1b2d"/><polygon points="520,115 534,108.7 534,121.3" fill="#0f1b2d"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="260" y1="230" x2="260" y2="289.5" stroke="#e8762b" stroke-width="3"/><polygon points="260,300 255.275,289.5 264.725,289.5" fill="#e8762b"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="832" y1="230" x2="832" y2="300" stroke="#1b9e8a" stroke-width="3" stroke-dasharray="12 9"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="520" y1="415" x2="572" y2="415" stroke="#1b9e8a" stroke-width="3" stroke-dasharray="12 9"/></svg>
+<div style="position:absolute;left:1144px;top:0;width:520px;height:530px;background:#0f1b2d;border-radius:12px;display:flex;flex-direction:column;gap:16px;padding:28px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0">Terraform provisions</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">A VPC with private trading and persistence subnets and a public monitoring subnet.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Security groups per flow: venue ports from clients, admin from monitoring, Aeron between trading and persistence.</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">IAM roles for S3 artifacts and CloudWatch; hosts install from S3 at boot in a fixed service order.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Solid arrows: order flow and journal replication; dashed: scraping and admin. infrastructure/terraform and scripts/deploy; one pipeline builds, uploads, deploys, restarts and validates</p>
+<aside>This is the reference deployment the latency numbers come from. Two trading hosts face each other in a placement group, a third host holds the remote journal, and a public host carries monitoring and acts as the SSH bastion. The whole stack is code: one pipeline builds, uploads, deploys and validates, and the latency skill provisions, measures and destroys it. Service start order is enforced: store, MCP server, simulator, initiator, OmniView, monitoring.</aside>
+</section>
+<section id="monitoring" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Monitoring: engine metrics in Prometheus, Grafana dashboards and alerts, OmniView for operators</h2>
+<div style="display:flex;gap:28px">
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Metrics, from the engine</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A Prometheus endpoint on each admin port: session state, logons, messages in, out and rejected, sequence gaps and resends, heartbeats, ring-buffer claim failures, journal writes, JVM.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Meters resolved once; nothing built per message.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Grafana and Alertmanager</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Three dashboards shipped: Overview, Session Deep Dive, and JVM and Infrastructure. Fifteen alert rules; critical ones page, warnings go to chat.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Thirty-day retention, five-second scrape.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">OmniView console</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">One web console across all engines: session health cards, live state over WebSocket, enable or disable a session, set sequence numbers, act on simulator orders, browse the Aeron stores.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A chat page queries sessions through the MCP server.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:24px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">Critical alerts</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Session disconnected, all sessions down, heartbeat timeout, ring-buffer claim failures, high reject rate, processing latency, GC pause. Warnings: logon failure spike, throughput drop, sequence gap, heap and direct-buffer pressure.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">infrastructure/docker for the local stack (Prometheus 9090, Grafana 3001, Alertmanager 9093); the AWS monitoring host runs the same stack plus OmniView on 3000</p>
+<aside>Operations get three things. Metrics from inside the engine, exposed in Prometheus format without touching the hot path. Dashboards and alerts that come with the product, so a deployment is observable on day one. And OmniView, a console that shows every engine's sessions in one place and lets an operator act: enable, disable, set a sequence number, or look at an order in the simulator.</aside>
+</section>
+<section id="testing" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Tested against the reference implementation, against itself, and against the clock</h2>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1;color:#4a7fb5">18</p>
+<h3 style="font-size:28px;font-weight:600">Reference tests with QuickFIX/J</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">The industry reference engine drives our acceptor: logon for 4.2 and 5.0, orders of every type, cancels, replaces, rejects, partial fills, status requests, time in force, message size limits.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1;color:#1b9e8a">40</p>
+<h3 style="font-size:28px;font-weight:600">Session tests, engine to engine</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Sequence gaps in both directions, resend replay, PossDup, duplicate logon, resets on logon, logout and disconnect, checksum and body-length validation, backpressure, many sessions on one port, graceful shutdown.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1;color:#e8762b">0 B</p>
+<h3 style="font-size:28px;font-weight:600">Allocation and latency tests</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Tests assert bytes allocated per order. JMH benchmarks cover the codecs. Local and AWS latency harnesses pace orders to avoid coordinated omission and report HdrHistogram percentiles.</p>
+</div>
+</div>
+<div style="display:flex;gap:28px">
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Continuous integration</b> builds and runs unit tests, then the reference, session and Aeron replication suites on every push.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>The simulator is the test venue:</b> every protocol, an order book, and symbol-pattern rules for fills, delays, partials and rejects.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">scripts/test: run-reference-test, run-session-test (text, JSON or HTML reports), run-latency-test; OUCH 4.2 and 5.0 latency scripts</p>
+<aside>Three kinds of test. Conformance against QuickFIX/J, the reference FIX engine, so a counterparty running it will interoperate. Session behaviour under every recovery scenario we could name, engine against engine. And performance tests that are part of the build: allocation per message is asserted, not hoped for.</aside>
+</section>
+<section id="latency-method" data-transition="fade" style="background:#0f1b2d;color:#f6f5f0;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#4fc3b0">The latency programme</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Every number in this deck comes from one repeatable measurement on a fresh AWS stack</h2>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:10px;background:#17263b;border:1px solid #2a3b52;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600;color:#f6f5f0">One scripted run</h3>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Provision, deploy, 20,000 warm-up then 100,000 timed orders at 1,000 per second, record, destroy. Both engines journaling.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#17263b;border:1px solid #2a3b52;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600;color:#f6f5f0">Honest timing</h3>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Clocked from the <b>intended</b> send, so a late sender cannot hide queueing. The sender's slip is recorded beside it.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#17263b;border:1px solid #2a3b52;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600;color:#f6f5f0">A network baseline</h3>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">sockperf measures the raw kernel TCP round trip between the same hosts in the same run.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#17263b;border:1px solid #2a3b52;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600;color:#f6f5f0">Host checks</h3>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Each loop thread is sampled during the run: on its core, spinning, isolated, no interrupts, preemptions counted. A failed check fails the run.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#17263b;border:1px solid #2a3b52;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600;color:#f6f5f0">Stage timestamps</h3>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">An optional mode stamps every engine stage on both sides. It costs about 1.5 µs, so headline runs leave it off.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#17263b;border:1px solid #2a3b52;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600;color:#f6f5f0">A permanent record</h3>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Every run appends one line to a history file in the repository: commit, host, options, percentiles. 56 runs to date.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:center;background:#17263b;border:1px solid #4fc3b0;border-radius:12px;padding:16px 28px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">One way leads</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4"><b style="color:#f6f5f0">Headline figures are one way, marked ≈: half the measured round trip.</b> What is measured is the round trip, an order out of the initiator to its acknowledgement back, timed on one clock, so no clock synchronisation is involved; it sits in grey or in brackets beside each one-way figure.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8fa0b3">One command runs the whole cycle; the same script measured every milestone in this deck; change one thing, judge it on one stack</p>
+<aside>Before the numbers, the method. Everything was measured the same way on throwaway AWS stacks with the host state verified during the run, the sender's own lateness corrected for, and a raw network baseline alongside. Two stacks of the same type can differ by several microseconds, so the firmest evidence is always an A/B on one stack minutes apart. That discipline is what lets us say which change did what.</aside>
+</section>
+<section id="latency-journey" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Sixteen milestones took one way from ≈ 140 µs to 20 on the same cloud host class, then to 13.8 on metal</h2>
+<p style="font-size:26px;color:#3f4a5a"><b>Bold: ≈ one way, half the round trip p50.</b> Grey: the measured round trip p50 in µs from the intended send. One committed milestone per bar, 100,000 orders at 1,000/s on AWS.</p>
+<div style="height:380px;display:flex;align-items:flex-end;gap:14px">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">140</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">280</p><div style="width:100%;height:300px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">72</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">144</p><div style="width:100%;height:154px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">53</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">106</p><div style="width:100%;height:114px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">46.5</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">93</p><div style="width:100%;height:100px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">41</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">82</p><div style="width:100%;height:88px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">38</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">76</p><div style="width:100%;height:81px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">32</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">64</p><div style="width:100%;height:69px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">33</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">66</p><div style="width:100%;height:71px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">29</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">58</p><div style="width:100%;height:62px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">33.5</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">67</p><div style="width:100%;height:72px;background:#8fa0b3;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">29.5</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">59</p><div style="width:100%;height:63px;background:#4a7fb5;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">23</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">46</p><div style="width:100%;height:49px;background:#4a7fb5;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">23.5</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">47</p><div style="width:100%;height:50px;background:#4a7fb5;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">24.5</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">49</p><div style="width:100%;height:52px;background:#4a7fb5;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">23</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">46</p><div style="width:100%;height:49px;background:#4a7fb5;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#0f1b2d;line-height:1.2">20</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">40</p><div style="width:100%;height:43px;background:#1b9e8a;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><p style="font-size:26px;font-weight:700;color:#1b9e8a;line-height:1.2">13.8</p><p style="font-size:24px;color:#8fa0b3;line-height:1.2">27.6</p><div style="width:100%;height:30px;background:#1b9e8a;border-radius:6px 6px 0 0;margin-top:4px"></div></div>
+</div>
+<div style="display:flex;gap:14px">
+<p style="flex:10;font-size:24px;color:#3f4a5a;border-top:3px solid #8fa0b3;padding:8px 0 0">1 to 10: c5.xlarge, engine work (busy-spin, pinning, allocation-free path, send and receive trims, core isolation, persistence)</p>
+<p style="flex:5;font-size:24px;color:#3f4a5a;border-top:3px solid #4a7fb5;padding:8px 0 0">11 to 15: c6in hosts, low-latency queue, NUMA layout, Chronicle pretouch, JDK 25</p>
+<p style="flex:2;font-size:24px;color:#3f4a5a;border-top:3px solid #1b9e8a;padding:8px 0 0">16 to 17: F-Stack transport; AMD metal</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Source: docs/latency-history.jsonl, one run per milestone; the p99 fell from ≈ 265 µs one way to 15.5 (530 to 31 round trip) over the same span</p>
+<aside>Read left to right. The bold figure above each bar is the one-way estimate, half the measured round trip shown in grey. The grey bars are the engine work on the first host class, where one way fell from about 140 to about 30. The blue bars are the move to a faster host generation and the host-level work. The green bars are the F-Stack userspace TCP transport, first on the cloud host and then on a bare-metal AMD host. The p99 moved further than the p50: from about 265 microseconds one way to 15.5.</aside>
+</section>
+<section id="latency-steps-engine" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Engine work, part 1: ≈ 140 µs to 45 one way (280 to 90 round trip)</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:4%;text-align:left">#</th><th style="width:26%;text-align:left">Change</th><th style="width:36%;text-align:left">What was wrong</th><th style="width:34%;text-align:left">Measured impact, ≈ one way <span style="font-weight:400;color:#c9d3de">(round trip)</span></th></tr>
+<tr><td>1</td><td>Busy-spin and pinning on the initiator</td><td>Blocking reads paid a kernel wake-up on every message</td><td><b>p50 ≈ 140 → 72</b> <span style="color:#6a7179">(280 → 144)</span></td></tr>
+<tr style="background:#ecebe4"><td>2</td><td>Simulator tuned the same way</td><td>It blocked in select() and its loop wandered across cpus</td><td><b>p50 ≈ 72 → 53</b> <span style="color:#6a7179">(144 → 106)</span></td></tr>
+<tr><td>3</td><td>Event loop drains from a cached key array</td><td>Iterating selector keys made 180 MB/s of garbage, a GC pause every 0.85 s</td><td><b>p50 ≈ 53 → 45</b> <span style="color:#6a7179">(106 → 90)</span>; callback p99 118 → 21</td></tr>
+<tr style="background:#ecebe4"><td>4</td><td>No selector wake-up when spinning; one read per message</td><td>Each wake-up cost 3.5 to 6 µs; header and body were two reads</td><td><b>Local p50 ≈ −7.5, p99 ≈ −15</b> <span style="color:#6a7179">(−15, −30)</span></td></tr>
+<tr><td>5</td><td>No allocation per message on the loop</td><td>559 bytes per order: strings, boxed doubles, timestamps, iterators</td><td><b>Engines ≈ 12.1 → 7.7 µs per direction</b> <span style="color:#6a7179">(24.2 → 15.3)</span></td></tr>
+<tr style="background:#ecebe4"><td>6</td><td>Event-loop core isolated at boot</td><td>Ticks, interrupts and other threads shared the core</td><td>Ticks 995 → 1 per s; <b>p50 ≈ −0.9</b> <span style="color:#6a7179">(−1.7)</span></td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">c5.xlarge, 100,000 orders at 1,000/s; one way is half the round trip; same-stack deltas where shown as ±, otherwise consecutive runs; full tables in docs/latency-baseline.md</p>
+<aside>The first six changes are all on the cheapest instance type. The pattern is the same each time: a stage timestamp or a profile pointed at one cost, one change removed it, one run confirmed it. The two largest single wins were spinning with pinning on each side, which removed the wake-up path, and the garbage-free event loop, which removed a GC pause every 0.85 seconds.</aside>
+</section>
+<section id="latency-steps-engine-2" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Engine work, part 2: ≈ 45 µs to 29 one way (90 to 58 round trip), and the tail from milliseconds to hundreds of µs</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:4%;text-align:left">#</th><th style="width:26%;text-align:left">Change</th><th style="width:36%;text-align:left">What was wrong</th><th style="width:34%;text-align:left">Measured impact, ≈ one way <span style="font-weight:400;color:#c9d3de">(round trip)</span></th></tr>
+<tr><td>7</td><td>Order-book maps presized</td><td>A hash-map rehash stalled the loop for tens of milliseconds</td><td>max 39 ms → 2.5 ms</td></tr>
+<tr style="background:#ecebe4"><td>8</td><td>Write on loop-thread commit</td><td>The ack waited for the end of the loop pass before being written</td><td>Queue wait 4.35 → 0.04 µs; <b>p50 ≈ −0.5 to −0.9</b> <span style="color:#6a7179">(−0.9 to −1.7)</span></td></tr>
+<tr><td>9</td><td>Ack only, no fill, for latency orders</td><td>The fill was a second encode, journal and write with no information</td><td><b>p90 ≈ −6.4, p99 ≈ −6.1, p99.9 ≈ −29</b> <span style="color:#6a7179">(−12.7, −12.2, −58)</span></td></tr>
+<tr style="background:#ecebe4"><td>10</td><td>Simulator order path 1,076 → 312 bytes</td><td>Regex, string ids, atomics and locked counters on the hot path</td><td>Garbage 1 MB/s → 0.3; p50 in noise</td></tr>
+<tr><td>11</td><td>Persistence without allocation</td><td>Journal writes allocated, four of them per round trip</td><td><b>p50 ≈ 34.1 → 29.2</b> <span style="color:#6a7179">(68.2 → 58.3)</span>; <b>p99.99 ≈ 1,448 → 274</b> <span style="color:#6a7179">(2,896 → 548)</span></td></tr>
+<tr style="background:#ecebe4"><td>12</td><td>Orders sent from the event loop itself</td><td>A separate pacer thread could be descheduled and its lateness hid</td><td><b>p50 ≈ −1.5</b> <span style="color:#6a7179">(−2.9)</span>; <b>p99.99 ≈ 742 → 138</b> <span style="color:#6a7179">(1,483 → 276)</span></td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">c5.xlarge, 100,000 orders at 1,000/s; one way is half the round trip; same-stack deltas where shown as ±, otherwise consecutive runs; full tables in docs/latency-baseline.md</p>
+<aside>The second six are about the tail as much as the median. Presizing the order book removed a 39 millisecond stall. Allocation-free persistence took the slowest one in ten thousand from nearly three milliseconds to half a millisecond. Sending from the event loop removed the last source of hidden lateness in the measurement itself.</aside>
+</section>
+<section id="latency-steps-host" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Host and transport work: ≈ 29 µs to 13.8 one way (58 to 27.6 round trip)</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:4%;text-align:left">#</th><th style="width:26%;text-align:left">Change</th><th style="width:40%;text-align:left">Why it mattered</th><th style="width:10%;text-align:right">≈ one way</th><th style="width:20%;text-align:right;font-weight:400;color:#c9d3de">round trip p50 / p99</th></tr>
+<tr><td>13</td><td>c6in.xlarge instead of c5.xlarge</td><td>Newer Nitro card and host; every c5 stack's millisecond maxima disappeared</td><td style="text-align:right;font-weight:600">29.4</td><td style="text-align:right;color:#6a7179">58.7 / 90.1</td></tr>
+<tr style="background:#ecebe4"><td>14</td><td>c6in.2xlarge, low-latency queue, NUMA-aware layout</td><td>Write-combining doorbells; loop core and NIC on one node</td><td style="text-align:right;font-weight:600">23.2</td><td style="text-align:right;color:#6a7179">46.3 / 69.7</td></tr>
+<tr><td>15</td><td>Chronicle pretouch thread</td><td>Journal page faults were the store tail; write p99.9 34 to 42 µs → 3 to 5</td><td style="text-align:right;font-weight:600">24.5</td><td style="text-align:right;color:#6a7179">48.9 / 62.3</td></tr>
+<tr style="background:#ecebe4"><td>16</td><td>JDK 25 and the transport seam, kernel path</td><td>One JDK everywhere; the network layer behind an interface, no regression</td><td style="text-align:right;font-weight:600">22.9</td><td style="text-align:right;color:#6a7179">45.8 / 62.1</td></tr>
+<tr><td>17</td><td>F-Stack transport: FreeBSD TCP on DPDK</td><td>The kernel leaves the data path; socket write 2.5 µs → 0.76</td><td style="text-align:right;font-weight:600">20.0</td><td style="text-align:right;color:#6a7179">40.0 / 46.7</td></tr>
+<tr style="background:#ecebe4"><td>18</td><td>Same build on AMD metal, m8azn.metal-12xl</td><td>No hypervisor, 100 Gb card, 5 GHz: a 17 µs floor and half the stack cost</td><td style="text-align:right;font-weight:700;color:#1b9e8a">13.8</td><td style="text-align:right;color:#6a7179">27.6 / 31.1</td></tr>
+</table>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4"><b>Steps 13 to 16 are host choice, NIC queue mode, memory layout and a JDK upgrade,</b> each verified by a run before being kept. <b>Step 17 is the one architectural change:</b> a transport interface, a second implementation and a configuration switch; the kernel path is unchanged.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">100,000 orders at 1,000/s, persistence on, isolated cores; one run per row on a fresh stack, row 18 the better of two; one way is half the round trip p50</p>
+<aside>From step 13 the engine was no longer the bottleneck, so the work moved to the host: the instance generation, the NIC's low-latency queue mode, memory placement, and the journal's page faults. Step 17 is the big architectural one: a userspace TCP stack driven from the engine's own busy-spin loop. Step 18 is the same build on a bare-metal AMD host, which shows what the engine does when the host is no longer in the way.</aside>
+</section>
+<section id="where-time-goes" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Where ≈ 21 µs one way goes: the network is more than half, the engines less than a fifth</h2>
+<p style="font-size:26px;color:#3f4a5a">Measured on one c6in.2xlarge stack by subtraction: a raw DPDK ping-pong, then a TCP echo through F-Stack with no JVM, then the full FIX round trip with per-stage timestamps. One way is half of each.</p>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;height:120px;gap:4px">
+<div style="flex:227;background:#0f1b2d;border-radius:12px 0 0 12px;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:40px;font-weight:600;color:#f6f5f0;line-height:1">≈ 11.4 µs</p><p style="font-size:24px;color:#c9d3de">network: NIC, fabric, NIC; 22.7 per round trip</p></div>
+<div style="flex:112;background:#4a7fb5;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:40px;font-weight:600;color:#f6f5f0;line-height:1">≈ 5.6 µs</p><p style="font-size:24px;color:#e3ecf5">F-Stack TCP; 11.2 per round trip</p></div>
+<div style="flex:75;background:#1b9e8a;border-radius:0 12px 12px 0;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:40px;font-weight:600;color:#f6f5f0;line-height:1">≈ 3.7 µs</p><p style="font-size:24px;color:#dff5ef">two engines; 7.5</p></div>
+</div>
+<p style="font-size:24px;color:#6a7179">≈ 20.7 µs one way in all at p50 with stage timing on, 20.0 without (round trip 41.4 and 40.0). The kernel transport on the same hosts: ≈ 24.2 one way with stage timing, 22.9 without (48.3 and 45.8).</p>
+</div>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:30px;font-weight:600">Network, ≈ 11.4 µs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Two hosts in a placement group, measured with a C program on the poll-mode driver. No software can lower this on a given host; a different host can (≈ 8.6 on AMD metal, 16 on c7i metal).</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:30px;font-weight:600">TCP stack, ≈ 5.6 µs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">FreeBSD's TCP running in userspace on DPDK: about 2.8 µs per send or receive, two of each per round trip. A purpose-built stack would do each in well under a microsecond. This is the largest remaining software cost.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:30px;font-weight:600">Engines, ≈ 3.7 µs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Decode, session logic, journal write, encode and socket call on both sides, with no allocation. The socket write itself is 0.76 µs on F-Stack against 2.5 on the kernel. Scales with clock: ≈ 2.1 µs at 5 GHz (4.1 per round trip).</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Source: docs/latency-baseline.md, "where F-Stack's time goes", 26 October 2026; one way is half the measured round trip</p>
+<aside>The point for a buyer: the engine is not the bottleneck. On this host the two engines together account for about three and a half microseconds of a twenty-one microsecond one-way latency, seven and a half of a forty-one microsecond round trip. The rest is the network card and fabric, which only a different host changes, and the TCP stack, which is the next engineering target.</aside>
+</section>
+<section id="hosts" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Three AWS hosts: the card and the hypervisor set the floor, the clock sets the engine's share</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:31%;text-align:left">Path</th><th style="width:23%;text-align:right">c6in.2xlarge (VM)</th><th style="width:23%;text-align:right">c7i.metal-24xl</th><th style="width:23%;text-align:right">m8azn.metal-12xl</th></tr>
+<tr style="background:#dff5ef"><td style="font-weight:600">≈ FIX one way, F-Stack / kernel</td><td style="text-align:right;font-weight:600">20.0 / 22.9</td><td style="text-align:right;font-weight:600">24.3 / 22.5</td><td style="text-align:right;font-weight:700;color:#1b9e8a">13.8 / 17 to 19</td></tr>
+<tr><td style="color:#6a7179">FIX round trip, F-Stack transport</td><td style="text-align:right;color:#6a7179">40.0 / 46.7</td><td style="text-align:right;color:#6a7179">48.5 / 54</td><td style="text-align:right;color:#6a7179">27.6 / 31</td></tr>
+<tr style="background:#ecebe4"><td style="color:#6a7179">FIX round trip, kernel transport</td><td style="text-align:right;color:#6a7179">45.8 / 62</td><td style="text-align:right;color:#6a7179">45 / 51.5</td><td style="text-align:right;color:#6a7179">34 to 38 / 39 to 43</td></tr>
+<tr><td>Kernel TCP alone (sockperf), round trip</td><td style="text-align:right">47 to 49</td><td style="text-align:right">52 to 55</td><td style="text-align:right">21.3</td></tr>
+<tr style="background:#ecebe4"><td>F-Stack TCP echo, no JVM, round trip</td><td style="text-align:right">33.9</td><td style="text-align:right">43.6</td><td style="text-align:right">23.5</td></tr>
+<tr><td>DPDK UDP ping-pong, no JVM, round trip</td><td style="text-align:right">22.7</td><td style="text-align:right">31.9</td><td style="text-align:right">17.2</td></tr>
+<tr style="background:#ecebe4"><td>Engines, per round trip (FIX minus echo)</td><td style="text-align:right">7.5 (3.5 GHz Ice Lake)</td><td style="text-align:right">4.9 (3.8 GHz SPR)</td><td style="text-align:right">4.1 (5.0 GHz Zen 5)</td></tr>
+</table>
+<div style="display:flex;gap:32px">
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Metal removes the tail.</b> On c7i the kernel path's p99 fell from 62 to 51.5 at an unchanged p50: the hypervisor's share was the p90 to p99 band.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>The NIC generation matters more than metal.</b> c7i's 37.5 Gb card is 9 µs slower at the floor than c6in's, so F-Stack loses to the kernel there.</p>
+<p style="flex:1;font-size:24px;color:#3f4a5a;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:20px 24px"><b>Fast card plus metal plus 5 GHz</b> gives a 17 µs floor and F-Stack's TCP cost halves to 6.3 µs; FIX lands at ≈ 13.8 one way, 27.6 round trip.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">p50 / p99 in µs, one way half the round trip p50; docs/latency-baseline.md, 26 and 27 October 2026; $0.90, $4.28 and $4.96 per host-hour</p>
+<aside>p50 and p99 in microseconds, one stack per host, identical code and configuration; the floor rows are C programs with no JVM. This table is the clearest statement of where the remaining microseconds live. Read the first row for the headline: one way, half the measured round trip. Then the floor rows: the raw network between two hosts is 17 to 32 microseconds per round trip depending on the card and whether a hypervisor is in the path. Everything the engine adds is 4 to 7.5 microseconds per round trip and tracks the clock speed. The F-Stack TCP stack sits between the two.</aside>
+</section>
+<section id="comparison" data-transition="fade" style="display:flex; flex-direction:column; gap:18px; padding:128px 128px 160px; background:#f6f5f0">
+  <h2 style="font-family:'Space Grotesk', Arial, sans-serif; font-size:64px; font-weight:600; line-height:1.1; color:#0f1b2d">Published AWS latency studies next to ours</h2>
+  <table style="font-family:'IBM Plex Sans', Arial, sans-serif; font-size:24px; font-variant-numeric:tabular-nums; color:#0f1b2d; border:1px solid #d5d2c8">
+    <tr style="background:#0f1b2d"><th style="width:56%; color:#f6f5f0">Study and what was measured</th><th style="width:17%; color:#f6f5f0">Host</th><th style="width:27%; text-align:right; color:#f6f5f0">≈ one way p50 <span style="font-weight:400; color:#c9d3de">(round trip p50 / p99)</span></th></tr>
+    <tr><td>Omni-Bridge: FIX order to ack, F-Stack, journal on both sides, 1,000/s</td><td>c6in.2xlarge</td><td style="text-align:right"><b>≈ 20.0</b> <span style="color:#6a7179">(40.0 / 46.7)</span></td></tr>
+    <tr style="background:#ecebe4"><td>Omni-Bridge: same, F-Stack, AMD bare metal</td><td>m8azn.metal-12xl</td><td style="text-align:right"><b style="color:#1b9e8a">≈ 13.8</b> <span style="color:#6a7179">(27.6 / 31.1)</span></td></tr>
+    <tr><td>AWS 2025: Aeron Transport, open source, UDP, no session layer or journal, 100k/s</td><td>c6in.16xlarge</td><td style="text-align:right"><b>≈ 10.5</b> <span style="color:#6a7179">(21 / 32)</span></td></tr>
+    <tr style="background:#ecebe4"><td>AWS 2025: Aeron Transport Premium, DPDK kernel bypass, 100k/s</td><td>c6in.16xlarge</td><td style="text-align:right"><b>≈ 12</b> <span style="color:#6a7179">(24 / 29)</span></td></tr>
+    <tr><td>AWS 2025: Aeron Cluster Premium, replicated log with consensus, 100k/s</td><td>c6in.16xlarge</td><td style="text-align:right"><b>≈ 38</b> <span style="color:#6a7179">(76 / 98)</span></td></tr>
+    <tr style="background:#ecebe4"><td>AWS exchange prototype: FIX in, ZeroMQ to a matching engine (simulated delay), FIX ack out</td><td>m5zn.6xlarge, best of several</td><td style="text-align:right"><b>≈ 27 to 62</b> <span style="color:#6a7179">(55 to 124 / 75 to 157)</span></td></tr>
+  </table>
+  <div style="display:flex; flex-direction:column; gap:8px; padding:16px 32px; background:#0f1b2d; border-radius:12px">
+    <p style="font-family:'IBM Plex Sans', Arial, sans-serif; font-size:24px; line-height:1.4; color:#c9d3de"><b style="color:#4fc3b0">No TCP in the Aeron path.</b> Aeron sends over UDP with its own lightweight reliability: no connection state, no per-segment acknowledgements, no congestion control or retransmit timers; its figures are the NIC, the fabric and the library. A FIX session runs on TCP, so our path also pays a TCP stack: ≈ 3 to 5.5 µs one way for FreeBSD's on F-Stack, more on the kernel, plus the engines' own ≈ 2 to 3.7 µs.</p>
+    <p style="font-family:'IBM Plex Sans', Arial, sans-serif; font-size:24px; line-height:1.4; color:#c9d3de"><b style="color:#4fc3b0">Reading it.</b> No published study measures a FIX engine between two AWS hosts with its journal on. Our DPDK floor on c6in.2xlarge, ≈ 11.4 µs one way, matches Aeron Premium's transport-only figure on a host eight times larger; on AMD metal the full FIX path is ≈ 2 µs above it.</p>
+  </div>
+  <p style="position:absolute; bottom:40px; left:88px; width:1792px; font-family:'IBM Plex Sans', Arial, sans-serif; font-size:24px; line-height:1.4; color:#6a7179">Sources: <a href="https://aws.amazon.com/blogs/industries/aeron-on-aws-2025-performance-benchmark-results/" style="color:#4a7fb5">aws.amazon.com/blogs/industries/aeron-on-aws-2025-performance-benchmark-results</a> (rows 3 to 5); <a href="https://aws.amazon.com/blogs/industries/low-latency-cloud-native-exchanges/" style="color:#4a7fb5">aws.amazon.com/blogs/industries/low-latency-cloud-native-exchanges</a> (row 6); Omni-Bridge rows from docs/latency-baseline.md; one way is half the published round trip. Rates, message sizes and hosts differ; the table is context, not a like-for-like race</p>
+  <aside>Buyers will ask how this compares with what is out there. The honest answer is that nothing published is the same measurement: AWS's own benchmarks are for Aeron, a UDP messaging library with no TCP stack, no session layer and no journal, on a much larger instance, and the AWS exchange prototype includes a matching engine. Read against those, our numbers sit at the level of the best transport-only results while carrying a full FIX session, a TCP stack and durable persistence.</aside>
+</section>
+<section id="discarded" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Tried and not kept, part 1: kernel and thread tuning</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:27%;text-align:left">Approach</th><th style="width:33%;text-align:left">What was measured</th><th style="width:40%;text-align:left">Why it was dropped</th></tr>
+<tr><td>NIC interrupt moderation off</td><td>p50 65.2 against 63.6; tails within run spread</td><td>The spinning engine reads as soon as the driver has the packet</td></tr>
+<tr style="background:#ecebe4"><td>Kernel busy polling</td><td>sockperf −13 µs, FIX 0</td><td>The engine never blocks in receive; nothing for the kernel to speed up</td></tr>
+<tr><td>Sender thread on its own isolated cpu</td><td>Slip p99.99 2.7 ms → 7 µs, but p50 +2.6</td><td>Cost a core; superseded by sending from the event loop</td></tr>
+<tr style="background:#ecebe4"><td>Simulator journal without Aeron publish</td><td>Within 0.5 µs of the Aeron run to p99.99</td><td>The publish is an encode and a copy; the media driver sends elsewhere</td></tr>
+<tr><td>Journal write off the critical path</td><td>Not run</td><td>Rejected on principle: durability must precede the send</td></tr>
+<tr style="background:#ecebe4"><td>A lighter journal format than Chronicle</td><td>Reviewed, not built: ~1 µs at p50</td><td>No tail gain beyond the pretoucher; a second format to maintain</td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Each row kept its flag or history line so the experiment can be repeated; details in docs/latency-baseline.md</p>
+<aside>A buyer should know what did not work and why. Several of these are the first things a reviewer would suggest, such as kernel busy polling or turning interrupt moderation off, and both measured zero because the engine already spins. Two were rejected on principle rather than numbers: moving the journal write off the critical path, and a second journal format for a microsecond.</aside>
+</section>
+<section id="discarded-2" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Tried and not kept, part 2: hosts and the bypass path</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:27%;text-align:left">Approach</th><th style="width:33%;text-align:left">What was measured</th><th style="width:40%;text-align:left">Why it was dropped</th></tr>
+<tr><td>c7a.2xlarge: full cores, 3.7 GHz</td><td>p50 63.9 against 58.7 on c6in.xlarge</td><td>At 1,000 msg/s the card and host generation matter, not cores or clock</td></tr>
+<tr style="background:#ecebe4"><td>ENA Express</td><td>Ruled out from AWS's guidance</td><td>Needs 8xlarge and up; raises the light-traffic median by tens of µs</td></tr>
+<tr><td>Intel bare metal, c7i.metal-24xl</td><td>Kernel 45 / 51.5; F-Stack 48.5 / 54</td><td>Its 37.5 Gb card is 9 µs slower at the floor; F-Stack lost to the kernel</td></tr>
+<tr style="background:#ecebe4"><td>ARM metal, c7gn.metal</td><td>Not run</td><td>Changes CPU architecture, clock and card at once; toolchain unported</td></tr>
+<tr><td>F-Stack at its default idle interval</td><td>p50 91.0</td><td>A setting, not the stack: sends slipped up to 100 µs; at zero, 40.0</td></tr>
+<tr style="background:#ecebe4"><td>Loading the F-Stack shim with dlopen</td><td>JVM crashed on thread-local storage</td><td>Replaced by preloading the shim at JVM start, same code</td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Not yet run: c6in.metal, which would separate the hypervisor's share from the NIC generation's on the Intel path</p>
+<aside>The host experiments taught us that the network card generation dominates: whole cores and a higher clock did nothing on c7a, and Intel bare metal lost ground because its card is a generation behind. The AMD metal result on the next slides is what happened when the fast card, no hypervisor and a 5 GHz clock finally came together.</aside>
+</section>
+<section id="fstack" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">The transport seam: the kernel became one option and a userspace TCP stack the other</h2>
+<div style="display:flex;gap:40px">
+<div style="flex:1;position:relative;height:520px">
+
+<div style="position:absolute;left:0;top:0;width:760px;height:100px;background:#0f1b2d;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:28px;font-weight:600;color:#f6f5f0">Event loop, sessions, handlers</p><p style="font-size:24px;color:#c9d3de">unchanged above the seam</p></div>
+<div style="position:absolute;left:0;top:150px;width:760px;height:70px;background:#1b9e8a;border-radius:12px;display:flex;align-items:center;padding:0 28px"><p style="font-size:26px;font-weight:600;color:#f6f5f0">Transport and Endpoint interfaces: network.transport = kernel | fstack</p></div>
+<div style="position:absolute;left:0;top:300px;width:350px;height:110px;background:#ffffff;border:2px solid #4a7fb5;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 24px"><p style="font-size:26px;font-weight:600">NioTransport</p><p style="font-size:24px;color:#3f4a5a">Java NIO sockets and selector</p></div>
+<div style="position:absolute;left:410px;top:300px;width:350px;height:110px;background:#ffffff;border:2px solid #1b9e8a;border-radius:12px;display:flex;flex-direction:column;justify-content:center;padding:0 24px"><p style="font-size:26px;font-weight:600">FstackTransport</p><p style="font-size:24px;color:#3f4a5a">F-Stack via a C shim and JDK 25 FFM</p></div>
+<div style="position:absolute;left:0;top:460px;width:350px;height:60px;background:#ecebe4;border-radius:12px;display:flex;align-items:center;justify-content:center"><p style="font-size:24px;color:#3f4a5a">Linux kernel TCP, ENA driver</p></div>
+<div style="position:absolute;left:410px;top:460px;width:350px;height:60px;background:#ecebe4;border-radius:12px;display:flex;align-items:center;justify-content:center"><p style="font-size:24px;color:#3f4a5a">FreeBSD TCP on DPDK, NIC owned</p></div>
+<svg class="x-connector" aria-hidden="true"><line x1="380" y1="100" x2="380" y2="150" stroke="#0f1b2d" stroke-width="3"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="175" y1="220" x2="175" y2="289.5" stroke="#4a7fb5" stroke-width="3"/><polygon points="175,300 170.275,289.5 179.725,289.5" fill="#4a7fb5"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="585" y1="220" x2="585" y2="289.5" stroke="#1b9e8a" stroke-width="3"/><polygon points="585,300 580.275,289.5 589.725,289.5" fill="#1b9e8a"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="175" y1="410" x2="175" y2="449.5" stroke="#4a7fb5" stroke-width="3"/><polygon points="175,460 170.275,449.5 179.725,449.5" fill="#4a7fb5"/></svg>
+<svg class="x-connector" aria-hidden="true"><line x1="585" y1="410" x2="585" y2="449.5" stroke="#1b9e8a" stroke-width="3"/><polygon points="585,460 580.275,449.5 589.725,449.5" fill="#1b9e8a"/></svg>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">What it is</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Two small interfaces under the event loop. The F-Stack one runs FreeBSD's TCP as a library on DPDK: one pinned thread polls the NIC, runs TCP, and runs the engine's loop iteration as the stack's callback.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">What it bought</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">On c6in.2xlarge, ≈ 20.0 one way against 22.9 at p50 and 23.4 against 31 at p99 (40.0 / 45.8 and 46.7 / 62.1 round trip): the kernel's 12 µs p90-to-p99 band became 4. On AMD metal, ≈ 13.8 (27.6).</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">What it costs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A dedicated NIC and a core per process, root for the device mapping, a native build on the host, no TLS on that path. An option, not a requirement.</p>
+</div>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Module network-dpdk; the seam is in the network module; the kernel implementation wraps NIO one to one and measured no cost</p>
+<aside>The one architectural change of the programme. The engine did not know what a socket was beyond Java NIO. We put two small interfaces underneath it, kept the NIO implementation as the default, and added a second implementation on F-Stack, which is FreeBSD's TCP running in userspace on DPDK. Everything above the seam, sessions and handlers, is untouched. The buyer's takeaway: the kernel-bypass path is a configuration switch, with known costs, on an engine that is already fast on the kernel.</aside>
+</section>
+<section id="next" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">What is next: the remaining microseconds are in the TCP stack and the host, not the engine</h2>
+<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">A purpose-built TCP for the bypass path</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">F-Stack's FreeBSD TCP costs ≈ 3 to 5.5 µs one way (6 to 11 per round trip). Published from-scratch stacks run at a few hundred nanoseconds per packet. A minimal single-connection stack is the largest software win left: up to ≈ 4.5 µs one way on c6in.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Metal with the fast card, repeated</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">One AMD metal stack gave ≈ 13.8 µs one way (27.6 round trip). A c6in.metal run would separate the hypervisor's share from the card generation's on the Intel path; both are an afternoon and under $30.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Write-combining for the NIC's low-latency queue</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">The kernel driver uses it; the DPDK path never did because the stock vfio driver has none. Enabling it would move every bypass row down together.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Hardening the bypass path for production</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Graceful stack shutdown, running without root, TLS on the bypass transport, and the alert and dashboard metric names reconciled with what the engine emits.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Everything above is optional for a kernel-path deployment, which is production-ready today at ≈ 23 µs one way (45 round trip) on a cloud VM and ≈ 17 to 19 (34 to 38) on metal</p>
+<aside>The engine's own share is four to seven microseconds and tracks the clock, so the next gains are elsewhere. The biggest is a TCP stack written for one connection on a reliable link, which the literature says runs an order of magnitude cheaper than FreeBSD's. The rest is host work and the production hardening a bypass deployment needs.</aside>
+</section>
+<section id="closing" data-transition="fade" style="background:#0f1b2d;color:#f6f5f0;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:24px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#4fc3b0">In one slide</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;width:1500px">A measured engine: every design choice has a number behind it, and every number has a script that reproduces it</h2>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">≈ 13.8 µs</p><p style="font-size:24px;color:#c9d3de">FIX order one way at p50, two AWS hosts, journaling on</p><p style="font-size:24px;color:#8fa0b3">half the measured 27.6 µs round trip</p></div>
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">≈ 15.5 µs</p><p style="font-size:24px;color:#c9d3de">one way at p99; the slowest one in a thousand is under 2 µs behind the median</p><p style="font-size:24px;color:#8fa0b3">31 µs round trip</p></div>
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">0 bytes</p><p style="font-size:24px;color:#c9d3de">allocated per message on the hot path, asserted by a test</p></div>
+<div style="display:flex;flex-direction:column;gap:6px;border-top:3px solid #4fc3b0;padding:20px 0 0"><p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:80px;font-weight:600;line-height:1">5 families</p><p style="font-size:24px;color:#c9d3de">FIX, OUCH, iLink 3, Optiq, Pillar on one engine and one simulator; the sixth is a module</p></div>
+</div>
+<p style="font-size:26px;color:#8fa0b3">Sources: docs/latency-baseline.md, docs/latency-history.jsonl (56 runs), docs/PROTOCOL_ARCHITECTURE.md; the deck's numbers are from runs of 23 to 27 October 2026; one way is half the measured round trip</p>
+<aside>Close on the four numbers. The one-way latency and its tail on the best host measured, the allocation guarantee, and the protocol coverage. Everything in this deck is reproducible from the repository with one command on a fresh AWS stack.</aside>
+</section>
+</div>
+<div id="hud"></div>
+<div id="notes"></div>
+<div id="grid"></div>
+<script>var DECK_TITLE="Omni-Bridge Overview";
+(function(){
+  var secs=[].slice.call(document.querySelectorAll('#stage > section'));
+  var n=secs.length, cur=0, hud=document.getElementById('hud'), notes=document.getElementById('notes');
+  var grid=document.getElementById('grid'), hudTimer;
+  function fit(){
+    var s=Math.min(innerWidth/1920, innerHeight/1080);
+    var st=document.getElementById('stage');
+    st.style.transform='translate(-50%,-50%) scale('+s+')';
+    st.style.transformOrigin='center center';
+    st.style.left='50%'; st.style.top='50%';
+  }
+  function show(i, push){
+    cur=Math.max(0, Math.min(n-1, i));
+    secs.forEach(function(s,k){ s.classList.toggle('on', k===cur); });
+    hud.textContent=(cur+1)+' / '+n;
+    var a=secs[cur].querySelector('aside');
+    notes.textContent=a?a.textContent:'(no notes)';
+    document.title=DECK_TITLE+' — '+(cur+1)+'/'+n;
+    if(push!==false && location.hash!=='#slide-'+(cur+1)) history.replaceState(null,'','#slide-'+(cur+1));
+    [].forEach.call(grid.children,function(t,k){ t.classList.toggle('cur',k===cur); });
+    flash();
+  }
+  function flash(){ document.body.classList.add('hud'); clearTimeout(hudTimer); hudTimer=setTimeout(function(){document.body.classList.remove('hud');},1500); }
+  function fromHash(){ var m=/slide-(\d+)/.exec(location.hash); show(m?parseInt(m[1],10)-1:0, false); }
+  function buildGrid(){
+    if(grid.children.length) return;
+    secs.forEach(function(s,k){
+      var t=document.createElement('div'); t.className='thumb';
+      var f=document.createElement('iframe'); f.setAttribute('loading','lazy');
+      var css=document.getElementById('deckcss').textContent;
+      var fonts=[].map.call(document.querySelectorAll('link[rel=stylesheet]'),function(l){return l.outerHTML;}).join('');
+      f.srcdoc='<!doctype html><html><head><meta charset="utf-8">'+fonts+'<style>'+css+' section{visibility:visible;position:static}</style></head><body>'+s.outerHTML+'</body></html>';
+      var lab=document.createElement('span'); lab.textContent=(k+1)+' '+(s.querySelector('h1,h2')||{textContent:s.id}).textContent.slice(0,60);
+      t.appendChild(f); t.appendChild(lab);
+      t.onclick=function(){ document.body.classList.remove('grid'); show(k); };
+      grid.appendChild(t);
+    });
+    scaleGrid();
+  }
+  function scaleGrid(){
+    [].forEach.call(grid.querySelectorAll('.thumb'),function(t){ var f=t.querySelector('iframe'); f.style.transform='scale('+(t.clientWidth/1920)+')'; });
+  }
+  addEventListener('resize', function(){ fit(); if(document.body.classList.contains('grid')) scaleGrid(); });
+  addEventListener('hashchange', fromHash);
+  addEventListener('keydown', function(e){
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    switch(e.key){
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown': case 'Enter': show(cur+1); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'PageUp': case 'Backspace': show(cur-1); break;
+      case 'Home': show(0); break;
+      case 'End': show(n-1); break;
+      case 'n': case 'N': document.body.classList.toggle('notes'); break;
+      case 'o': case 'O': case 'Escape':
+        if(e.key==='Escape' && !document.body.classList.contains('grid')) return;
+        if(!document.body.classList.contains('grid')) buildGrid();
+        document.body.classList.toggle('grid'); if(document.body.classList.contains('grid')) scaleGrid(); break;
+      case 'f': case 'F': if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); break;
+      default: return;
+    }
+    e.preventDefault();
+  });
+  document.getElementById('stage').addEventListener('click', function(e){
+    if(e.target.closest('a')) return;
+    show(e.clientX > innerWidth/2 ? cur+1 : cur-1);
+  });
+  addEventListener('mousemove', flash);
+  fit(); fromHash();
+})();
+</script>
+</body>
+</html>

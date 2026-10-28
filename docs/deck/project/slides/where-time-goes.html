@@ -1,0 +1,28 @@
+<section id="where-time-goes" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Where ≈ 21 µs one way goes: the network is more than half, the engines less than a fifth</h2>
+<p style="font-size:26px;color:#3f4a5a">Measured on one c6in.2xlarge stack by subtraction: a raw DPDK ping-pong, then a TCP echo through F-Stack with no JVM, then the full FIX round trip with per-stage timestamps. One way is half of each.</p>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;height:120px;gap:4px">
+<div style="flex:227;background:#0f1b2d;border-radius:12px 0 0 12px;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:40px;font-weight:600;color:#f6f5f0;line-height:1">≈ 11.4 µs</p><p style="font-size:24px;color:#c9d3de">network: NIC, fabric, NIC; 22.7 per round trip</p></div>
+<div style="flex:112;background:#4a7fb5;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:40px;font-weight:600;color:#f6f5f0;line-height:1">≈ 5.6 µs</p><p style="font-size:24px;color:#e3ecf5">F-Stack TCP; 11.2 per round trip</p></div>
+<div style="flex:75;background:#1b9e8a;border-radius:0 12px 12px 0;display:flex;flex-direction:column;justify-content:center;padding:0 28px"><p style="font-size:40px;font-weight:600;color:#f6f5f0;line-height:1">≈ 3.7 µs</p><p style="font-size:24px;color:#dff5ef">two engines; 7.5</p></div>
+</div>
+<p style="font-size:24px;color:#6a7179">≈ 20.7 µs one way in all at p50 with stage timing on, 20.0 without (round trip 41.4 and 40.0). The kernel transport on the same hosts: ≈ 24.2 one way with stage timing, 22.9 without (48.3 and 45.8).</p>
+</div>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:30px;font-weight:600">Network, ≈ 11.4 µs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Two hosts in a placement group, measured with a C program on the poll-mode driver. No software can lower this on a given host; a different host can (≈ 8.6 on AMD metal, 16 on c7i metal).</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:30px;font-weight:600">TCP stack, ≈ 5.6 µs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">FreeBSD's TCP running in userspace on DPDK: about 2.8 µs per send or receive, two of each per round trip. A purpose-built stack would do each in well under a microsecond. This is the largest remaining software cost.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:28px 32px">
+<h3 style="font-size:30px;font-weight:600">Engines, ≈ 3.7 µs</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Decode, session logic, journal write, encode and socket call on both sides, with no allocation. The socket write itself is 0.76 µs on F-Stack against 2.5 on the kernel. Scales with clock: ≈ 2.1 µs at 5 GHz (4.1 per round trip).</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Source: docs/latency-baseline.md, "where F-Stack's time goes", 26 October 2026; one way is half the measured round trip</p>
+<aside>The point for a buyer: the engine is not the bottleneck. On this host the two engines together account for about three and a half microseconds of a twenty-one microsecond one-way latency, seven and a half of a forty-one microsecond round trip. The rest is the network card and fabric, which only a different host changes, and the TCP stack, which is the next engineering target.</aside>
+</section>

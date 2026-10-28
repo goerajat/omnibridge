@@ -1,0 +1,31 @@
+<section id="rationale" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Six design decisions, each made for a measured reason</h2>
+<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:28px">
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">One spinning thread per loop</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A blocking read pays a 5 to 20 µs kernel wake-up that varies run to run. Spinning removes it. The price is one core per loop.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Pinned to an isolated core</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Ticks, interrupts and other threads are moved off the core at boot. Little at the median, a lot at the tail, and it makes runs comparable.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Flyweights over direct buffers</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A message is a view over the bytes where they arrived; fields are read and encoded in place. No parse tree, no copies, no objects.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Lock-free ring per connection</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Any thread claims, encodes and commits; the loop drains to the socket. A commit from the loop thread is written at once.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Zero allocation, enforced by tests</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A test asserts 0 bytes per order on the acceptor with the journal on, and at most 320 on the simulator. GC is a non-event.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Journal first, on the critical path</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Durability before the send was never traded away. The work went into making the write cheap: 0.4 to 0.8 µs, page faults taken ahead.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Also: HOCON configuration with a component lifecycle (initialize, active, standby, stop), so latency-sensitive deployments can switch off admin, persistence or the scheduler</p>
+<aside>These are the reasons the engine is shaped the way it is. Each one was chosen against a measurement rather than a preference. The first two are about the host and are where the tail latency went. The middle two are about memory and are where the median went. The last two are the principles that were not negotiable: no garbage, and no send before the journal.</aside>
+</section>

@@ -1,0 +1,47 @@
+{
+  "v": 4,
+  "createdOnFiles": {"v": 1, "at": "2026-10-27T18:30:00Z"},
+  "lists": "css",
+  "title": "Omni-Bridge Overview",
+  "order": [
+    "cover",
+    "what-it-is",
+    "use-case",
+    "building-blocks",
+    "protocols",
+    "extensibility",
+    "architecture",
+    "rationale",
+    "message-path",
+    "persistence",
+    "aeron",
+    "deployment",
+    "monitoring",
+    "testing",
+    "latency-method",
+    "latency-journey",
+    "latency-steps-engine",
+    "latency-steps-engine-2",
+    "latency-steps-host",
+    "where-time-goes",
+    "hosts",
+    "comparison",
+    "discarded",
+    "discarded-2",
+    "fstack",
+    "next",
+    "closing"
+  ],
+  "sections": {
+    "s1": {"description": "What Omni-Bridge is, where it fits against colocation, the technologies it builds on, the protocols it speaks and how the next one is added.", "start": "cover"},
+    "s2": {"description": "How the engine is built and why: event loop, zero allocation, persistence, remote store.", "start": "architecture"},
+    "s3": {"description": "Deployment, monitoring and the test harness.", "start": "deployment"},
+    "s4": {"description": "The latency programme: method, the step-by-step journey, where the time goes, what was discarded.", "start": "latency-method"},
+    "s5": {"description": "What comes next.", "start": "next"}
+  },
+  "faces": {
+    "space-grotesk": {"family": "Space Grotesk", "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"},
+    "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"}
+  },
+  "designSystems": []
+}

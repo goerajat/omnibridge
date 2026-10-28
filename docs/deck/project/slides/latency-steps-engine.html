@@ -1,0 +1,14 @@
+<section id="latency-steps-engine" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Engine work, part 1: ≈ 140 µs to 45 one way (280 to 90 round trip)</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:4%;text-align:left">#</th><th style="width:26%;text-align:left">Change</th><th style="width:36%;text-align:left">What was wrong</th><th style="width:34%;text-align:left">Measured impact, ≈ one way <span style="font-weight:400;color:#c9d3de">(round trip)</span></th></tr>
+<tr><td>1</td><td>Busy-spin and pinning on the initiator</td><td>Blocking reads paid a kernel wake-up on every message</td><td><b>p50 ≈ 140 → 72</b> <span style="color:#6a7179">(280 → 144)</span></td></tr>
+<tr style="background:#ecebe4"><td>2</td><td>Simulator tuned the same way</td><td>It blocked in select() and its loop wandered across cpus</td><td><b>p50 ≈ 72 → 53</b> <span style="color:#6a7179">(144 → 106)</span></td></tr>
+<tr><td>3</td><td>Event loop drains from a cached key array</td><td>Iterating selector keys made 180 MB/s of garbage, a GC pause every 0.85 s</td><td><b>p50 ≈ 53 → 45</b> <span style="color:#6a7179">(106 → 90)</span>; callback p99 118 → 21</td></tr>
+<tr style="background:#ecebe4"><td>4</td><td>No selector wake-up when spinning; one read per message</td><td>Each wake-up cost 3.5 to 6 µs; header and body were two reads</td><td><b>Local p50 ≈ −7.5, p99 ≈ −15</b> <span style="color:#6a7179">(−15, −30)</span></td></tr>
+<tr><td>5</td><td>No allocation per message on the loop</td><td>559 bytes per order: strings, boxed doubles, timestamps, iterators</td><td><b>Engines ≈ 12.1 → 7.7 µs per direction</b> <span style="color:#6a7179">(24.2 → 15.3)</span></td></tr>
+<tr style="background:#ecebe4"><td>6</td><td>Event-loop core isolated at boot</td><td>Ticks, interrupts and other threads shared the core</td><td>Ticks 995 → 1 per s; <b>p50 ≈ −0.9</b> <span style="color:#6a7179">(−1.7)</span></td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">c5.xlarge, 100,000 orders at 1,000/s; one way is half the round trip; same-stack deltas where shown as ±, otherwise consecutive runs; full tables in docs/latency-baseline.md</p>
+<aside>The first six changes are all on the cheapest instance type. The pattern is the same each time: a stage timestamp or a profile pointed at one cost, one change removed it, one run confirmed it. The two largest single wins were spinning with pinning on each side, which removed the wake-up path, and the garbage-free event loop, which removed a GC pause every 0.85 seconds.</aside>
+</section>

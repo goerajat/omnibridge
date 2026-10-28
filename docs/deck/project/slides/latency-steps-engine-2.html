@@ -1,0 +1,14 @@
+<section id="latency-steps-engine-2" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:24px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:56px;font-weight:600;line-height:1.1">Engine work, part 2: ≈ 45 µs to 29 one way (90 to 58 round trip), and the tail from milliseconds to hundreds of µs</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:4%;text-align:left">#</th><th style="width:26%;text-align:left">Change</th><th style="width:36%;text-align:left">What was wrong</th><th style="width:34%;text-align:left">Measured impact, ≈ one way <span style="font-weight:400;color:#c9d3de">(round trip)</span></th></tr>
+<tr><td>7</td><td>Order-book maps presized</td><td>A hash-map rehash stalled the loop for tens of milliseconds</td><td>max 39 ms → 2.5 ms</td></tr>
+<tr style="background:#ecebe4"><td>8</td><td>Write on loop-thread commit</td><td>The ack waited for the end of the loop pass before being written</td><td>Queue wait 4.35 → 0.04 µs; <b>p50 ≈ −0.5 to −0.9</b> <span style="color:#6a7179">(−0.9 to −1.7)</span></td></tr>
+<tr><td>9</td><td>Ack only, no fill, for latency orders</td><td>The fill was a second encode, journal and write with no information</td><td><b>p90 ≈ −6.4, p99 ≈ −6.1, p99.9 ≈ −29</b> <span style="color:#6a7179">(−12.7, −12.2, −58)</span></td></tr>
+<tr style="background:#ecebe4"><td>10</td><td>Simulator order path 1,076 → 312 bytes</td><td>Regex, string ids, atomics and locked counters on the hot path</td><td>Garbage 1 MB/s → 0.3; p50 in noise</td></tr>
+<tr><td>11</td><td>Persistence without allocation</td><td>Journal writes allocated, four of them per round trip</td><td><b>p50 ≈ 34.1 → 29.2</b> <span style="color:#6a7179">(68.2 → 58.3)</span>; <b>p99.99 ≈ 1,448 → 274</b> <span style="color:#6a7179">(2,896 → 548)</span></td></tr>
+<tr style="background:#ecebe4"><td>12</td><td>Orders sent from the event loop itself</td><td>A separate pacer thread could be descheduled and its lateness hid</td><td><b>p50 ≈ −1.5</b> <span style="color:#6a7179">(−2.9)</span>; <b>p99.99 ≈ 742 → 138</b> <span style="color:#6a7179">(1,483 → 276)</span></td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">c5.xlarge, 100,000 orders at 1,000/s; one way is half the round trip; same-stack deltas where shown as ±, otherwise consecutive runs; full tables in docs/latency-baseline.md</p>
+<aside>The second six are about the tail as much as the median. Presizing the order book removed a 39 millisecond stall. Allocation-free persistence took the slowest one in ten thousand from nearly three milliseconds to half a millisecond. Sending from the event loop removed the last source of hidden lateness in the measurement itself.</aside>
+</section>

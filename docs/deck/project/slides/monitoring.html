@@ -1,0 +1,26 @@
+<section id="monitoring" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Monitoring: engine metrics in Prometheus, Grafana dashboards and alerts, OmniView for operators</h2>
+<div style="display:flex;gap:28px">
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Metrics, from the engine</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A Prometheus endpoint on each admin port: session state, logons, messages in, out and rejected, sequence gaps and resends, heartbeats, ring-buffer claim failures, journal writes, JVM.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Meters resolved once; nothing built per message.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">Grafana and Alertmanager</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Three dashboards shipped: Overview, Session Deep Dive, and JVM and Infrastructure. Fifteen alert rules; critical ones page, warnings go to chat.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">Thirty-day retention, five-second scrape.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;background:#ffffff;border:1px solid #d5d2c8;border-radius:12px;padding:24px 28px">
+<h3 style="font-size:28px;font-weight:600">OmniView console</h3>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">One web console across all engines: session health cards, live state over WebSocket, enable or disable a session, set sequence numbers, act on simulator orders, browse the Aeron stores.</p>
+<p style="font-size:24px;color:#3f4a5a;line-height:1.4">A chat page queries sessions through the MCP server.</p>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:center;background:#0f1b2d;border-radius:12px;padding:24px 32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#4fc3b0;line-height:1.3">Critical alerts</p>
+<p style="font-size:24px;color:#c9d3de;line-height:1.4">Session disconnected, all sessions down, heartbeat timeout, ring-buffer claim failures, high reject rate, processing latency, GC pause. Warnings: logon failure spike, throughput drop, sequence gap, heap and direct-buffer pressure.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">infrastructure/docker for the local stack (Prometheus 9090, Grafana 3001, Alertmanager 9093); the AWS monitoring host runs the same stack plus OmniView on 3000</p>
+<aside>Operations get three things. Metrics from inside the engine, exposed in Prometheus format without touching the hot path. Dashboards and alerts that come with the product, so a deployment is observable on day one. And OmniView, a console that shows every engine's sessions in one place and lets an operator act: enable, disable, set a sequence number, or look at an order in the simulator.</aside>
+</section>

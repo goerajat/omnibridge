@@ -1,0 +1,14 @@
+<section id="discarded-2" data-transition="fade" style="background:#f6f5f0;color:#0f1b2d;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Tried and not kept, part 2: hosts and the bypass path</h2>
+<table style="font-size:24px;font-variant-numeric:tabular-nums;border:1px solid #d5d2c8">
+<tr style="background:#0f1b2d;color:#f6f5f0"><th style="width:27%;text-align:left">Approach</th><th style="width:33%;text-align:left">What was measured</th><th style="width:40%;text-align:left">Why it was dropped</th></tr>
+<tr><td>c7a.2xlarge: full cores, 3.7 GHz</td><td>p50 63.9 against 58.7 on c6in.xlarge</td><td>At 1,000 msg/s the card and host generation matter, not cores or clock</td></tr>
+<tr style="background:#ecebe4"><td>ENA Express</td><td>Ruled out from AWS's guidance</td><td>Needs 8xlarge and up; raises the light-traffic median by tens of µs</td></tr>
+<tr><td>Intel bare metal, c7i.metal-24xl</td><td>Kernel 45 / 51.5; F-Stack 48.5 / 54</td><td>Its 37.5 Gb card is 9 µs slower at the floor; F-Stack lost to the kernel</td></tr>
+<tr style="background:#ecebe4"><td>ARM metal, c7gn.metal</td><td>Not run</td><td>Changes CPU architecture, clock and card at once; toolchain unported</td></tr>
+<tr><td>F-Stack at its default idle interval</td><td>p50 91.0</td><td>A setting, not the stack: sends slipped up to 100 µs; at zero, 40.0</td></tr>
+<tr style="background:#ecebe4"><td>Loading the F-Stack shim with dlopen</td><td>JVM crashed on thread-local storage</td><td>Replaced by preloading the shim at JVM start, same code</td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6a7179">Not yet run: c6in.metal, which would separate the hypervisor's share from the NIC generation's on the Intel path</p>
+<aside>The host experiments taught us that the network card generation dominates: whole cores and a higher clock did nothing on c7a, and Intel bare metal lost ground because its card is a generation behind. The AMD metal result on the next slides is what happened when the fast card, no hypervisor and a 5 GHz clock finally came together.</aside>
+</section>
